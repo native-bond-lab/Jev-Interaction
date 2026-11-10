@@ -105,5 +105,5 @@ tools/replay.py     re-ask recorded decisions with changed questions
 
 ## Status
 
-0.1, extracted from a companion phone-call system still in development. The decision layer is the tested part; the browser client and
+0.1, extracted from a companion phone-call system still in development. jev-interaction is an independent project built on Jev; it is not affiliated with or endorsed by TypeSafe. The decision layer is the tested part; the browser client and
 energy VAD are minimal. Jev is a hosted API (`JEV_API_KEY`). License: to be decided before publishing.
