@@ -1,5 +1,7 @@
 # jev-interaction
 
+**English** · [中文](README.zh-CN.md)
+
 A full-duplex voice framework where **turn-taking is not a model you train but a set of decisions you write**.
 
 Voice agents usually bolt a turn detector onto ASR → LLM → TTS: a small model trained to guess "has the user finished?".
@@ -10,18 +12,10 @@ jev-interaction makes each of those an explicit decision: a plain-language multi
 [Jev](https://typesafe.ai) answers with a probability per choice, typically in under 100 ms, and a policy that turns the
 probabilities into an action.
 
-```
- mic frames ──► VAD ──► recognizer ──► segments ─┐
-                                                 ▼
-                          ┌──────── interaction layer ────────┐
-                          │  state: profile · pace · history  │
-                          │  questions ──► Jev ──► probs      │
-                          │  policy (sample / threshold / …)  │
-                          └───────────────┬───────────────────┘
-                     hold / unhold / stop │ respond(kind)
-                                          ▼
-                       responder (any LLM) ──► lines ──► TTS ──► speaker
-```
+![Architecture](docs/architecture.svg)
+
+An interactive version, where the same moment is judged for a companion and for a support line, is in
+[docs/architecture.html](docs/architecture.html) (open it locally, or on GitHub Pages once published).
 
 ## What this gives you
 

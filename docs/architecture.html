@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jev-interaction · architecture</title>
+<style>
+  :root {
+    --bg: #f6f5f3; --card: #ffffff; --ink: #1c1917; --muted: #78716c; --soft: #57534e; --line: #a8a29e; --edge: #e7e5e4;
+    --box: #ffffff; --box-edge: #d6d3d1; --core: #effbf8; --core-edge: #99e6d6; --accent: #0f766e; --accent-soft: #ccfbf1;
+    --warm: #c2410c; --warm-soft: #ffedd5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111110; --card: #1a1918; --ink: #f5f5f4; --muted: #a8a29e; --soft: #d6d3d1; --line: #78716c; --edge: #2c2a28;
+      --box: #22201e; --box-edge: #44403c; --core: #10221f; --core-edge: #1f5f55; --accent: #2dd4bf; --accent-soft: #134e48;
+      --warm: #fb923c; --warm-soft: #431c08; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; padding: 40px 24px 56px; }
+  header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { font-size: 26px; margin: 0; letter-spacing: -0.01em; }
+  .tag { color: var(--soft); }
+  .stage { background: var(--card); border: 1px solid var(--edge); border-radius: 20px; padding: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 30px rgba(0,0,0,.05); }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: inherit; fill: var(--ink); }
+  .h { font-size: 15px; font-weight: 650; }
+  .l { font-size: 11.5px; fill: var(--muted); }
+  .lt { font-size: 11.5px; fill: var(--accent); font-weight: 600; }
+  .box { fill: var(--box); stroke: var(--box-edge); stroke-width: 1.2; transition: stroke .3s, fill .3s; }
+  .core { fill: var(--core); stroke: var(--core-edge); stroke-width: 1.5; }
+  .jev { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.8; }
+  .wire { stroke: var(--line); stroke-width: 1.5; fill: none; stroke-dasharray: 5 6; animation: flow 1.2s linear infinite; }
+  .wire.ctl { stroke: var(--accent); stroke-width: 1.7; }
+  .wire.rec { stroke: var(--line); opacity: .6; animation-duration: 2.4s; }
+  .arrow { fill: var(--line); }
+  .arrow.t { fill: var(--accent); }
+  .dot { fill: var(--accent); }
+  .dot.w { fill: var(--warm); }
+  .lit { stroke: var(--accent) !important; stroke-width: 2.2 !important; }
+  .chip { font-size: 11.5px; fill: var(--muted); transition: fill .3s, font-weight .3s; }
+  .chip.on { fill: var(--accent); font-weight: 700; }
+  #jevbox { animation: breathe 2.6s ease-in-out infinite; transform-origin: 330px 400px; transform-box: view-box; }
+  @keyframes flow { to { stroke-dashoffset: -22; } }
+  @keyframes breathe { 0%, 100% { filter: drop-shadow(0 0 0 rgba(15,118,110,0)); } 50% { filter: drop-shadow(0 0 10px rgba(45,212,191,.45)); } }
+
+  .panel { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; margin-top: 18px; }
+  @media (max-width: 860px) { .panel { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--edge); border-radius: 16px; padding: 18px 20px; }
+  .card h2 { font-size: 15px; margin: 0 0 10px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .switch { display: inline-flex; background: var(--bg); border: 1px solid var(--edge); border-radius: 999px; padding: 3px; }
+  .switch button { border: 0; background: transparent; color: var(--soft); font: inherit; font-size: 13px; padding: 5px 14px; border-radius: 999px; cursor: pointer; }
+  .switch button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  .moment { margin-top: 12px; font-size: 13.5px; color: var(--soft); min-height: 44px; }
+  .q { font-weight: 650; color: var(--ink); }
+  .bars { display: grid; gap: 6px; margin-top: 10px; }
+  .bar { display: grid; grid-template-columns: 96px 1fr 40px; align-items: center; gap: 8px; font-size: 12.5px; color: var(--soft); }
+  .bar .track { height: 8px; background: var(--bg); border-radius: 99px; overflow: hidden; border: 1px solid var(--edge); }
+  .bar .fill { height: 100%; width: 0; background: var(--line); border-radius: 99px; transition: width .6s cubic-bezier(.2,.7,.2,1); }
+  .bar.pick .fill { background: var(--accent); }
+  .bar.pick { color: var(--ink); font-weight: 650; }
+  .verdict { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--ink); font-size: 13.5px; }
+  .verdict b { color: var(--accent); }
+  ul.points { margin: 0; padding-left: 18px; color: var(--soft); font-size: 13.5px; }
+  ul.points li { margin: 4px 0; }
+  ul.points b { color: var(--ink); }
+  @media (prefers-reduced-motion: reduce) { .wire, #jevbox { animation: none; } .dots { display: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>jev-interaction</h1>
+    <span class="tag">turn-taking as plain-language decisions, judged by Jev</span>
+  </header>
+
+  <div class="stage">
+    <svg viewBox="0 0 1000 600" role="img" aria-label="Caller audio flows through VAD and a streaming recognizer into the interaction layer. There the call state and the decision questions go to Jev, a policy turns its probabilities into an action, and the action either drives the responder and synthesizer or controls the caller's playback directly. Every decision is recorded for replay.">
+      <defs>
+        <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow t" d="M0,0 L10,5 L0,10 z"/></marker>
+        <path id="p-in" d="M160,150 H230 M370,125 H400"/>
+        <path id="p-mic" d="M160,150 H230"/>
+        <path id="p-asr" d="M300,125 H495 V176 H330 V240"/>
+        <path id="p-decide" d="M330,310 V400 H690"/>
+        <path id="p-out" d="M690,400 H800 V275 H895 V555 H160"/>
+        <path id="p-ctl" d="M690,440 V515 H160"/>
+      </defs>
+
+      <!-- caller -->
+      <rect x="30" y="70" width="130" height="500" rx="14" class="box"/>
+      <text x="95" y="100" class="h" text-anchor="middle">Caller</text>
+      <text x="95" y="118" class="l" text-anchor="middle">browser · phone</text>
+      <text x="95" y="155" class="l" text-anchor="middle">mic</text>
+      <text x="95" y="334" class="l" text-anchor="middle">playback</text>
+      <text x="95" y="520" class="l" text-anchor="middle">pause · resume · stop</text>
+      <text x="95" y="560" class="l" text-anchor="middle">speaker</text>
+
+      <!-- input -->
+      <rect x="230" y="95" width="140" height="60" rx="10" class="box"/>
+      <text x="300" y="121" class="h" text-anchor="middle">VAD</text>
+      <text x="300" y="140" class="l" text-anchor="middle">voice / no voice</text>
+      <rect x="400" y="95" width="190" height="60" rx="10" class="box"/>
+      <text x="495" y="121" class="h" text-anchor="middle">Recognizer</text>
+      <text x="495" y="140" class="l" text-anchor="middle">streaming ASR · segments</text>
+      <path d="M160,150 H228" class="wire" marker-end="url(#a)"/>
+      <text x="195" y="143" class="l" text-anchor="middle">200 ms</text>
+      <path d="M370,125 H398" class="wire" marker-end="url(#a)"/>
+      <path d="M495,155 V176 H330 V238" class="wire" marker-end="url(#a)"/>
+      <text x="420" y="171" class="l">words + timing</text>
+
+      <!-- interaction layer -->
+      <rect x="230" y="190" width="560" height="270" rx="16" class="core"/>
+      <text x="372" y="217" class="h">Interaction layer</text>
+      <text x="508" y="217" class="lt">every behaviour is a question</text>
+
+      <rect x="250" y="240" width="160" height="70" rx="10" class="box"/>
+      <text x="330" y="266" class="h" text-anchor="middle">Call state</text>
+      <text x="330" y="284" class="l" text-anchor="middle">pace · history</text>
+      <text x="330" y="299" class="l" text-anchor="middle">what is on the line now</text>
+
+      <rect id="qbox" x="430" y="240" width="160" height="70" rx="10" class="box"/>
+      <text x="510" y="264" class="h" text-anchor="middle">Questions</text>
+      <text x="510" y="284" text-anchor="middle"><tspan class="chip" id="c-turn">turn</tspan><tspan class="chip"> · </tspan><tspan class="chip" id="c-listen">listen</tspan><tspan class="chip"> · </tspan><tspan class="chip" id="c-floor">floor</tspan></text>
+      <text x="510" y="300" text-anchor="middle"><tspan class="chip" id="c-cut">cut in</tspan><tspan class="chip"> · </tspan><tspan class="chip" id="c-quiet">quiet</tspan></text>
+
+      <rect id="pbox" x="610" y="240" width="160" height="70" rx="10" class="box"/>
+      <text x="690" y="266" class="h" text-anchor="middle">Task profile</text>
+      <text x="690" y="286" class="l" text-anchor="middle" id="pname">companion · Mara</text>
+      <text x="690" y="301" class="l" text-anchor="middle" id="ppol">policies: sample</text>
+
+      <g id="jevbox">
+        <rect x="250" y="360" width="160" height="80" rx="10" class="jev"/>
+        <text x="330" y="391" class="h" text-anchor="middle" style="fill: var(--accent)">Jev</text>
+        <text x="330" y="410" class="l" text-anchor="middle">a probability per choice</text>
+        <text x="330" y="426" class="l" text-anchor="middle">tens of ms</text>
+      </g>
+
+      <rect id="polbox" x="430" y="360" width="160" height="80" rx="10" class="box"/>
+      <text x="510" y="391" class="h" text-anchor="middle">Policy</text>
+      <text x="510" y="410" class="l" text-anchor="middle">sample · threshold · argmax</text>
+      <text x="510" y="426" class="l" text-anchor="middle">per decision, per task</text>
+
+      <rect id="actbox" x="610" y="360" width="160" height="80" rx="10" class="box"/>
+      <text x="690" y="391" class="h" text-anchor="middle">Action</text>
+      <text x="690" y="412" class="l" text-anchor="middle" id="actname">—</text>
+      <text x="690" y="428" class="l" text-anchor="middle">answer · listen · yield · hold…</text>
+
+      <path d="M330,310 V358" class="wire" marker-end="url(#a)"/>
+      <path d="M480,310 L381,359" class="wire" marker-end="url(#a)"/>
+      <path d="M640,310 C640,330 360,320 346,357" class="wire" marker-end="url(#a)"/>
+      <text x="598" y="336" class="l">manner</text>
+      <path d="M700,310 L561,359" class="wire" marker-end="url(#a)"/>
+      <text x="652" y="350" class="l">policies</text>
+      <path d="M410,400 H428" class="wire" marker-end="url(#a)"/>
+      <path d="M590,400 H608" class="wire" marker-end="url(#a)"/>
+
+      <!-- output -->
+      <rect x="820" y="240" width="150" height="70" rx="10" class="box"/>
+      <text x="895" y="266" class="h" text-anchor="middle">Responder</text>
+      <text x="895" y="284" class="l" text-anchor="middle">any LLM</text>
+      <text x="895" y="299" class="l" text-anchor="middle">lines, streamed</text>
+      <rect x="820" y="360" width="150" height="70" rx="10" class="box"/>
+      <text x="895" y="386" class="h" text-anchor="middle">Synthesizer</text>
+      <text x="895" y="404" class="l" text-anchor="middle">any TTS</text>
+      <text x="895" y="419" class="l" text-anchor="middle">first chunk plays</text>
+      <path d="M770,385 H800 V275 H818" class="wire" marker-end="url(#a)"/>
+      <text x="803" y="232" class="l">respond(kind)</text>
+      <path d="M895,310 V358" class="wire" marker-end="url(#a)"/>
+      <path d="M895,430 V555 H162" class="wire" marker-end="url(#a)"/>
+      <text x="560" y="548" class="l" text-anchor="middle">line audio</text>
+
+      <path d="M690,440 V515 H162" class="wire ctl" marker-end="url(#t)"/>
+      <text x="420" y="508" class="lt" text-anchor="middle">hold · unhold · stop · finish the line</text>
+      <path d="M160,330 H228" class="wire" marker-end="url(#a)"/>
+      <text x="195" y="322" class="l" text-anchor="middle">idle</text>
+
+      <rect x="820" y="460" width="150" height="62" rx="10" class="box"/>
+      <text x="895" y="484" class="h" text-anchor="middle">Recorder</text>
+      <text x="895" y="502" class="l" text-anchor="middle">every decision → replay</text>
+      <path d="M790,450 H805 V490 H818" class="wire rec" marker-end="url(#a)"/>
+
+      <!-- packets -->
+      <g class="dots">
+        <circle r="4.5" class="dot"><animateMotion dur="1.4s" repeatCount="indefinite"><mpath href="#p-mic"/></animateMotion></circle>
+        <circle r="4.5" class="dot"><animateMotion dur="2.2s" repeatCount="indefinite" begin="0.4s"><mpath href="#p-asr"/></animateMotion></circle>
+        <circle r="4.5" class="dot"><animateMotion dur="1.8s" repeatCount="indefinite" begin="0.9s"><mpath href="#p-decide"/></animateMotion></circle>
+        <circle r="4.5" class="dot w"><animateMotion dur="3.6s" repeatCount="indefinite" begin="1.2s"><mpath href="#p-out"/></animateMotion></circle>
+        <circle r="4" class="dot"><animateMotion dur="2.6s" repeatCount="indefinite" begin="2s"><mpath href="#p-ctl"/></animateMotion></circle>
+      </g>
+    </svg>
+  </div>
+
+  <div class="panel">
+    <div class="card">
+      <div class="row">
+        <h2 style="margin:0">The same moment, two task profiles</h2>
+        <div class="switch" role="group" aria-label="Task profile">
+          <button id="b-companion" aria-pressed="true">Companion</button>
+          <button id="b-support" aria-pressed="false">Support line</button>
+        </div>
+      </div>
+      <div class="moment" id="moment"></div>
+      <div class="bars" id="bars"></div>
+      <div class="verdict" id="verdict"></div>
+    </div>
+    <div class="card">
+      <h2>Why it is built this way</h2>
+      <ul class="points">
+        <li><b>No turn model to train.</b> A new behaviour is a new question; a better Jev improves every decision.</li>
+        <li><b>Latency you can swap.</b> Decisions take tens of ms; the responder's first line is the rest. Use a faster model.</li>
+        <li><b>Policies per business.</b> Sample for liveliness, threshold for predictability, on the same questions.</li>
+        <li><b>Behaviour per task.</b> Jev reads the profile's manner, so a chatty companion and a quiet support agent judge the same moment differently.</li>
+        <li><b>Iterable.</b> Every decision is logged with the state Jev read; reword a question and replay real calls.</li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<script>
+// Illustrative moments: the probabilities are examples of the shape Jev returns, not measurements.
+const MOMENTS = [
+  { q: "listen", chip: "c-listen", text: "The caller is telling a long story and pauses for breath after “…and then my manager pulls me into a meeting.”",
+    companion: { probs: { feeling: .46, continuer: .22, quiet: .27, answer_due: .05 }, policy: "sample", pick: "feeling", out: "“Oh no.” slips in; the caller goes on." },
+    support: { probs: { feeling: .06, continuer: .18, quiet: .71, answer_due: .05 }, policy: "threshold 0.8", pick: "quiet", out: "Silence. Nothing clears the bar, so nothing is said." } },
+  { q: "turn", chip: "c-turn", text: "The caller says “So what I wanted to ask was…” and stops for 1.2 s.",
+    companion: { probs: { finished: .22, continuing: .78 }, policy: "sample", pick: "continuing", out: "Waits. A soft “mm?” may invite them on." },
+    support: { probs: { finished: .09, continuing: .91 }, policy: "threshold 0.7", pick: "continuing", out: "Waits: they may be reading a number." } },
+  { q: "floor", chip: "c-floor", text: "Mid-answer, the caller cuts in: “Wait — I surf too!”",
+    companion: { probs: { jump_in: .58, yield: .24, carry_on: .10, finish_first: .08 }, policy: "sample", pick: "jump_in", out: "Drops the line: “No way, you surf?!”" },
+    support: { probs: { yield: .55, finish_first: .31, carry_on: .10, jump_in: .04 }, policy: "threshold", pick: "yield", out: "Stops mid-sentence and listens." } },
+  { q: "quiet", chip: "c-quiet", text: "Ten seconds of quiet after the agent's last line, a statement.",
+    companion: { probs: { go_on: .44, wait: .40, check: .14, hang_up: .02 }, policy: "sample", pick: "go_on", out: "Picks the thread up with something from her day." },
+    support: { probs: { wait: .63, check: .30, go_on: .05, hang_up: .02 }, policy: "argmax", pick: "wait", out: "Waits while the caller does the step." } },
+];
+let profile = "companion", i = 0;
+const $ = (id) => document.getElementById(id);
+function render() {
+  const m = MOMENTS[i], d = m[profile];
+  document.querySelectorAll(".chip").forEach((c) => c.classList.remove("on"));
+  $(m.chip).classList.add("on");
+  ["qbox", "polbox", "actbox"].forEach((id) => { $(id).classList.remove("lit"); void $(id).offsetWidth; });
+  setTimeout(() => $("qbox").classList.add("lit"), 50);
+  setTimeout(() => { $("qbox").classList.remove("lit"); $("polbox").classList.add("lit"); }, 900);
+  setTimeout(() => { $("polbox").classList.remove("lit"); $("actbox").classList.add("lit"); $("actname").textContent = d.pick.replace("_", " "); }, 1700);
+  $("pname").textContent = profile === "companion" ? "companion · Mara" : "support · Sam";
+  $("ppol").textContent = profile === "companion" ? "policies: sample" : "policies: threshold";
+  $("moment").innerHTML = `<span class="q">${m.q}</span> · ${m.text}`;
+  $("bars").innerHTML = Object.entries(d.probs).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
+    `<div class="bar${k === d.pick ? " pick" : ""}"><span>${k.replace("_", " ")}</span><div class="track"><div class="fill" data-w="${v * 100}"></div></div><span>${v.toFixed(2)}</span></div>`).join("");
+  requestAnimationFrame(() => document.querySelectorAll(".fill").forEach((f) => (f.style.width = f.dataset.w + "%")));
+  $("verdict").innerHTML = `<b>${d.policy}</b> → ${d.out}`;
+}
+function setProfile(p) {
+  profile = p;
+  $("b-companion").setAttribute("aria-pressed", String(p === "companion"));
+  $("b-support").setAttribute("aria-pressed", String(p === "support"));
+  render();
+}
+$("b-companion").onclick = () => setProfile("companion");
+$("b-support").onclick = () => setProfile("support");
+render();
+if (!matchMedia("(prefers-reduced-motion: reduce)").matches) setInterval(() => { i = (i + 1) % MOMENTS.length; render(); }, 4800);
+</script>
+</body>
+</html>
