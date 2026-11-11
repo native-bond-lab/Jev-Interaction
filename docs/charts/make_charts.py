@@ -40,6 +40,7 @@ font:14px/1.3 system-ui,-apple-system,"Segoe UI","PingFang SC","Hiragino Sans GB
 .bar{border-radius:0 4px 4px 0;min-width:2px}
 .val{position:relative;background:var(--bg);padding:0 3px;font-size:12.5px;margin-left:4px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}
 .val.o{color:var(--ink);font-weight:600}
+.nm{font-size:12px;color:var(--muted);white-space:nowrap}
 .dash{position:absolute;top:0;bottom:0;border-left:1.5px dashed var(--muted);opacity:.7}
 """
 
@@ -94,8 +95,10 @@ def page(name: str, rows: list[dict], panels: list[dict], width: int, ncols: int
                         continue
                     frac = min(v, p["vmax"]) / p["vmax"]
                     vc = "val o" if k == "ours" else "val"
+                    who = (p.get("names") or [None] * len(rows))[ri]
+                    tag = f'<span class="nm">{esc(who)}</span>' if who else ""
                     inner += (f'<div class="row"><i class="bar" style="height:{bh}px;background:var(--{k});'
-                              f'width:calc((100% - {ROOM}px) * {frac:.4f})"></i><span class="{vc}">{esc(p["fmt"](v))}</span></div>')
+                              f'width:calc((100% - {p.get("room", ROOM)}px) * {frac:.4f})"></i><span class="{vc}">{esc(p["fmt"](v))}</span>{tag}</div>')
                 cells.append(f'<div class="cell" style="height:{row_h}px">{inner}</div>')
             cells += ["<div></div>"] * (ncols - len(chunk))
         parts.append(f'<div class="grid" style="grid-template-columns:max-content repeat({ncols},1fr)">' + "".join(cells) + "</div>")
@@ -178,6 +181,36 @@ def draw(lang: str) -> None:
         dict(title="跟旁人说话 → 接着说" if zh else "Talks to others → resume", hint=higher, values=[0.02, 0.25, 0.19, 0.99, 0.90, 0.24, 0.16], vmax=1, fmt=f2),
         dict(title="背景人声 → 接着说" if zh else "Background speech → resume", hint=higher, values=[0.04, 0.25, 0.07, 0.30, 0.98, 0.32, 0.28], vmax=1, fmt=f2),
     ], width=820, ncols=2)
+
+    # All knobs together: engine as deployed, all knobs (harness), best reference system, per metric
+    rows = [dict(label="Jev · 线上引擎" if zh else "Jev · as deployed", kind="before", bold=True),
+            dict(label="Jev · 全部旋钮" if zh else "Jev · all knobs", kind="ours", bold=True),
+            dict(label="参照里最好的" if zh else "best reference", kind="ref")]
+    longer = "越长越好" if zh else "longer is better"
+    def ref(name):
+        return [None, None, name]
+    page("all-knobs" + s, rows, [
+        dict(title="v1.0 真实对话停顿被抢话" if zh else "v1.0 real-conversation pauses taken", hint=lower,
+             values=[0.18, 0.06, 0.10], vmax=0.2, fmt=f2, names=ref("Gemini (high)"), room=150),
+        dict(title="v1.0 合成停顿被抢话" if zh else "v1.0 synthetic pauses taken", hint=lower,
+             values=[0.12, 0.14, 0.007], vmax=0.2, fmt=f2, names=ref("Gemini (high)"), room=150),
+        dict(title="v1.0 插话被接住" if zh else "v1.0 interruptions answered", hint=higher,
+             values=[0.96, 0.98, 1.0], vmax=1, fmt=f2, names=ref("Gemini (minimal)"), room=150),
+        dict(title="v1.0 被插话后回话" if zh else "v1.0 latency after an interruption", hint=lower,
+             values=[1.79, 1.68, 0.34], vmax=2, fmt=sec, names=ref("Gemini (minimal)"), room=150),
+        dict(title="v1.0 切题（0–5）" if zh else "v1.0 relevance (0–5)", hint=higher,
+             values=[4.35, 4.61, 4.12], vmax=5, fmt=f2, names=ref("Gemini (high)"), room=150),
+        dict(title="v1.5 插话 → 接话" if zh else "v1.5 interrupts → respond", hint=higher,
+             values=[0.52, 0.56, 0.78], vmax=1, fmt=f2, names=ref("GPT-4o"), room=150),
+        dict(title="v1.5 插话 → 多久停下" if zh else "v1.5 interrupts → time to stop", hint=lower,
+             values=[0.54, 1.21, 0.23], vmax=2.5, fmt=sec, names=ref("GPT-4o"), room=150),
+        dict(title="v1.5 应声 → 多久才停" if zh else "v1.5 “mm-hm” → time to stop", hint=longer,
+             values=[0.36, 3.32, 0.66], vmax=4, fmt=sec, names=ref("Freeze-Omni · Gemini"), room=150),
+        dict(title="v1.5 跟旁人说话 → 接着说" if zh else "v1.5 talks to others → resume", hint=higher,
+             values=[0.24, 0.40, 0.99], vmax=1, fmt=f2, names=ref("Gemini"), room=150),
+        dict(title="v1.5 背景人声 → 接着说" if zh else "v1.5 background speech → resume", hint=higher,
+             values=[0.32, 0.56, 0.98], vmax=1, fmt=f2, names=ref("Nova Sonic"), room=150),
+    ], width=900, ncols=2)
 
     # Task profiles
     rows = [dict(label=t, kind="ours", bold=i == 4) for i, t in enumerate(

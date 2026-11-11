@@ -269,12 +269,19 @@ def laugh(name: str) -> dict:
 | v1.0 合成停顿被抢话 | 0.12 | 0.14 | Gemini (high) 0.007 |
 | v1.0 插话被接住 | 0.96 | 0.98 | Gemini (minimal) 1.0 |
 | v1.0 被插话后多久回话 | 1.79 秒 | 1.68 秒 | Gemini (minimal) 0.34 秒 |
-| v1.0 回答切题程度（grok 评） | 4.35 | **4.61** | GPT-Realtime 3.85 |
+| v1.0 回答切题程度（grok 评） | 4.35 | **4.61** | Gemini (high) 4.12 |
 | v1.5 用户插话：接话 | 0.52 | 0.56 | GPT-4o 0.78 |
 | v1.5 用户插话：多久停下 | 0.54 秒 | 1.21 秒 | GPT-4o 0.23 秒 |
 | v1.5 用户应声：多久才停（越久越好） | 0.36 秒 | **3.32 秒** | 0.66 秒 |
 | v1.5 用户跟旁人说话：接着说 | 0.24 | 0.40 | Gemini 0.99 |
 | v1.5 背景人声：接着说 | 0.32 | **0.56** | Nova Sonic 0.98 |
+
+**同一套设置，全部旋钮打开。** 浅色是线上引擎，深色是全部旋钮，灰色是每项参照里最好的系统（标了名字）。只在测试里改，线上引擎没动。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/all-knobs.zh.dark.png">
+  <img alt="全部旋钮一起开：线上引擎、全部旋钮和每项最好的参照" src="docs/charts/all-knobs.zh.light.png" width="900">
+</picture>
 
 上面四个基准里和外部系统比的 16 项指标：线上引擎排第一 1 项、前一半 7 项；全部旋钮排第一 3 项、前一半 10 项。
 

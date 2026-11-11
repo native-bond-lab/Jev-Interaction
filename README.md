@@ -315,12 +315,19 @@ same setup. Tested in the harness; the deployed engine is unchanged.
 | v1.0 synthetic pauses taken as turns | 0.12 | 0.14 | Gemini (high) 0.007 |
 | v1.0 interruptions answered | 0.96 | 0.98 | Gemini (minimal) 1.0 |
 | v1.0 latency after an interruption | 1.79 s | 1.68 s | Gemini (minimal) 0.34 s |
-| v1.0 relevance (judged by grok) | 4.35 | **4.61** | GPT-Realtime 3.85 |
+| v1.0 relevance (judged by grok) | 4.35 | **4.61** | Gemini (high) 4.12 |
 | v1.5 user interrupts: respond | 0.52 | 0.56 | GPT-4o 0.78 |
 | v1.5 user interrupts: stop latency | 0.54 s | 1.21 s | GPT-4o 0.23 s |
 | v1.5 user backchannels: stop latency (longer is better) | 0.36 s | **3.32 s** | 0.66 s |
 | v1.5 user talks to someone else: resume | 0.24 | 0.40 | Gemini 0.99 |
 | v1.5 background speech: resume | 0.32 | **0.56** | Nova Sonic 0.98 |
+
+**One engine setup, every knob on.** Engine as deployed (light), all knobs (dark), and the best reference system per metric (gray, named). Harness only; the deployed engine is unchanged.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/all-knobs.dark.png">
+  <img alt="All knobs together: engine as deployed, all knobs, and the best reference per metric" src="docs/charts/all-knobs.light.png" width="900">
+</picture>
 
 Across 16 metrics against outside systems (the four benchmarks above), the deployed engine ranks first on 1 and in the
 top half on 7; with all knobs, first on 3 and in the top half on 10.
