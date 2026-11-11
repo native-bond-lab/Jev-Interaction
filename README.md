@@ -157,6 +157,8 @@ fixed seed. The pause sets used gpt-4o-mini as the language model and the interr
 | latency after an interruption (benchmark rule) | 1.79 s mean, 1.68 median | 1.50 s | 0.65 / 0.34 s |
 | relevance of the answer, 0–5 | 4.35 (judged by grok) | 3.85 | 4.12 / 3.58 |
 
+![Full-Duplex-Bench v1.0: interruptions answered, latency and relevance vs GPT-Realtime and Gemini](docs/charts/fdb10-interruptions.svg)
+
 Interruptions are on par with the commercial systems and the answers score well. Pauses are the weak spot: of the 15
 pause samples counted as taking the turn, 9 were the agent speaking up on its own because it believed the line had gone
 quiet (the samples start without a greeting, and some recordings are quiet enough that the voice detector may miss the
@@ -175,6 +177,8 @@ and 2 were answers after a complete first sentence. Two knobs, tested on the sam
 | before | 0.12 | 0.18 |
 | no quiet-line question while the caller's voice is going | 0.06 | 0.12 |
 | plus listening sounds capped at three words | **0.06** | **0.08** |
+
+![Full-Duplex-Bench v1.0: pauses taken as turns, before and after two knobs](docs/charts/fdb10-pauses.svg)
 
 Real-conversation pauses now beat the commercial systems in the table above (0.10–0.15). These knobs were tested in the
 benchmark harness and are not yet in the engine; nothing was retrained.
@@ -198,6 +202,8 @@ It stays off: the trade-off is visible, measured and reversible, which is the po
 | OpenAI GPT Realtime 2 | – | 1143 ms |
 | silence only | 21.7% | 1600 ms |
 
+![LiveKit eot-bench: wait for 5% false cutoffs and false cutoffs at 600 ms](docs/charts/eot-bench.svg)
+
 Mid-table: ahead of AssemblyAI, SmartTurn, Cartesia, OpenAI Realtime and Deepgram at 5%, well behind detectors trained
 on audio of this kind of conversation. About 11,000 Jev calls, about one dollar.
 
@@ -213,6 +219,8 @@ on audio of this kind of conversation. About 11,000 Jev calls, about one dollar.
 | user talks to someone else | resume | 0.24 | 0.02 · 0.99 · 0.90 · 0.19 |
 | background speech | resume | 0.32 | 0.04 · 0.30 · 0.98 · 0.07 |
 
+![Full-Duplex-Bench v1.5: judge labels per scenario vs the paper's systems](docs/charts/fdb15-behavior.svg)
+
 It stops fast, but it also stops for an "mm-hm", a side remark or a voice in the room. The traces show why: Jev reads
 most backchannels right (carry on, 19 of 25), but playback is paused 0.4 s into any voice, before the words are known;
 and the `floor` question had no choice for "this is not said to me", so side remarks ended the line early and got
@@ -221,6 +229,8 @@ through every backchannel (stop latency 0.36 s → 4.0 s; every system in the pa
 side remarks pass, at the cost of stopping 0.6 s later for real interruptions (1.15 s). The judge's labels did not move
 beyond the noise of 25 samples: it compares the answer against a separate clean run, and a companion's short, varied
 answers rarely read as "the same content, resumed".
+
+![Full-Duplex-Bench v1.5: time to stop when interrupted and when the user says mm-hm](docs/charts/fdb15-stop.svg)
 
 ### Task profiles: does behaviour follow the profile?
 
@@ -235,6 +245,8 @@ without the manner shown to Jev. Separation = how often a profile expected "high
 | lets a mid-sentence pause stand | 0.39 | 0.50 |
 | stops when talked over | 0.50 | – |
 | overall | **0.60** | 0.42 |
+
+![Task profiles: separation with and without the manner shown to Jev](docs/charts/task-profiles.svg)
 
 Listening sounds per minute with the manner shown: tutor 7.5, companion 3.0, support 2.3, interviewer 1.0. Pauses do
 not separate (no profile took the turn), and every profile yields when talked over, including the tutor that should
