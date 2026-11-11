@@ -179,6 +179,10 @@ and 2 were answers after a complete first sentence. Two knobs, tested on the sam
 Real-conversation pauses now beat the commercial systems in the table above (0.10–0.15). These knobs were tested in the
 benchmark harness and are not yet in the engine; nothing was retrained.
 
+A third knob, answering only when Jev is at least 0.8 sure the caller has finished, brought real-conversation pauses to
+0.04 without slowing answers after interruptions, but ordinary answers took about a second longer (median 0.8 s → 1.8 s).
+It stays off: the trade-off is visible, measured and reversible, which is the point.
+
 ## Swappable pieces
 
 | piece | protocol | included |
