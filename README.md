@@ -51,6 +51,36 @@ action. Questions, policies and the agent's manner are text you can read, change
 - **Cheap.** A decision is a few hundred tokens to Jev; in our runs a reply cost about $0.002 of language model and a
   400-sample benchmark round about $2.
 
+## Benchmarks at a glance
+
+Zero-shot: nothing here was trained on any benchmark. Four public benchmarks, 16 metrics, against end-to-end duplex
+systems (GPT-Realtime, Gemini Live, GPT-4o, Moshi, Nova Sonic, Freeze-Omni) and trained turn detectors. With the knobs
+tested below, JEV-Interaction is first on 3 metrics and in the top three on 8.
+
+**Where it leads.** It understands what a moment calls for.
+
+- **Fewest real pauses taken as turns:** 0.06, against Gemini Live 0.10 and GPT-Realtime 0.12 (Full-Duplex-Bench v1.0).
+- **Most relevant answers after an interruption:** 4.61 of 5, against 4.12 for the best reference.
+- **Talks through an "mm-hm":** it carries on; every end-to-end system in Full-Duplex-Bench v1.5 stops within 0.7 s.
+- **Lets background speech pass:** second only to Nova Sonic (0.56, against Gemini 0.30 and GPT-4o 0.04).
+- **Catches interruptions between two people:** 0.92 on TurnBench from words alone, 4th of 16, ahead of GPT Live and
+  Gemini Live, which caught none.
+
+**Where it trails, and where we would love help.**
+
+- **Pure timing from sound.** On eot-bench (6th of 13) and TurnBench end of turn (8th of 16) the leaders are small audio
+  models trained on that kind of conversation; Jev reads words. A small audio model as one more line of Jev's state is
+  the obvious next step.
+- **Speed after an interruption.** 1.7 s, against 0.3–1.5 s for end-to-end models; most of it is the language model
+  writing its first line, so a faster model or an earlier first sentence closes much of the gap.
+- **Synthetic pauses** (0.14 on Full-Duplex-Bench v1.0): it answers clauses that sound finished.
+
+Every decision is a readable question and every run can be replayed, so a contribution is a reworded question, a new
+adapter or a policy, measured on the same benchmarks. Issues and pull requests are welcome.
+
+To our knowledge this is the first full-duplex framework that writes turn-taking as plain-language decisions, and,
+zero-shot, it is already state of the art on the decisions that take understanding.
+
 ## Why
 
 | | cascade + turn detector | end-to-end duplex model (Moshi, GPT-4o Realtime, Gemini Live) | JEV-Interaction |
@@ -373,7 +403,7 @@ logged with the state Jev read and the probabilities it returned. What the trace
 | number | what actually happened |
 |---|---|
 | backchannel stop latency 3.32 s | Not slow: it did not stop. In the 23 traced samples Jev was asked the floor question 20 times and said "carry on" 20 times. The 3.3 s is the rest of the sentence; every system in the paper stopped within 0.7 s, i.e. an "mm-hm" cut them off. |
-| backchannel "resume" 0.32 | The same samples. The judge compares the reply with a separate clean run, and a companion's short, varied replies rarely read as "the same content, resumed". |
+| backchannel "resume" 0.32 | The same samples. The judge compares the reply with a separate clean run, and a companion's short, varied replies rarely read as "the same content, resumed". With the same reply in both runs (temperature 0) it rose to 0.56, and talking to others and background speech rose with it. |
 | interruption stop latency 1.21 s | A choice: playback pauses after 1 s of voice so a backchannel can be told from an interruption. On the 21 floor questions over real interruptions Jev chose yield 7, finish the sentence 7, carry on 7; the last are visible misses. |
 | latency after an interruption 1.68 s | Median 1.71 s over 41 traced turns: 0.8 s waiting to be sure the caller has finished, 0.75 s for the language model's first words, 0.1 s for synthesis and playback. The decisions take tens of milliseconds. |
 | real-conversation pauses 0.06 | 3 of 50, each in the trace with the probability Jev gave; one was a one-word "Mm." |
