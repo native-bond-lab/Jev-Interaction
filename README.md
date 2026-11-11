@@ -282,6 +282,65 @@ Listening sounds per minute with the manner shown: tutor 7.5, companion 3.0, sup
 not separate (no profile took the turn), and every profile yields when talked over, including the tutor that should
 finish its sentence: playback is paused before the floor question is asked, as above.
 
+### Two people talking: TurnBench
+
+[TurnBench](https://turnbench.sesame.com) listens to two people in free conversation, one microphone each, and asks
+when a speaker's turn ends (EOT) and when one takes the floor from the other (INT). We ran 6 dev conversations (about an
+hour): Scribe words per channel, Jev asked at each pause and each overlap, no audio model, no TurnBench training data.
+Thresholds and question wording were chosen on these same 6 conversations, so the numbers lean optimistic.
+
+| | EOT recall (false positives ≤ 0.10) | INT recall |
+|---|---|---|
+| vap (trained on TurnBench's training set) | 0.86 | 0.99 |
+| kyutai semantic VAD | 0.84 | 0.98 |
+| **Jev, words only** | **0.67** (8th of 16) | **0.92** (4th of 16) |
+| GPT Live | 0.62 | 0.00 |
+| Gemini Live | 0.73 | 0.00 |
+
+The other speaker leaks into each microphone: about 30% of one channel's words were the other person, 20–40 dB
+quieter. Dropping those words took INT false positives on one conversation from 0.39 to 0.06. The first EOT question
+("has A finished?") missed turns the other speaker had already taken over; asking "whose turn is it now?" raised EOT
+recall from 0.48 to 0.63, and the engine's own voiceprint check on unclear words to 0.67.
+
+### All knobs together
+
+One engine setup with every knob above (no quiet-line question while the caller talks, short listening sounds, pause
+after 1 s of voice, a "not said to me" choice in both the floor and the turn question, and a voice 10 dB or more under
+the caller's answered words treated as someone else's), grok-4.3 throughout, the v1.5 clean reference re-run with the
+same setup. Tested in the harness; the deployed engine is unchanged.
+
+| | engine as deployed | all knobs | best reference |
+|---|---|---|---|
+| v1.0 real-conversation pauses taken as turns | 0.18 | **0.06** | Gemini (high) 0.10 |
+| v1.0 synthetic pauses taken as turns | 0.12 | 0.14 | Gemini (high) 0.007 |
+| v1.0 interruptions answered | 0.96 | 0.98 | Gemini (minimal) 1.0 |
+| v1.0 latency after an interruption | 1.79 s | 1.68 s | Gemini (minimal) 0.34 s |
+| v1.0 relevance (judged by grok) | 4.35 | **4.61** | GPT-Realtime 3.85 |
+| v1.5 user interrupts: respond | 0.52 | 0.56 | GPT-4o 0.78 |
+| v1.5 user interrupts: stop latency | 0.54 s | 1.21 s | GPT-4o 0.23 s |
+| v1.5 user backchannels: stop latency (longer is better) | 0.36 s | **3.32 s** | 0.66 s |
+| v1.5 user talks to someone else: resume | 0.24 | 0.40 | Gemini 0.99 |
+| v1.5 background speech: resume | 0.32 | **0.56** | Nova Sonic 0.98 |
+
+Across 16 metrics against outside systems (the four benchmarks above), the deployed engine ranks first on 1 and in the
+top half on 7; with all knobs, first on 3 and in the top half on 10.
+
+### Every number comes with a reason
+
+An end-to-end model gives a score. A pipeline gives the score and the decisions behind it, because every decision is
+logged with the state Jev read and the probabilities it returned. What the traces of the all-knobs run say:
+
+| number | what actually happened |
+|---|---|
+| backchannel stop latency 3.32 s | Not slow: it did not stop. In the 23 traced samples Jev was asked the floor question 20 times and said "carry on" 20 times. The 3.3 s is the rest of the sentence; every system in the paper stopped within 0.7 s, i.e. an "mm-hm" cut them off. |
+| backchannel "resume" 0.32 | The same samples. The judge compares the reply with a separate clean run, and a companion's short, varied replies rarely read as "the same content, resumed". |
+| interruption stop latency 1.21 s | A choice: playback pauses after 1 s of voice so a backchannel can be told from an interruption. On the 21 floor questions over real interruptions Jev chose yield 7, finish the sentence 7, carry on 7; the last are visible misses. |
+| latency after an interruption 1.68 s | Median 1.71 s over 41 traced turns: 0.8 s waiting to be sure the caller has finished, 0.75 s for the language model's first words, 0.1 s for synthesis and playback. The decisions take tens of milliseconds. |
+| real-conversation pauses 0.06 | 3 of 50, each in the trace with the probability Jev gave; one was a one-word "Mm." |
+| synthetic pauses 0.14 | 7 of 50, mostly answers right after a clause that sounded finished ("Yeah? What's the story about?"). The synthetic voice pauses after complete clauses. |
+| background speech 0.56 | 15 of 22 traced samples were treated as someone else's voice (the 10 dB rule did most of it, Jev's "not said to me" the rest). The 7 still answered had a caller who spoke quietly themselves (less than 10 dB apart) or a first line too short to measure. |
+| TurnBench EOT 0.67 | Words arrive after the sound; the audio models that lead were trained on two-person conversation of this kind. |
+
 ## Swappable pieces
 
 | piece | protocol | included |
@@ -316,9 +375,11 @@ docs/                 architecture diagram and interactive walkthrough
 
 - Send the first sentence to synthesis as soon as it ends, not at the line break.
 - Neural VAD and a second recognizer behind the existing protocols.
-- Ship the two v1.5 knobs (pause after 1 s of voice; a "not said to me" choice) and judge v1.5 against a fixed clean answer.
-- Larger task-profile runs (more recordings, repeated draws) and a TurnBench run.
-- Full Full-Duplex-Bench v1.0 / v1.5 runs with published numbers.
+- Ship the tested knobs, with the voiceprint beside the 10 dB rule (a quiet real caller must not become "someone else").
+- Judge v1.5 against a fixed clean answer (same reply in both runs).
+- A small audio turn model as one more line in Jev's state, for the pure-timing benchmarks (eot-bench, TurnBench EOT).
+- Full TurnBench dev (38 conversations) for thresholds, then the hidden test set; larger task-profile runs.
+- Benchmark harnesses in this repository, run against this package.
 
 ## FAQ
 
