@@ -163,7 +163,7 @@ policies:
 ## Quickstart
 
 ```bash
-git clone https://github.com/yj972/JEV-Interaction && cd JEV-Interaction
+git clone https://github.com/native-bond-lab/Jev-Interaction && cd Jev-Interaction
 pip install -e ".[server]"
 cp .env.example .env     # JEV_API_KEY · an OpenAI-compatible LLM endpoint · ELEVENLABS_API_KEY and VOICE_ID
 uvicorn server.app:app --port 8080

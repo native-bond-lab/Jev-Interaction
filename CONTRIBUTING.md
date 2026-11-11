@@ -6,7 +6,7 @@ policy or a task profile. Each one can be checked against recorded calls and the
 ## Set up
 
 ```bash
-git clone https://github.com/yj972/JEV-Interaction && cd JEV-Interaction
+git clone https://github.com/native-bond-lab/Jev-Interaction && cd Jev-Interaction
 pip install -e ".[server,dev]"
 pytest -q
 ```

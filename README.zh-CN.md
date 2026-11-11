@@ -132,7 +132,7 @@ policies:
 ## 快速开始
 
 ```bash
-git clone https://github.com/yj972/JEV-Interaction && cd JEV-Interaction
+git clone https://github.com/native-bond-lab/Jev-Interaction && cd Jev-Interaction
 pip install -e ".[server]"
 cp .env.example .env     # JEV_API_KEY · 兼容 OpenAI 接口的大模型 · ELEVENLABS_API_KEY 和 VOICE_ID
 uvicorn server.app:app --port 8080
