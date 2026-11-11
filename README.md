@@ -479,6 +479,20 @@ authors of Full-Duplex-Bench, LiveKit eot-bench and TurnBench for open benchmark
 
 ## Status
 
-0.1, alpha, extracted from a companion phone-call system still in development. The decision layer is the tested part;
-the browser client and energy VAD are minimal. Jev is a hosted API (`JEV_API_KEY`). Licensed under Apache-2.0 (see [LICENSE](LICENSE)). Jev-Interaction is an independent project built on Jev; it is not affiliated with or
-endorsed by TypeSafe.
+**In production.** The voice-call engine this framework was extracted from runs stably in the product of a consumer
+application company, on real calls with real users: the same design of decisions, questions, paces and policies, with
+Jev judging every moment. Every benchmark number above was measured on that engine.
+
+**This repository: 0.1, alpha.** The decision layer is the tested part. The browser client and the energy VAD are
+minimal stand-ins; bring your own VAD, recognizer, language model and voice through the protocols in
+[Swappable pieces](#swappable-pieces). Jev is a hosted API (`JEV_API_KEY`).
+
+| | |
+|---|---|
+| decision layer (questions, state, policies, paces, profiles) | tested, in production upstream |
+| session and server | working; used by the tests and the browser client |
+| browser client, energy VAD | minimal, for trying it out |
+| benchmark harnesses | not in this repository yet (see the roadmap) |
+
+Licensed under Apache-2.0 (see [LICENSE](LICENSE)). Jev-Interaction is an independent project built on Jev; it is not
+affiliated with or endorsed by TypeSafe.
