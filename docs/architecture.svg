@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 1320" width="960" height="1320" role="img" aria-label="JEV-Interaction, top to bottom. Hear: the caller's audio arrives as 200 millisecond frames; voice activity detection and a streaming recognizer turn them into words, pauses and who is talking. Decide: the call state, the decision questions and the task profile go to Jev, which returns a probability for every choice; a policy turns them into an action, and every decision is recorded for replay. Speak: the action drives any language model and any speech synthesizer and controls playback directly. Frames keep arriving while the agent talks, so it listens while it speaks.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 1320" width="960" height="1320" role="img" aria-label="Jev-Interaction, top to bottom. Hear: the caller's audio arrives as 200 millisecond frames; voice activity detection and a streaming recognizer turn them into words, pauses and who is talking. Decide: the call state, the decision questions and the task profile go to Jev, which returns a probability for every choice; a policy turns them into an action, and every decision is recorded for replay. Speak: the action drives any language model and any speech synthesizer and controls playback directly. Frames keep arriving while the agent talks, so it listens while it speaks.">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#0b1120"/>
@@ -44,7 +44,7 @@
   </style>
 
   <rect width="960" height="1320" rx="22" fill="url(#bg)"/>
-  <text x="48" y="62" class="title">JEV-Interaction</text>
+  <text x="48" y="62" class="title">Jev-Interaction</text>
   <text x="48" y="90" class="tag">Full duplex from a cascade: every turn-taking behaviour is a plain-language question, answered by Jev.</text>
 
   <!-- 1 HEAR -->

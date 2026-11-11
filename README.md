@@ -1,8 +1,8 @@
 <div align="center">
 
-# JEV-Interaction
+# Jev-Interaction
 
-**A full-duplex voice interaction framework.**<br>Turn-taking as decisions you write — not a model you train.
+**System-One-controlled full-duplex voice interaction.**<br>Turn-taking as decisions you write — not a model you train.
 
 [中文](README.zh-CN.md) · [Profiles](examples/profiles) · [Decisions](jev_interaction/judge/questions.py)
 
@@ -17,14 +17,19 @@
 > **Built on [Jev](https://typesafe.ai).** Every turn-taking decision here is a question Jev answers in tens of
 > milliseconds. Without it, none of this would work.
 
-![JEV-Interaction architecture](docs/architecture.svg)
+![Jev-Interaction architecture](docs/architecture.svg)
 
 **Full duplex from a cascade.** Speech recognition → Jev's decisions → any language model → any speech synthesis. The
 agent listens while it talks, says "mm-hm" while you talk, lets a pause stand, carries on through a backchannel, yields
 or finishes its sentence when you cut in, and picks the call back up after a silence.
 
+**A System One for conversation.** People on a call run two minds at once: a fast one that knows, without thinking,
+when to wait, when to yield and when to say "mm-hm", and a slow one that works out what to say. Here Jev is the fast
+mind, deciding each moment in tens of milliseconds; the language model is the slow one, writing the words. Neither
+waits for the other.
+
 Most voice agents bolt a small trained model onto that pipeline to guess *"has the user finished?"* and leave the rest
-to timers. **JEV-Interaction turns each of those moments into an explicit decision.** A decision is a plain-language
+to timers. **Jev-Interaction turns each of those moments into an explicit decision.** A decision is a plain-language
 multiple-choice question; Jev answers it with a probability for every choice; a policy turns the probabilities into an
 action. Questions, policies and the agent's manner are text you can read, change and replay against real calls.
 
@@ -55,7 +60,7 @@ action. Questions, policies and the agent's manner are text you can read, change
 
 Zero-shot: nothing here was trained on any benchmark. Four public benchmarks, 16 metrics, against end-to-end duplex
 systems (GPT-Realtime, Gemini Live, GPT-4o, Moshi, Nova Sonic, Freeze-Omni) and trained turn detectors. With the knobs
-tested below, JEV-Interaction is first on 3 metrics and in the top three on 8.
+tested below, Jev-Interaction is first on 3 metrics and in the top three on 8.
 
 **Where it leads.** It understands what a moment calls for.
 
@@ -83,7 +88,7 @@ zero-shot, it is already state of the art on the decisions that take understandi
 
 ## Why
 
-| | cascade + turn detector | end-to-end duplex model (Moshi, GPT-4o Realtime, Gemini Live) | JEV-Interaction |
+| | cascade + turn detector | end-to-end duplex model (Moshi, GPT-4o Realtime, Gemini Live) | Jev-Interaction |
 |---|---|---|---|
 | when to answer | a trained end-of-turn model, one threshold | learned inside the model; you cannot see or move it | a question Jev answers from the words, the timing and the conversation |
 | listening sounds | none, or a fixed clip | whatever the model learned | decided each time: a continuer, a reaction, an echoed word, or nothing |
@@ -475,5 +480,5 @@ authors of Full-Duplex-Bench, LiveKit eot-bench and TurnBench for open benchmark
 ## Status
 
 0.1, alpha, extracted from a companion phone-call system still in development. The decision layer is the tested part;
-the browser client and energy VAD are minimal. Jev is a hosted API (`JEV_API_KEY`). Licensed under Apache-2.0 (see [LICENSE](LICENSE)). JEV-Interaction is an independent project built on Jev; it is not affiliated with or
+the browser client and energy VAD are minimal. Jev is a hosted API (`JEV_API_KEY`). Licensed under Apache-2.0 (see [LICENSE](LICENSE)). Jev-Interaction is an independent project built on Jev; it is not affiliated with or
 endorsed by TypeSafe.
