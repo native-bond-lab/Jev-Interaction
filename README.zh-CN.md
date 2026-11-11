@@ -2,11 +2,11 @@
 
 # JEV-Interaction
 
-**语音助手的轮次交互：写出来的决策，而不是训练出来的模型。**
+**全双工语音交互框架。**<br>轮次交互是写出来的决策，而不是训练出来的模型。
 
 [English](README.md) · [可交互架构图](docs/architecture.html) · [任务配置](examples/profiles) · [决策题目](jev_interaction/judge/questions.py)
 
-![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
+![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![license](https://img.shields.io/badge/license-Apache--2.0-blue) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
 
 </div>
 
@@ -207,4 +207,4 @@ docs/                 架构图和可交互演示
 
 ## 状态
 
-0.1，alpha，从一个仍在开发中的陪伴电话系统里抽出来。决策层是测过的部分；网页客户端和能量 VAD 还很简单。Jev 是托管 API（`JEV_API_KEY`）。许可证在仓库公开前确定。JEV-Interaction 是基于 Jev 的独立项目，与 TypeSafe 无关联、未获其背书。
+0.1，alpha，从一个仍在开发中的陪伴电话系统里抽出来。决策层是测过的部分；网页客户端和能量 VAD 还很简单。Jev 是托管 API（`JEV_API_KEY`）。采用 Apache-2.0 许可证（见 [LICENSE](LICENSE)）。JEV-Interaction 是基于 Jev 的独立项目，与 TypeSafe 无关联、未获其背书。

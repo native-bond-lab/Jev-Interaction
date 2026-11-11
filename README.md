@@ -2,11 +2,11 @@
 
 # JEV-Interaction
 
-**Turn-taking for voice agents, as decisions you write — not a model you train.**
+**A full-duplex voice interaction framework.**<br>Turn-taking as decisions you write — not a model you train.
 
 [中文](README.zh-CN.md) · [Interactive architecture](docs/architecture.html) · [Profiles](examples/profiles) · [Decisions](jev_interaction/judge/questions.py)
 
-![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
+![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![license](https://img.shields.io/badge/license-Apache--2.0-blue) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
 
 </div>
 
@@ -233,6 +233,5 @@ language model you plug in.
 ## Status
 
 0.1, alpha, extracted from a companion phone-call system still in development. The decision layer is the tested part;
-the browser client and energy VAD are minimal. Jev is a hosted API (`JEV_API_KEY`). License to be decided before the
-repository is made public. JEV-Interaction is an independent project built on Jev; it is not affiliated with or
+the browser client and energy VAD are minimal. Jev is a hosted API (`JEV_API_KEY`). Licensed under Apache-2.0 (see [LICENSE](LICENSE)). JEV-Interaction is an independent project built on Jev; it is not affiliated with or
 endorsed by TypeSafe.
