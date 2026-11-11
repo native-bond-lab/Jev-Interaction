@@ -7,6 +7,10 @@
 [中文](README.zh-CN.md) · [Profiles](examples/profiles) · [Decisions](jev_interaction/judge/questions.py)
 
 ![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![license](https://img.shields.io/badge/license-Apache--2.0-blue) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
+<br>
+
+*Most of a conversation happens in the gaps: who waits, who yields, who answers with nothing but an "mm-hm".<br>We wrote every gap down as a question, and gave the questions to Jev.*
+
 
 </div>
 
@@ -49,15 +53,18 @@ action. Questions, policies and the agent's manner are text you can read, change
 
 ## Why
 
-| | a typical voice agent | JEV-Interaction |
-|---|---|---|
-| when to answer | a trained end-of-turn model, one threshold | a question Jev answers from the words, the timing and the conversation |
-| listening sounds | none, or a fixed clip | decided each time: a continuer, a reaction, an echoed word, or nothing |
-| being talked over | stop on any voice, or never | carry on, yield, finish the sentence, take the floor back, or react at once |
-| silence | a timeout | go on, check in, wait, or hang up — weighed against how this caller talks |
-| different products | retrain or re-tune | a task profile: the manner Jev reads, the policy per decision |
-| changing behaviour | collect data, retrain | reword a question, replay recorded calls, ship |
-| long calls | a session cap (OpenAI Realtime: 60 min) or audio tokens filling the context (Gemini Live: about 15 min of audio before compression drops or summarizes old turns) | no session cap: each decision and each reply is a fresh request over a text history, about 200 tokens per minute of speech |
+| | cascade + turn detector | end-to-end duplex model (Moshi, GPT-4o Realtime, Gemini Live) | JEV-Interaction |
+|---|---|---|---|
+| when to answer | a trained end-of-turn model, one threshold | learned inside the model; you cannot see or move it | a question Jev answers from the words, the timing and the conversation |
+| listening sounds | none, or a fixed clip | whatever the model learned | decided each time: a continuer, a reaction, an echoed word, or nothing |
+| being talked over | stop on any voice, or never | learned; on Full-Duplex-Bench v1.5 every one of them stops within 0.7 s for an "mm-hm" | carry on, yield, finish the sentence, take the floor back, or react at once |
+| silence | a timeout | the model's habit | go on, check in, wait, or hang up, weighed against how this caller talks |
+| a persona or a new task | retrain or re-tune the detector | a prompt changes the words; the timing stays the model's | a task profile: the manner Jev reads and the policy per decision, so the persona changes how it takes turns |
+| changing behaviour | collect data, retrain | wait for the vendor, or retrain a very large model | reword a question, replay recorded calls, ship |
+| why it did that | a score | not inspectable | every decision logged with the state Jev read and its probabilities |
+| model and voice | any | the vendor's model and voices | any language model, any synthesizer and voice |
+| long calls | no session cap | a session cap (OpenAI Realtime: 60 min) or audio tokens filling the context (Gemini Live: about 15 min of audio before compression drops or summarizes old turns) | no session cap: each decision and each reply is a fresh request over a text history, about 200 tokens per minute of speech |
+| speed | the language model's | the fastest: 0.3–1.5 s to answer after an interruption on Full-Duplex-Bench v1.0 | 1.7 s after an interruption, mostly the language model writing its first line |
 
 ## How one moment is decided
 
