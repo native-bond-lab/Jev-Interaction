@@ -145,22 +145,23 @@ Ask it from the session where it belongs, give it a policy in `Config.policies`,
 
 ## Early results
 
-Measured on the companion-call engine this framework was extracted from (same decision layer, grok-4.3 as the
-language model, ElevenLabs Scribe and TTS), on a small slice of
-[Full-Duplex-Bench](https://github.com/DanielLin94144/Full-Duplex-Bench) v1.0. Fifteen samples, run twice — enough to
-place it, not to rank it.
+Measured on the companion-call engine this framework was extracted from (same decision layer, ElevenLabs Scribe and
+TTS) on [Full-Duplex-Bench](https://github.com/DanielLin94144/Full-Duplex-Bench) v1.0: 50 samples per set, drawn with a
+fixed seed. The pause sets used gpt-4o-mini as the language model and the interruption set grok-4.3.
 
-| | this engine | GPT-Realtime | Gemini 3.1 Flash Live |
+| | this engine (n) | GPT-Realtime | Gemini 3.1 Flash Live (high / minimal) |
 |---|---|---|---|
-| synthetic pauses taken as turns (lower is better) | 0 of 12 | 0.01 | 0.007–0.022 |
-| real-conversation pauses taken as turns | 2 of 6 | 0.12 | 0.10–0.15 |
-| interruptions stopped and answered | 12 of 12 | 0.97 | 1.0 |
-| new answer after an interruption | median ≈ 1.8 s | 1.5 s | 0.3–0.7 s |
+| synthetic pauses taken as turns (lower is better) | 0.12 (50) | 0.01 | 0.007 / 0.022 |
+| real-conversation pauses taken as turns | 0.18 (50) | 0.12 | 0.10 / 0.15 |
+| interruptions answered | 0.96 (50) | 0.97 | 0.995 / 1.0 |
+| latency after an interruption (benchmark rule) | 1.79 s mean, 1.68 median | 1.50 s | 0.65 / 0.34 s |
+| relevance of the answer, 0–5 | 4.35 (judged by grok) | 3.85 | 4.12 / 3.58 |
 
-The last row for this engine is the time to its new answer. By the benchmark's own rule it comes out at about 1.6 s,
-because that rule also counts the agent finishing the sentence it was holding. Most of the response time is the
-language model writing its first line; the decisions themselves take tens of milliseconds. A full run of the pause and
-interruption sets is planned.
+Interruptions are on par with the commercial systems and the answers score well. Pauses are the weak spot: of the 15
+pause samples counted as taking the turn, 9 were the agent speaking up on its own because it believed the line had gone
+quiet (the samples start without a greeting, and some recordings are quiet enough that the voice detector may miss the
+caller), and 6 were answers before the caller had finished, mostly after a complete first sentence. Latency is mostly
+the language model writing its first line; the decisions take tens of milliseconds.
 
 ## Swappable pieces
 
