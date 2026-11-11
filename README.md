@@ -157,7 +157,12 @@ fixed seed. The pause sets used gpt-4o-mini as the language model and the interr
 | latency after an interruption (benchmark rule) | 1.79 s mean, 1.68 median | 1.50 s | 0.65 / 0.34 s |
 | relevance of the answer, 0–5 | 4.35 (judged by grok) | 3.85 | 4.12 / 3.58 |
 
-![Full-Duplex-Bench v1.0: interruptions answered, latency and relevance vs GPT-Realtime and Gemini](docs/charts/fdb10-interruptions.svg)
+**When the user interrupts.** Full-Duplex-Bench v1.0, 50 interruption samples, grok-4.3. Latency is the benchmark's mean (median 1.68 s); our relevance was judged by grok, the references by the official judge.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/fdb10-interruptions.dark.png">
+  <img alt="Full-Duplex-Bench v1.0: interruptions answered, latency and relevance vs GPT-Realtime and Gemini" src="docs/charts/fdb10-interruptions.light.png" width="860">
+</picture>
 
 Interruptions are on par with the commercial systems and the answers score well. Pauses are the weak spot: of the 15
 pause samples counted as taking the turn, 9 were the agent speaking up on its own because it believed the line had gone
@@ -178,7 +183,12 @@ and 2 were answers after a complete first sentence. Two knobs, tested on the sam
 | no quiet-line question while the caller's voice is going | 0.06 | 0.12 |
 | plus listening sounds capped at three words | **0.06** | **0.08** |
 
-![Full-Duplex-Bench v1.0: pauses taken as turns, before and after two knobs](docs/charts/fdb10-pauses.svg)
+**Pauses taken as the end of the turn, before and after the knobs.** 50 samples per set. Knob 1: no quiet-line question while the caller's voice is going. Knob 2: listening sounds capped at three words. Tested in the harness, not yet in the engine.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/fdb10-pauses.dark.png">
+  <img alt="Full-Duplex-Bench v1.0: pauses taken as turns, before and after two knobs" src="docs/charts/fdb10-pauses.light.png" width="820">
+</picture>
 
 Real-conversation pauses now beat the commercial systems in the table above (0.10–0.15). These knobs were tested in the
 benchmark harness and are not yet in the engine; nothing was retrained.
@@ -202,7 +212,12 @@ It stays off: the trade-off is visible, measured and reversible, which is the po
 | OpenAI GPT Realtime 2 | – | 1143 ms |
 | silence only | 21.7% | 1600 ms |
 
-![LiveKit eot-bench: wait for 5% false cutoffs and false cutoffs at 600 ms](docs/charts/eot-bench.svg)
+**Has the user finished? LiveKit eot-bench.** 400 real user turns, 11,191 scoring points, sorted by the wait needed for 5% false cutoffs. Jev reads words only, zero-shot. Other systems from the published results; – means not reported.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/eot-bench.dark.png">
+  <img alt="LiveKit eot-bench: wait for 5% false cutoffs and false cutoffs at 600 ms" src="docs/charts/eot-bench.light.png" width="820">
+</picture>
 
 Mid-table: ahead of AssemblyAI, SmartTurn, Cartesia, OpenAI Realtime and Deepgram at 5%, well behind detectors trained
 on audio of this kind of conversation. About 11,000 Jev calls, about one dollar.
@@ -219,7 +234,12 @@ on audio of this kind of conversation. About 11,000 Jev calls, about one dollar.
 | user talks to someone else | resume | 0.24 | 0.02 · 0.99 · 0.90 · 0.19 |
 | background speech | resume | 0.32 | 0.04 · 0.30 · 0.98 · 0.07 |
 
-![Full-Duplex-Bench v1.5: judge labels per scenario vs the paper's systems](docs/charts/fdb15-behavior.svg)
+**What the judge saw.** Share of the wanted label per scenario, 25 noisy samples each; paper systems from Table 2. Before/after changes are within the ±0.08 noise of 25 samples.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/fdb15-behavior.dark.png">
+  <img alt="Full-Duplex-Bench v1.5: judge labels per scenario vs the paper's systems" src="docs/charts/fdb15-behavior.light.png" width="820">
+</picture>
 
 It stops fast, but it also stops for an "mm-hm", a side remark or a voice in the room. The traces show why: Jev reads
 most backchannels right (carry on, 19 of 25), but playback is paused 0.4 s into any voice, before the words are known;
@@ -230,7 +250,12 @@ side remarks pass, at the cost of stopping 0.6 s later for real interruptions (1
 beyond the noise of 25 samples: it compares the answer against a separate clean run, and a companion's short, varied
 answers rarely read as "the same content, resumed".
 
-![Full-Duplex-Bench v1.5: time to stop when interrupted and when the user says mm-hm](docs/charts/fdb15-stop.svg)
+**How long until the agent stops talking.** Median stop latency by the benchmark's rule. Two knobs: pause playback only after 1 s of voice, and a "not said to me" choice. Tested in the harness; the deployed engine is unchanged.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/fdb15-stop.dark.png">
+  <img alt="Full-Duplex-Bench v1.5: time to stop when interrupted and when the user says mm-hm" src="docs/charts/fdb15-stop.light.png" width="820">
+</picture>
 
 ### Task profiles: does behaviour follow the profile?
 
@@ -246,7 +271,12 @@ without the manner shown to Jev. Separation = how often a profile expected "high
 | stops when talked over | 0.50 | – |
 | overall | **0.60** | 0.42 |
 
-![Task profiles: separation with and without the manner shown to Jev](docs/charts/task-profiles.svg)
+**Does behaviour follow the profile?** Separation across the four shipped profiles on 12 recordings, with and without the manner shown to Jev; 0.5 means no difference. Three recordings per cell, so read it as a direction.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/task-profiles.dark.png">
+  <img alt="Task profiles: separation with and without the manner shown to Jev" src="docs/charts/task-profiles.light.png" width="620">
+</picture>
 
 Listening sounds per minute with the manner shown: tutor 7.5, companion 3.0, support 2.3, interviewer 1.0. Pauses do
 not separate (no profile took the turn), and every profile yields when talked over, including the tutor that should

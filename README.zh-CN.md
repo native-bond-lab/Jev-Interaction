@@ -144,7 +144,12 @@ def laugh(name: str) -> dict:
 | 被打断后回话延迟（评测规则） | 平均 1.79 秒，中位 1.68 秒 | 1.50 秒 | 0.65 / 0.34 秒 |
 | 回答相关度（0–5） | 4.35（grok 打分） | 3.85 | 4.12 / 3.58 |
 
-![Full-Duplex-Bench v1.0：被打断时接话、延迟、回答质量](docs/charts/fdb10-interruptions.zh.svg)
+**被打断时。** Full-Duplex-Bench v1.0，50 条插话样本，grok-4.3。延迟按评测规则取平均（中位 1.68 秒）；本引擎的切题分由 grok 评，参照系统由官方评委评。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/fdb10-interruptions.zh.dark.png">
+  <img alt="Full-Duplex-Bench v1.0：被打断时接话、延迟、回答质量" src="docs/charts/fdb10-interruptions.zh.light.png" width="860">
+</picture>
 
 插话这一项和商用系统同档，回答质量分也不错。停顿是短板：被算成"抢话"的 15 条里，9 条是角色以为线上没人说话、自己主动开口（测试音频开头没有接电话那一句，有些录音音量小，声音检测可能没听到用户），6 条是用户还没说完就答了，多数是答了多句话里的第一句。回话延迟主要花在语言模型写第一句上，决策本身只要几十毫秒。
 
@@ -158,7 +163,12 @@ def laugh(name: str) -> dict:
 | 用户声音还在继续时不问"要不要开口" | 0.06 | 0.12 |
 | 再把应声限制在 3 个词以内 | **0.06** | **0.08** |
 
-![Full-Duplex-Bench v1.0：停顿被当成说完，调整前后](docs/charts/fdb10-pauses.zh.svg)
+**停顿被当成说完：调整前后。** 每组 50 条。旋钮 1：用户声音还在继续时不问"要不要开口"；旋钮 2：应声限 3 个词以内。只在测试里验证，还没进引擎。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/fdb10-pauses.zh.dark.png">
+  <img alt="Full-Duplex-Bench v1.0：停顿被当成说完，调整前后" src="docs/charts/fdb10-pauses.zh.light.png" width="820">
+</picture>
 
 真人对话停顿已经好于上表里的商用系统（0.10–0.15）。这两个旋钮目前只在测试里验证过，还没改进引擎；整个过程没有重新训练任何模型。
 
@@ -177,7 +187,12 @@ def laugh(name: str) -> dict:
 | OpenAI GPT Realtime 2 | – | 1143 毫秒 |
 | 只看安静时长 | 21.7% | 1600 毫秒 |
 
-![LiveKit eot-bench：误切 5% 要等多久、等 600 毫秒的误切率](docs/charts/eot-bench.zh.svg)
+**说完没：LiveKit eot-bench。** 400 段真实用户发言、11,191 个打分点，按误切 5% 所需等待排序。Jev 只看文字、零样本。其他系统取公开结果；– 表示未公布。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/eot-bench.zh.dark.png">
+  <img alt="LiveKit eot-bench：误切 5% 要等多久、等 600 毫秒的误切率" src="docs/charts/eot-bench.zh.light.png" width="820">
+</picture>
 
 排在中游：误切 5% 这一档好于 AssemblyAI、SmartTurn、Cartesia、OpenAI Realtime 和 Deepgram，明显不如直接听音频、专门在这类对话上训练的模型。约 1.1 万次 Jev 调用，约 1 美元。
 
@@ -193,11 +208,21 @@ def laugh(name: str) -> dict:
 | 用户跟旁人说话 | 接着说 | 0.24 | 0.02 · 0.99 · 0.90 · 0.19 |
 | 背景人声 | 接着说 | 0.32 | 0.04 · 0.30 · 0.98 · 0.07 |
 
-![Full-Duplex-Bench v1.5：各场景评委标签，和论文系统对比](docs/charts/fdb15-behavior.zh.svg)
+**评委判的行为。** 各场景得到想要标签的比例，每类 25 条带噪声样本；论文系统取 Table 2。调整前后的变化都在 25 条样本 ±0.08 的波动内。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/fdb15-behavior.zh.dark.png">
+  <img alt="Full-Duplex-Bench v1.5：各场景评委标签，和论文系统对比" src="docs/charts/fdb15-behavior.zh.light.png" width="820">
+</picture>
 
 停得快，但用户只说一声"嗯嗯"、跟旁人说一句、或背景里有人说话，也会停下来。从记录能看出原因：应声时 Jev 多数判断对了（25 条里 19 条"接着说"），但有声音进来 0.4 秒就先暂停播放，那时还不知道说的是什么；而 `floor` 那道题里没有"这话不是对我说的"这个选项，所以对旁人说的话会让角色提前收尾、再去回答。在测试里改了两处：声音持续 1 秒才暂停，加上这个选项。改完以后，应声时角色一次都没停（停下延迟从 0.36 秒到 4.0 秒，论文里所有系统都在 0.7 秒以内就停了），对旁人说的话 25 条里有 9 条被略过；代价是真正被插话时晚停 0.6 秒（1.15 秒）。评委的标签没有变好，变化都在 25 条的波动范围内：评委拿这次的回答和另一次干净版本的回答对比，陪伴角色的回答短、每次又不一样，评委很难看出"接着同一段说"。
 
-![Full-Duplex-Bench v1.5：被插话、被应声时多久停下](docs/charts/fdb15-stop.zh.svg)
+**多久停下来。** 停下延迟中位数，按评测规则。两处调整：声音持续 1 秒才暂停播放，加"这话不是对我说的"选项。只在测试里验证，线上引擎未改。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/fdb15-stop.zh.dark.png">
+  <img alt="Full-Duplex-Bench v1.5：被插话、被应声时多久停下" src="docs/charts/fdb15-stop.zh.light.png" width="820">
+</picture>
 
 ### 任务配置：行为会不会跟着配置变
 
@@ -211,7 +236,12 @@ def laugh(name: str) -> dict:
 | 被打断就停 | 0.50 | – |
 | 合计 | **0.60** | 0.42 |
 
-![任务配置：给和不给电话习惯时的分开程度](docs/charts/task-profiles.zh.svg)
+**换配置，行为跟着变吗。** 四份自带配置、12 段录音，给和不给 Jev 看电话习惯时的分开程度；0.5 等于没区别。每格 3 条，只能看方向。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/charts/task-profiles.zh.dark.png">
+  <img alt="任务配置：给和不给电话习惯时的分开程度" src="docs/charts/task-profiles.zh.light.png" width="620">
+</picture>
 
 给电话习惯时每分钟应声次数：家教 7.5、陪伴 3.0、客服 2.3、面试官 1.0。停顿拉不开（所有配置都没抢话）；被打断时所有配置都会停，包括应该"先讲完这句"的家教，原因同上：问那道题之前播放已经先暂停了。
 

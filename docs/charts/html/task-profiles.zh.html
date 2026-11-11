@@ -1,0 +1,23 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=620"><style>
+:root{--bg:#ffffff;--ink:#1f2328;--ink2:#59636e;--muted:#818b98;--line:#d1d9e0;
+--ours:#2a78d6;--before:#86b6ef;--ref:#b4bcc5}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1117;--ink:#e6edf3;--ink2:#9198a1;--muted:#768390;--line:#30363d;
+--ours:#5598e7;--before:#1f5aa6;--ref:#4a525c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);padding:18px 20px 22px;
+font:14px/1.3 system-ui,-apple-system,"Segoe UI","PingFang SC","Hiragino Sans GB","Noto Sans CJK SC",sans-serif}
+.legend{display:flex;gap:20px;font-size:13px;color:var(--ink2);margin:0 0 16px}
+.sw{width:11px;height:11px;border-radius:3px;display:inline-block;margin-right:7px;vertical-align:-1px}
+.grid{display:grid;column-gap:30px}
+.grid+.grid{margin-top:26px}
+.h{font-size:13.5px;font-weight:600;padding:0 0 10px 10px;white-space:nowrap}
+.h small{font-weight:400;color:var(--muted);font-size:12px;margin-left:6px}
+.lab{display:flex;align-items:center;justify-content:flex-end;font-size:13.5px;color:var(--ink2);white-space:nowrap}
+.lab.b{color:var(--ink);font-weight:600}
+.cell{position:relative;border-left:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;gap:3px}
+.row{display:flex;align-items:center}
+.bar{border-radius:0 4px 4px 0;min-width:2px}
+.val{position:relative;background:var(--bg);padding:0 3px;font-size:12.5px;margin-left:4px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.val.o{color:var(--ink);font-weight:600}
+.dash{position:absolute;top:0;bottom:0;border-left:1.5px dashed var(--muted);opacity:.7}
+body{width:620px}</style></head><body><div class="legend"><span><i class="sw" style="background:var(--ours)"></i>给 Jev 看电话习惯</span><span><i class="sw" style="background:var(--ref)"></i>不给</span></div><div class="grid" style="grid-template-columns:max-content repeat(1,1fr)"><div></div><div class="h">分开程度<small>虚线 0.5 = 没区别</small></div><div class="lab" style="height:40px">应声</div><div class="cell" style="height:40px"><i class="dash" style="left:calc((100% - 64px) * 0.5000)"></i><div class="row"><i class="bar" style="height:10px;background:var(--ours);width:calc((100% - 64px) * 0.8300)"></i><span class="val o">0.83</span></div><div class="row"><i class="bar" style="height:10px;background:var(--ref);width:calc((100% - 64px) * 0.2500)"></i><span class="val">0.25</span></div></div><div class="lab" style="height:40px">冷场时开口</div><div class="cell" style="height:40px"><i class="dash" style="left:calc((100% - 64px) * 0.5000)"></i><div class="row"><i class="bar" style="height:10px;background:var(--ours);width:calc((100% - 64px) * 0.6700)"></i><span class="val o">0.67</span></div><div class="row"><i class="bar" style="height:10px;background:var(--ref);width:calc((100% - 64px) * 0.5000)"></i><span class="val">0.50</span></div></div><div class="lab" style="height:40px">句中停顿不抢话</div><div class="cell" style="height:40px"><i class="dash" style="left:calc((100% - 64px) * 0.5000)"></i><div class="row"><i class="bar" style="height:10px;background:var(--ours);width:calc((100% - 64px) * 0.3900)"></i><span class="val o">0.39</span></div><div class="row"><i class="bar" style="height:10px;background:var(--ref);width:calc((100% - 64px) * 0.5000)"></i><span class="val">0.50</span></div></div><div class="lab" style="height:40px">被打断就停</div><div class="cell" style="height:40px"><i class="dash" style="left:calc((100% - 64px) * 0.5000)"></i><div class="row"><i class="bar" style="height:10px;background:var(--ours);width:calc((100% - 64px) * 0.5000)"></i><span class="val o">0.50</span></div><div class="row"><span class="val">–</span></div></div><div class="lab b" style="height:40px">合计</div><div class="cell" style="height:40px"><i class="dash" style="left:calc((100% - 64px) * 0.5000)"></i><div class="row"><i class="bar" style="height:10px;background:var(--ours);width:calc((100% - 64px) * 0.6000)"></i><span class="val o">0.60</span></div><div class="row"><i class="bar" style="height:10px;background:var(--ref);width:calc((100% - 64px) * 0.4200)"></i><span class="val">0.42</span></div></div></div></body></html>
