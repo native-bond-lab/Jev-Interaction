@@ -4,7 +4,7 @@
 
 **全双工语音交互框架。**<br>轮次交互是写出来的决策，而不是训练出来的模型。
 
-[English](README.md) · [可交互架构图](docs/architecture.html) · [任务配置](examples/profiles) · [决策题目](jev_interaction/judge/questions.py)
+[English](README.md) · [任务配置](examples/profiles) · [决策题目](jev_interaction/judge/questions.py)
 
 ![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![license](https://img.shields.io/badge/license-Apache--2.0-blue) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
 
@@ -341,7 +341,7 @@ jev_interaction/
 server/app.py         WebSocket 通话服务和音频路由
 web/                  最简网页客户端
 tools/replay.py       用改过的题重问录下来的决策
-docs/                 架构图和可交互演示
+docs/                 架构图和基准图表
 ```
 
 ## 路线图
