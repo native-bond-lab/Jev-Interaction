@@ -163,6 +163,22 @@ quiet (the samples start without a greeting, and some recordings are quiet enoug
 caller), and 6 were answers before the caller had finished, mostly after a complete first sentence. Latency is mostly
 the language model writing its first line; the decisions take tens of milliseconds.
 
+### Case study: fixing pauses in two knobs
+
+Because every decision is logged with the state Jev read, the 15 pause samples counted as "taking the turn" could be
+traced one by one: 9 were the agent speaking up because the quiet-line question fired while the caller was still in
+their first sentence (no words recognized yet), 4 were listening sounds longer than the benchmark's three-word limit,
+and 2 were answers after a complete first sentence. Two knobs, tested on the same 100 samples:
+
+| | synthetic pauses | real-conversation pauses |
+|---|---|---|
+| before | 0.12 | 0.18 |
+| no quiet-line question while the caller's voice is going | 0.06 | 0.12 |
+| plus listening sounds capped at three words | **0.06** | **0.08** |
+
+Real-conversation pauses now beat the commercial systems in the table above (0.10–0.15). These knobs were tested in the
+benchmark harness and are not yet in the engine; nothing was retrained.
+
 ## Swappable pieces
 
 | piece | protocol | included |
