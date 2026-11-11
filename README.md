@@ -183,6 +183,58 @@ A third knob, answering only when Jev is at least 0.8 sure the caller has finish
 0.04 without slowing answers after interruptions, but ordinary answers took about a second longer (median 0.8 s → 1.8 s).
 It stays off: the trade-off is visible, measured and reversible, which is the point.
 
+### End of turn: LiveKit eot-bench
+
+[eot-bench](https://github.com/livekit/eot-bench) scores "has the user finished?" at every pause of 400 real user turns
+(English validation split, 11,191 scoring points). We asked Jev the framework's `turn` question as is, from text only
+(words arrive 0.5 s late, as the benchmark requires), zero-shot.
+
+| | false cutoffs at 600 ms wait | wait for 5% false cutoffs |
+|---|---|---|
+| LiveKit Turn Detector v1 | 4.5% | 543 ms |
+| Deepgram Flux | 9.9% | 1151 ms |
+| **Jev, text only, zero-shot** | **12.5%** | **924 ms** |
+| SmartTurn v3.2 | 14.8% | 1051 ms |
+| OpenAI GPT Realtime 2 | – | 1143 ms |
+| silence only | 21.7% | 1600 ms |
+
+Mid-table: ahead of AssemblyAI, SmartTurn, Cartesia, OpenAI Realtime and Deepgram at 5%, well behind detectors trained
+on audio of this kind of conversation. About 11,000 Jev calls, about one dollar.
+
+### Being talked over: Full-Duplex-Bench v1.5
+
+25 noisy samples per scenario, grok-4.3, scored with the official judge (gpt-4o-2024-08-06).
+
+| scenario | wanted | this engine | paper (GPT-4o · Gemini · Nova Sonic · Moshi) |
+|---|---|---|---|
+| user interrupts | respond | 0.52 | 0.78 · 0.33 · 0.24 · 0.50 |
+| | stop latency | **0.54 s** | 0.23 · 2.20 · 2.25 · 1.16 |
+| user backchannels | resume | 0.36 | 0.70 · 0.93 · 0.98 · 0.06 |
+| user talks to someone else | resume | 0.24 | 0.02 · 0.99 · 0.90 · 0.19 |
+| background speech | resume | 0.32 | 0.04 · 0.30 · 0.98 · 0.07 |
+
+It stops fast, but it also stops for an "mm-hm", a side remark or a voice in the room, then answers it as a new turn.
+The traces show why: playback pauses the moment a voice arrives and the `floor` question is asked after, before any
+words are recognized. The same fix as for pauses applies (decide on the first words, not the first sound); not yet tried.
+
+### Task profiles: does behaviour follow the profile?
+
+The four shipped profiles on the same 12 recordings (long story, mid-sentence pause, interruption, silence), with and
+without the manner shown to Jev. Separation = how often a profile expected "high" on an axis scores above one expected
+"low" on the same recording (0.5 = no difference). Three recordings per cell, so read it as a direction.
+
+| axis | manner shown | no manner |
+|---|---|---|
+| listening sounds | **0.83** | 0.25 |
+| speaks up in a silence | **0.67** | 0.50 |
+| lets a mid-sentence pause stand | 0.39 | 0.50 |
+| stops when talked over | 0.50 | – |
+| overall | **0.60** | 0.42 |
+
+Listening sounds per minute with the manner shown: tutor 7.5, companion 3.0, support 2.3, interviewer 1.0. Pauses do
+not separate (no profile took the turn), and every profile yields when talked over, including the tutor that should
+finish its sentence: the same hold-first design as above.
+
 ## Swappable pieces
 
 | piece | protocol | included |
@@ -217,7 +269,8 @@ docs/                 architecture diagram and interactive walkthrough
 
 - Send the first sentence to synthesis as soon as it ends, not at the line break.
 - Neural VAD and a second recognizer behind the existing protocols.
-- A task-profile benchmark: the same audio, different profiles, measured behaviour.
+- Decide whether to yield on the caller's first words instead of pausing on the first sound.
+- Larger task-profile runs (more recordings, repeated draws) and a TurnBench run.
 - Full Full-Duplex-Bench v1.0 / v1.5 runs with published numbers.
 
 ## FAQ
