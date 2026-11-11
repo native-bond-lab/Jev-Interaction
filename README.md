@@ -32,6 +32,7 @@ and replay against real calls.
 | silence | a timeout | go on, check in, wait, or hang up — weighed against how this caller talks |
 | different products | retrain or re-tune | a task profile: the manner Jev reads, the policy per decision |
 | changing behaviour | collect data, retrain | reword a question, replay recorded calls, ship |
+| long calls | a session cap (OpenAI Realtime: 60 min) or audio tokens filling the context (Gemini Live: about 15 min of audio before compression drops or summarizes old turns) | no session cap: each decision and each reply is a fresh request over a text history, about 200 tokens per minute of speech |
 
 ## How one moment is decided
 
@@ -392,6 +393,11 @@ docs/                 architecture diagram and interactive walkthrough
 
 **Is Jev required?** The judge is one protocol (`ask(questions, state)`). Jev is what this was built and measured with;
 another judge that returns probabilities per choice fits the same slot.
+
+**How long can a call last?** As long as you like. Nothing holds a session open on a model provider: Jev and the
+language model are asked turn by turn over a text history, and a minute of speech is about 200 tokens of text against
+about 1,500 tokens of audio in a speech-to-speech model (Gemini Live counts 25 tokens per second). The history the
+responder sees is windowed, so a very long call keeps its early turns only through a memory or summary you add.
 
 **Does it need a big model for speed?** No. The decisions run in tens of milliseconds. Response speed follows the
 language model you plug in.
