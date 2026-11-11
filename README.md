@@ -1,74 +1,168 @@
+<div align="center">
+
 # jev-interaction
 
-**English** · [中文](README.zh-CN.md)
+**Turn-taking for voice agents, as decisions you write — not a model you train.**
 
-A full-duplex voice framework where **turn-taking is not a model you train but a set of decisions you write**.
+[中文](README.zh-CN.md) · [Interactive architecture](docs/architecture.html) · [Profiles](examples/profiles) · [Decisions](jev_interaction/judge/questions.py)
 
-Voice agents usually bolt a turn detector onto ASR → LLM → TTS: a small model trained to guess "has the user finished?".
-Everything else a person does on a call (a listening "mm-hm", letting a pause stand, stopping when talked over, picking
-the conversation up after a silence, hanging up) is left to timers and thresholds.
+![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
 
-jev-interaction makes each of those an explicit decision: a plain-language multiple-choice question that
-[Jev](https://typesafe.ai) answers with a probability per choice, typically in under 100 ms, and a policy that turns the
-probabilities into an action.
+</div>
 
-![Architecture](docs/architecture.svg)
+![jev-interaction architecture](docs/architecture.svg)
 
-An interactive version, where the same moment is judged for a companion and for a support line, is in
-[docs/architecture.html](docs/architecture.html) (open it locally, or on GitHub Pages once published).
+Most voice agents bolt a turn detector onto speech recognition → language model → speech synthesis: a small model trained
+to guess *"has the user finished?"*. Everything else people do on a call is left to timers: the listening "mm-hm",
+letting a pause stand, stopping when talked over, picking the conversation back up after a silence, knowing when to
+hang up.
 
-## What this gives you
+**jev-interaction turns each of those into an explicit decision.** A decision is a plain-language multiple-choice
+question; [Jev](https://typesafe.ai) answers it with a probability for every choice, in tens of milliseconds; a policy
+turns the probabilities into an action. Questions, policies and the agent's manner are all text you can read, change
+and replay against real calls.
 
-1. **No turn-detection model to train.** A new behaviour is a new question; a better Jev improves every decision at once.
-2. **Latency lives where you can swap it.** The interaction decisions take tens of milliseconds; most of the response
-   time is the responder's first line. Plug in a faster model and the whole call gets faster, decisions unchanged.
-3. **Policies per business.** The same questions, read differently: a companion *samples* from Jev's probabilities so
-   the same moment goes a little differently each time; a support line acts only on *confident* answers.
-4. **Behaviour per task type.** A profile's `manner` is read by Jev, so the same moment is judged differently for a
-   chatty companion, a quiet support agent, a patient tutor or an interviewer. Audio-only turn detectors cannot do this.
-5. **Iterable and inspectable.** Every decision is logged with the exact state Jev read. Change a question's wording and
-   re-ask recorded calls (`tools/replay.py`) before it ships.
+## Why
+
+| | a typical voice agent | jev-interaction |
+|---|---|---|
+| when to answer | a trained end-of-turn model, one threshold | a question Jev answers from the words, the timing and the conversation |
+| listening sounds | none, or a fixed clip | decided each time: a continuer, a reaction, an echoed word, or nothing |
+| being talked over | stop on any voice, or never | carry on, yield, finish the sentence, take the floor back, or react at once |
+| silence | a timeout | go on, check in, wait, or hang up — weighed against how this caller talks |
+| different products | retrain or re-tune | a task profile: the manner Jev reads, the policy per decision |
+| changing behaviour | collect data, retrain | reword a question, replay recorded calls, ship |
+
+## How one moment is decided
+
+The caller is mid-story and pauses for breath. The session writes down what is on the line and asks:
+
+```text
+State   Phone call between the user and Mara.
+        Who Mara is: a companion character … On the call: a noisy, eager listener …
+        Current pace of the call: normal.
+        Recent call: …
+        What the user has said so far: 0.6 s ago "and then my manager pulls me into a meeting"
+        Right now the user has been quiet for 0.4 s.
+
+Asked   listen: continuer · feeling · echo · quiet · answer_due
+
+Jev     feeling 0.46 · quiet 0.27 · continuer 0.22 · answer_due 0.05
+
+Policy  companion → sample        →  "feeling"  →  the agent says "Oh no." and the caller goes on
+        support   → threshold 0.8 →  nothing clears the bar  →  silence
+```
+
+The same question, the same kind of answer; the profile decides how it is read.
 
 ## The decisions
 
 | when | question | choices |
 |---|---|---|
-| the user pauses | turn | finished / continuing, how long to wait, reply / sound, which pace |
-| the user talks on | listen | continuer / feeling / echo / quiet / an answer is due |
-| both talk at once | floor | carry on / yield / finish the sentence / take the floor back / react at once / short aside |
-| the agent leads | cut_in | cut in / let them finish |
-| the line is quiet | quiet | go on / check on them / wait / hang up |
+| the user pauses | `turn` | finished / continuing · how long to wait · reply / just a sound · which pace |
+| the user talks on | `listen` | continuer · feeling · echo · quiet · an answer is due |
+| both talk at once | `floor` | carry on · yield · finish the sentence · take the floor back · react at once · short aside |
+| the agent leads | `cut_in` | cut in · let them finish |
+| the line is quiet | `quiet` | go on · check on them · wait · hang up |
 
-Paces (normal, patient, narrate, eager) say who holds the floor; their timing is blended by Jev's probabilities rather
-than switched at the most likely one. All of it lives in `jev_interaction/judge/questions.py` and `config.py`.
+**Paces** (normal, patient, narrate, eager) say who holds the floor. Their timing is blended by Jev's probabilities
+instead of switching at the most likely one, so a call that is "60% normal, 40% patient" waits in between.
 
 ## Task profiles
+
+One framework, many products. A profile says what the agent is for, how it behaves on a call, and how each decision is
+read.
+
+| profile | listening sounds | mid-sentence pauses | talked over | silence | policies |
+|---|---|---|---|---|---|
+| [companion](examples/profiles/companion.yaml) | often, varied | quick to react | stops, delighted | fills it | sample |
+| [support](examples/profiles/support.yaml) | a short "okay" | waits (numbers being read) | stops at once | waits, then one check | thresholds |
+| [tutor](examples/profiles/tutor.yaml) | encouraging | very patient | finishes the explanation | offers a prompt | sample |
+| [interviewer](examples/profiles/interviewer.yaml) | none | lets thinking run | cuts in on rambling | waits for the answer | mixed |
 
 ```yaml
 name: Sam
 task: A customer-support agent for a broadband provider.
-prompt: >            # for the responder
+prompt: >            # read by the language model
   Be clear and brief, confirm what you understood, one step at a time.
-manner: >            # for Jev
+manner: >            # read by Jev
   Waits for the caller to finish even through long pauses (they may be reading a number). Stops at once when talked over.
 policies:
   end_of_turn: {type: threshold, default: 0.7}
   quiet: argmax
 ```
 
-`examples/profiles/` has a companion, a support line, a language tutor and an interviewer.
-
-## Run it
+## Quickstart
 
 ```bash
+git clone https://github.com/yj972/jev-interaction && cd jev-interaction
 pip install -e ".[server]"
-cp .env.example .env          # JEV_API_KEY, an OpenAI-compatible LLM endpoint, ELEVENLABS_API_KEY / VOICE_ID
+cp .env.example .env     # JEV_API_KEY · an OpenAI-compatible LLM endpoint · ELEVENLABS_API_KEY and VOICE_ID
 uvicorn server.app:app --port 8080
 ```
 
-Open http://localhost:8080, pick a profile, press Call (headphones recommended with the built-in energy VAD).
+Open <http://localhost:8080>, pick a profile and press **Call**. The built-in VAD is a simple energy detector, so use
+headphones.
 
-## Pieces you can swap
+### In your own code
+
+```python
+from jev_interaction import Config, Profile
+from jev_interaction.adapters import EnergyVAD
+from jev_interaction.adapters.openai_compat import OpenAICompatResponder
+from jev_interaction.adapters.scribe import ScribeRealtime
+from jev_interaction.judge import JevClient
+from jev_interaction.session import Session
+
+session = Session(
+    Profile.load("examples/profiles/support.yaml"),
+    send=my_send,                       # async: deliver events to your client
+    judge=JevClient(),
+    recognizer=ScribeRealtime(language="en"),
+    responder=OpenAICompatResponder(),   # any OpenAI-compatible endpoint
+    vad=EnergyVAD(),
+    config=Config(language="en"),
+)
+await session.start()
+await session.on_audio(frame)          # 200 ms of 16 kHz PCM16, as it arrives
+await session.on_client({"type": "playback", "state": "idle"})
+```
+
+Events to the client: `line`, `listen`, `hold`, `unhold`, `stop`, `finish_line`, `hangup`, plus `user`, `pace` and
+`decision` for display. Client messages: `playback` and `heard`.
+
+### Add a decision
+
+```python
+# jev_interaction/judge/questions.py
+def laugh(name: str) -> dict:
+    return {"type": "choice", "instructions": f"The user just made a joke. Would {name}, being who they are, laugh?",
+            "criteria": {"laugh": f"{name} finds it funny and laughs", "smile": "a warm word, no laugh", "none": "let it pass"}}
+```
+
+Ask it from the session where it belongs, give it a policy in `Config.policies`, and replay recorded calls with
+`tools/replay.py` to see where its answers land.
+
+## Early results
+
+Measured on the companion-call engine this framework was extracted from (same decision layer, grok-4.3 as the
+language model, ElevenLabs Scribe and TTS), on a small slice of
+[Full-Duplex-Bench](https://github.com/DanielLin94144/Full-Duplex-Bench) v1.0. Fifteen samples, run twice — enough to
+place it, not to rank it.
+
+| | this engine | GPT-Realtime | Gemini 3.1 Flash Live |
+|---|---|---|---|
+| synthetic pauses taken as turns (lower is better) | 0 of 12 | 0.01 | 0.007–0.022 |
+| real-conversation pauses taken as turns | 2 of 6 | 0.12 | 0.10–0.15 |
+| interruptions stopped and answered | 12 of 12 | 0.97 | 1.0 |
+| new answer after an interruption | median ≈ 1.8 s | 1.5 s | 0.3–0.7 s |
+
+The last row for this engine is the time to its new answer. By the benchmark's own rule it comes out at about 1.6 s,
+because that rule also counts the agent finishing the sentence it was holding. Most of the response time is the
+language model writing its first line; the decisions themselves take tens of milliseconds. A full run of the pause and
+interruption sets is planned.
+
+## Swappable pieces
 
 | piece | protocol | included |
 |---|---|---|
@@ -83,21 +177,41 @@ Open http://localhost:8080, pick a profile, press Call (headphones recommended w
 
 ```
 jev_interaction/
-  session.py        one call: inputs, decisions, speaking
-  judge/            Jev client, the question set, the state text
-  policy.py         sample / threshold / argmax
-  profile.py        task profiles
-  config.py         paces, timings, default policies
-  ledger.py         the call's history for both readers
-  recorder.py       one JSON line per event, for replay
-  adapters/         VAD, recognizer, responder, synthesizer
-  prompts/system.md the responder's default system prompt
-server/app.py       WebSocket call server + line audio route
-web/                minimal browser client
-tools/replay.py     re-ask recorded decisions with changed questions
+  session.py          one call: inputs, decisions, speaking
+  judge/              Jev client · the question set · the state text
+  policy.py           sample · threshold · argmax
+  profile.py          task profiles
+  config.py           paces, timings, default policies
+  ledger.py           the call's history, for both readers
+  recorder.py         one JSON line per event, for replay
+  adapters/           VAD · recognizer · responder · synthesizer
+  prompts/system.md   the responder's default system prompt
+server/app.py         WebSocket call server and line-audio route
+web/                  minimal browser client
+tools/replay.py       re-ask recorded decisions with changed questions
+docs/                 architecture diagram and interactive walkthrough
 ```
+
+## Roadmap
+
+- Send the first sentence to synthesis as soon as it ends, not at the line break.
+- Neural VAD and a second recognizer behind the existing protocols.
+- A task-profile benchmark: the same audio, different profiles, measured behaviour.
+- Full Full-Duplex-Bench v1.0 / v1.5 runs with published numbers.
+
+## FAQ
+
+**Is Jev required?** The judge is one protocol (`ask(questions, state)`). Jev is what this was built and measured with;
+another judge that returns probabilities per choice fits the same slot.
+
+**Does it need a big model for speed?** No. The decisions run in tens of milliseconds. Response speed follows the
+language model you plug in.
+
+**What does it cost?** On our measurements, a minute of call audio is a few cents, most of it the language model.
 
 ## Status
 
-0.1, extracted from a companion phone-call system still in development. jev-interaction is an independent project built on Jev; it is not affiliated with or endorsed by TypeSafe. The decision layer is the tested part; the browser client and
-energy VAD are minimal. Jev is a hosted API (`JEV_API_KEY`). License: to be decided before publishing.
+0.1, alpha, extracted from a companion phone-call system still in development. The decision layer is the tested part;
+the browser client and energy VAD are minimal. Jev is a hosted API (`JEV_API_KEY`). License to be decided before the
+repository is made public. jev-interaction is an independent project built on Jev; it is not affiliated with or
+endorsed by TypeSafe.

@@ -1,62 +1,149 @@
+<div align="center">
+
 # jev-interaction
 
-[English](README.md) · **中文**
+**语音助手的轮次交互：写出来的决策，而不是训练出来的模型。**
 
-一个全双工语音框架：**轮次交互不是一个要训练的模型，而是一组用自然语言写的决策。**
+[English](README.md) · [可交互架构图](docs/architecture.html) · [任务配置](examples/profiles) · [决策题目](jev_interaction/judge/questions.py)
 
-常见的语音助手在"识别 → 大模型 → 合成"上加一个端点模型，专门猜"用户说完没"。人在电话里会做的其他事情，比如边听边"嗯嗯"、等对方想词、被打断就停、冷场时接一句、聊完了挂电话，都交给计时器和阈值。
+![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
 
-jev-interaction 把这些都拆成明确的决策：每个决策是一道给 [Jev](https://typesafe.ai) 的选择题，Jev 给每个选项一个概率，通常不到 100 毫秒；再由一个策略把概率变成动作。
+</div>
 
-![架构](docs/architecture.svg)
+![jev-interaction 架构](docs/architecture.svg)
 
-可交互的版本在 [docs/architecture.html](docs/architecture.html)：同一个时刻，分别按"陪伴"和"客服"两种任务来判断。本地打开即可，公开后可以放到 GitHub Pages。
+常见的语音助手在"语音识别 → 大模型 → 语音合成"上加一个端点模型，专门猜**用户说完没**。人在电话里会做的其他事都交给计时器：边听边"嗯嗯"、等对方想词、被打断就停、冷场时接一句、聊完了挂电话。
 
-## 带来什么
+**jev-interaction 把这些都拆成明确的决策。** 每个决策是一道用自然语言写的选择题；[Jev](https://typesafe.ai) 在几十毫秒内给每个选项一个概率；再由策略把概率变成动作。题目、策略和角色的交互习惯都是看得懂的文字，可以直接改，也可以拿真实通话重放验证。
 
-1. **不用训练端点模型。** 新增一种行为就是新写一道题；Jev 变强，所有决策一起变好。
-2. **延迟可以换掉。** 交互决策只要几十毫秒，回话慢主要慢在大模型写第一句。换一个更快的模型，整通电话就快了，决策不用动。
-3. **每个业务有自己的策略。** 同一套题，不同读法：陪伴按概率抽签，同一个时刻每次反应不完全一样；客服只在有把握时才动作。
-4. **每种任务有自己的交互习惯。** 任务配置里的"交互习惯"会给 Jev 看，所以爱聊的陪伴、克制的客服、耐心的家教、面试官，对同一个时刻会做出不同判断。只听声音的端点模型做不到这一点。
-5. **可迭代、看得见。** 每个决策都连同 Jev 看到的完整状态记下来。改一道题的措辞，用真实通话重问一遍（`tools/replay.py`），确认变好再上线。
+## 为什么
+
+| | 常见语音助手 | jev-interaction |
+|---|---|---|
+| 什么时候回话 | 训练好的端点模型，一个阈值 | 一道题，Jev 结合说的话、停顿时长和前文来判断 |
+| 边听边应声 | 没有，或者固定音频 | 每次现判：接续的声、有感触的反应、重复关键词，或不出声 |
+| 被打断 | 有声就停，或者从不停 | 继续、让路、说完这句、把话头拿回来、立刻接话 |
+| 冷场 | 超时 | 接着说、问问还在不在、等着、挂电话，参考这位用户平时多久接话 |
+| 不同产品 | 重新训练或调参 | 换一份任务配置：给 Jev 看的交互习惯，每类决策的策略 |
+| 改行为 | 收数据、重训 | 改一句题目，用录下来的通话重放，上线 |
+
+## 一个时刻是怎么判断的
+
+用户讲到一半，停下来喘口气。系统把线上的情况写下来，然后提问：
+
+```text
+状态   Phone call between the user and Mara.
+       Who Mara is: a companion character … On the call: a noisy, eager listener …
+       Current pace of the call: normal.
+       Recent call: …
+       What the user has said so far: 0.6 s ago "and then my manager pulls me into a meeting"
+       Right now the user has been quiet for 0.4 s.
+
+提问   listen: continuer · feeling · echo · quiet · answer_due
+
+Jev    feeling 0.46 · quiet 0.27 · continuer 0.22 · answer_due 0.05
+
+策略   陪伴 → 按概率抽签        →  "feeling"  →  角色说一句 "Oh no."，用户接着讲
+       客服 → 阈值 0.8           →  没有选项过线  →  不出声
+```
+
+同一道题、同样形状的答案，怎么读由任务配置决定。
 
 ## 决策一览
 
 | 什么时候 | 题目 | 选项 |
 |---|---|---|
-| 用户停顿 | turn | 说完了 / 还要说、再等多久、要回话 / 只是个声音、当前节奏 |
-| 用户还在说 | listen | 接续的声 / 有感触的反应 / 重复关键词追问 / 不出声 / 该回答了 |
-| 两人同时说话 | floor | 继续 / 让路 / 说完这句 / 把话头拿回来 / 立刻接话 / 简短回应 |
-| 由角色主导时 | cut_in | 插话 / 让对方说完 |
-| 冷场 | quiet | 接着说 / 问问还在不在 / 等着 / 挂电话 |
+| 用户停顿 | `turn` | 说完了 / 还要说 · 再等多久 · 要回话 / 只是个声音 · 当前节奏 |
+| 用户还在说 | `listen` | 接续的声 · 有感触的反应 · 重复关键词 · 不出声 · 该回答了 |
+| 两人同时说话 | `floor` | 继续 · 让路 · 说完这句 · 把话头拿回来 · 立刻接话 · 简短回应 |
+| 由角色主导时 | `cut_in` | 插话 · 让对方说完 |
+| 冷场 | `quiet` | 接着说 · 问问还在不在 · 等着 · 挂电话 |
 
-节奏（normal、patient、narrate、eager）表示谁掌握话头。各节奏的等待时间按 Jev 给的概率加权混合，不在最大的那个上硬切。题目都在 `jev_interaction/judge/questions.py`，参数在 `config.py`。
+**节奏**（normal、patient、narrate、eager）表示谁掌握话头。各节奏的等待时间按 Jev 给的概率加权混合，不在最大的那个上硬切：Jev 判断"六成普通、四成耐心"时，等待时间就落在两者之间。
 
 ## 任务配置
+
+一套框架，多种产品。配置写明角色是干什么的、电话里是什么习惯、每类决策怎么读。
+
+| 配置 | 应声 | 说到一半停顿 | 被打断 | 冷场 | 策略 |
+|---|---|---|---|---|---|
+| [陪伴](examples/profiles/companion.yaml) | 常有，花样多 | 很快接话 | 立刻停，很高兴 | 主动填上 | 抽签 |
+| [客服](examples/profiles/support.yaml) | 简短一声"好" | 等着（对方可能在念号码） | 立刻停 | 等着，久了问一次 | 阈值 |
+| [家教](examples/profiles/tutor.yaml) | 鼓励的声音 | 非常耐心 | 先讲完这句 | 给个提示 | 抽签 |
+| [面试官](examples/profiles/interviewer.yaml) | 不出声 | 让对方想 | 跑题就打断 | 等回答 | 混合 |
 
 ```yaml
 name: Sam
 task: 宽带公司的客服，尽快把来电者的问题讲清楚、解决掉。
-prompt: >            # 给大模型
+prompt: >            # 给大模型看
   简明清楚，先复述确认，再一步一步带对方操作。
-manner: >            # 给 Jev
+manner: >            # 给 Jev 看
   对方停顿很久也等他说完（可能在念号码）。被打断立刻停。
 policies:
   end_of_turn: {type: threshold, default: 0.7}
   quiet: argmax
 ```
 
-`examples/profiles/` 里有陪伴、客服、语言家教、面试官四个例子。
-
-## 运行
+## 快速开始
 
 ```bash
+git clone https://github.com/yj972/jev-interaction && cd jev-interaction
 pip install -e ".[server]"
-cp .env.example .env          # JEV_API_KEY、兼容 OpenAI 接口的大模型、ELEVENLABS_API_KEY / VOICE_ID
+cp .env.example .env     # JEV_API_KEY · 兼容 OpenAI 接口的大模型 · ELEVENLABS_API_KEY 和 VOICE_ID
 uvicorn server.app:app --port 8080
 ```
 
-打开 http://localhost:8080，选一个任务配置，点 Call。自带的是简单的能量 VAD，建议戴耳机。
+打开 <http://localhost:8080>，选一个任务配置，点 **Call**。自带的是简单的能量 VAD，建议戴耳机。
+
+### 在自己的代码里用
+
+```python
+from jev_interaction import Config, Profile
+from jev_interaction.adapters import EnergyVAD
+from jev_interaction.adapters.openai_compat import OpenAICompatResponder
+from jev_interaction.adapters.scribe import ScribeRealtime
+from jev_interaction.judge import JevClient
+from jev_interaction.session import Session
+
+session = Session(
+    Profile.load("examples/profiles/support.yaml"),
+    send=my_send,                       # 异步函数：把事件发给你的客户端
+    judge=JevClient(),
+    recognizer=ScribeRealtime(language="en"),
+    responder=OpenAICompatResponder(),   # 任意兼容 OpenAI 接口的模型
+    vad=EnergyVAD(),
+    config=Config(language="en"),
+)
+await session.start()
+await session.on_audio(frame)          # 每 200 毫秒一帧 16 kHz PCM16
+await session.on_client({"type": "playback", "state": "idle"})
+```
+
+发给客户端的事件：`line`、`listen`、`hold`、`unhold`、`stop`、`finish_line`、`hangup`，以及用于展示的 `user`、`pace`、`decision`。客户端发回：`playback` 和 `heard`。
+
+### 新增一个决策
+
+```python
+# jev_interaction/judge/questions.py
+def laugh(name: str) -> dict:
+    return {"type": "choice", "instructions": f"The user just made a joke. Would {name}, being who they are, laugh?",
+            "criteria": {"laugh": f"{name} finds it funny and laughs", "smile": "a warm word, no laugh", "none": "let it pass"}}
+```
+
+在会话里合适的地方提问，在 `Config.policies` 里给它配一个策略，再用 `tools/replay.py` 拿录下的通话重放，看它的答案落在哪里。
+
+## 初步结果
+
+测的是这个框架所抽出的那套陪伴电话引擎（同一个决策层，语言模型是 grok-4.3，识别和合成用 ElevenLabs），用的是 [Full-Duplex-Bench](https://github.com/DanielLin94144/Full-Duplex-Bench) v1.0 的一小部分：15 条样本跑两遍。够看出档位，不够排名次。
+
+| | 本引擎 | GPT-Realtime | Gemini 3.1 Flash Live |
+|---|---|---|---|
+| 合成停顿被当成说完（越低越好） | 12 次中 0 次 | 0.01 | 0.007–0.022 |
+| 真人对话停顿被当成说完 | 6 次中 2 次 | 0.12 | 0.10–0.15 |
+| 被打断后停下并回应 | 12 次中 12 次 | 0.97 | 1.0 |
+| 被打断后新回答多快开始 | 中位约 1.8 秒 | 1.5 秒 | 0.3–0.7 秒 |
+
+最后一行我们算的是到新回答开始的时间。按评测自己的规则约 1.6 秒，因为那条规则把角色先说完被按住的那句也算了进去。回话时间大部分花在大模型写第一句上，决策本身只要几十毫秒。停顿和插话的全量测试在计划中。
 
 ## 可替换的部件
 
@@ -73,20 +160,36 @@ uvicorn server.app:app --port 8080
 
 ```
 jev_interaction/
-  session.py        一通电话：输入、决策、说话
-  judge/            Jev 客户端、题目、状态文本
-  policy.py         抽签 / 阈值 / 取最大
-  profile.py        任务配置
-  config.py         节奏、时间参数、默认策略
-  ledger.py         通话记录
-  recorder.py       每个事件一行 JSON，供回放
-  adapters/         VAD、识别、大模型、合成
-  prompts/system.md 大模型默认系统提示
-server/app.py       WebSocket 通话服务和音频路由
-web/                最简网页客户端
-tools/replay.py     用改过的题重问记录下来的决策
+  session.py          一通电话：输入、决策、说话
+  judge/              Jev 客户端 · 决策题目 · 状态文本
+  policy.py           抽签 · 阈值 · 取最大
+  profile.py          任务配置
+  config.py           节奏、时间参数、默认策略
+  ledger.py           通话记录
+  recorder.py         每个事件一行 JSON，供重放
+  adapters/           VAD · 识别 · 大模型 · 合成
+  prompts/system.md   大模型默认系统提示
+server/app.py         WebSocket 通话服务和音频路由
+web/                  最简网页客户端
+tools/replay.py       用改过的题重问录下来的决策
+docs/                 架构图和可交互演示
 ```
+
+## 路线图
+
+- 一句话写到句号就先送去合成，不等换行。
+- 在现有接口后面接神经网络 VAD 和第二路识别。
+- 任务配置评测：同一段音频、不同配置，量出行为差异。
+- Full-Duplex-Bench v1.0 / v1.5 全量测试并公布数字。
+
+## 常见问题
+
+**一定要用 Jev 吗？** 法官只是一个接口（`ask(questions, state)`）。这个框架是用 Jev 搭建和测量的；其他能按选项给出概率的法官也能接进来。
+
+**要快一定得用大模型吗？** 不用。决策只要几十毫秒，回话快慢取决于你接的语言模型。
+
+**花费多少？** 按我们的测量，一分钟通话音频几美分，大头是语言模型。
 
 ## 状态
 
-0.1，从一个仍在开发中的陪伴电话系统里抽出来。交互决策层是测过的部分；网页客户端和能量 VAD 还很简单。Jev 是托管 API（`JEV_API_KEY`）。许可证在公开前确定。jev-interaction 是基于 Jev 的独立项目，与 TypeSafe 无关联、未获其背书。
+0.1，alpha，从一个仍在开发中的陪伴电话系统里抽出来。决策层是测过的部分；网页客户端和能量 VAD 还很简单。Jev 是托管 API（`JEV_API_KEY`）。许可证在仓库公开前确定。jev-interaction 是基于 Jev 的独立项目，与 TypeSafe 无关联、未获其背书。
