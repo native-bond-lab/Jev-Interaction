@@ -1,4 +1,4 @@
-"""jev-interaction: full-duplex voice where every interaction decision is a question Jev answers."""
+"""JEV-Interaction: full-duplex voice where every interaction decision is a question Jev answers."""
 from .config import Config, Pace
 from .profile import Profile
 from .policy import ArgmaxPolicy, SamplePolicy, ThresholdPolicy

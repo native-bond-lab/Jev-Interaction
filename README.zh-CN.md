@@ -1,6 +1,6 @@
 <div align="center">
 
-# jev-interaction
+# JEV-Interaction
 
 **语音助手的轮次交互：写出来的决策，而不是训练出来的模型。**
 
@@ -10,15 +10,15 @@
 
 </div>
 
-![jev-interaction 架构](docs/architecture.svg)
+![JEV-Interaction 架构](docs/architecture.svg)
 
 常见的语音助手在"语音识别 → 大模型 → 语音合成"上加一个端点模型，专门猜**用户说完没**。人在电话里会做的其他事都交给计时器：边听边"嗯嗯"、等对方想词、被打断就停、冷场时接一句、聊完了挂电话。
 
-**jev-interaction 把这些都拆成明确的决策。** 每个决策是一道用自然语言写的选择题；[Jev](https://typesafe.ai) 在几十毫秒内给每个选项一个概率；再由策略把概率变成动作。题目、策略和角色的交互习惯都是看得懂的文字，可以直接改，也可以拿真实通话重放验证。
+**JEV-Interaction 把这些都拆成明确的决策。** 每个决策是一道用自然语言写的选择题；[Jev](https://typesafe.ai) 在几十毫秒内给每个选项一个概率；再由策略把概率变成动作。题目、策略和角色的交互习惯都是看得懂的文字，可以直接改，也可以拿真实通话重放验证。
 
 ## 为什么
 
-| | 常见语音助手 | jev-interaction |
+| | 常见语音助手 | JEV-Interaction |
 |---|---|---|
 | 什么时候回话 | 训练好的端点模型，一个阈值 | 一道题，Jev 结合说的话、停顿时长和前文来判断 |
 | 边听边应声 | 没有，或者固定音频 | 每次现判：接续的声、有感触的反应、重复关键词，或不出声 |
@@ -87,7 +87,7 @@ policies:
 ## 快速开始
 
 ```bash
-git clone https://github.com/yj972/jev-interaction && cd jev-interaction
+git clone https://github.com/yj972/JEV-Interaction && cd JEV-Interaction
 pip install -e ".[server]"
 cp .env.example .env     # JEV_API_KEY · 兼容 OpenAI 接口的大模型 · ELEVENLABS_API_KEY 和 VOICE_ID
 uvicorn server.app:app --port 8080
@@ -207,4 +207,4 @@ docs/                 架构图和可交互演示
 
 ## 状态
 
-0.1，alpha，从一个仍在开发中的陪伴电话系统里抽出来。决策层是测过的部分；网页客户端和能量 VAD 还很简单。Jev 是托管 API（`JEV_API_KEY`）。许可证在仓库公开前确定。jev-interaction 是基于 Jev 的独立项目，与 TypeSafe 无关联、未获其背书。
+0.1，alpha，从一个仍在开发中的陪伴电话系统里抽出来。决策层是测过的部分；网页客户端和能量 VAD 还很简单。Jev 是托管 API（`JEV_API_KEY`）。许可证在仓库公开前确定。JEV-Interaction 是基于 Jev 的独立项目，与 TypeSafe 无关联、未获其背书。

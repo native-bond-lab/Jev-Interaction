@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" width="1200" height="680" role="img" aria-label="jev-interaction in three stages. Hear: the caller's audio goes through voice activity detection and a streaming recognizer. Decide: the call state, the decision questions and the task profile go to Jev, which returns a probability for every choice; a policy turns them into an action. Speak: the action drives any language model and any speech synthesizer, and controls the caller's playback directly. Every decision is recorded for replay.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" width="1200" height="680" role="img" aria-label="JEV-Interaction in three stages. Hear: the caller's audio goes through voice activity detection and a streaming recognizer. Decide: the call state, the decision questions and the task profile go to Jev, which returns a probability for every choice; a policy turns them into an action. Speak: the action drives any language model and any speech synthesizer, and controls the caller's playback directly. Every decision is recorded for replay.">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0b1120"/>
@@ -42,7 +42,7 @@
   </style>
 
   <rect width="1200" height="680" rx="22" fill="url(#bg)"/>
-  <text x="48" y="66" class="title">jev-interaction</text>
+  <text x="48" y="66" class="title">JEV-Interaction</text>
   <text x="48" y="94" class="tag">Full-duplex voice where every turn-taking behaviour is a plain-language question, answered by Jev.</text>
 
   <!-- stage panels -->

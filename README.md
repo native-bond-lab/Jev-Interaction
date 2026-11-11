@@ -1,6 +1,6 @@
 <div align="center">
 
-# jev-interaction
+# JEV-Interaction
 
 **Turn-taking for voice agents, as decisions you write — not a model you train.**
 
@@ -10,21 +10,21 @@
 
 </div>
 
-![jev-interaction architecture](docs/architecture.svg)
+![JEV-Interaction architecture](docs/architecture.svg)
 
 Most voice agents bolt a turn detector onto speech recognition → language model → speech synthesis: a small model trained
 to guess *"has the user finished?"*. Everything else people do on a call is left to timers: the listening "mm-hm",
 letting a pause stand, stopping when talked over, picking the conversation back up after a silence, knowing when to
 hang up.
 
-**jev-interaction turns each of those into an explicit decision.** A decision is a plain-language multiple-choice
+**JEV-Interaction turns each of those into an explicit decision.** A decision is a plain-language multiple-choice
 question; [Jev](https://typesafe.ai) answers it with a probability for every choice, in tens of milliseconds; a policy
 turns the probabilities into an action. Questions, policies and the agent's manner are all text you can read, change
 and replay against real calls.
 
 ## Why
 
-| | a typical voice agent | jev-interaction |
+| | a typical voice agent | JEV-Interaction |
 |---|---|---|
 | when to answer | a trained end-of-turn model, one threshold | a question Jev answers from the words, the timing and the conversation |
 | listening sounds | none, or a fixed clip | decided each time: a continuer, a reaction, an echoed word, or nothing |
@@ -95,7 +95,7 @@ policies:
 ## Quickstart
 
 ```bash
-git clone https://github.com/yj972/jev-interaction && cd jev-interaction
+git clone https://github.com/yj972/JEV-Interaction && cd JEV-Interaction
 pip install -e ".[server]"
 cp .env.example .env     # JEV_API_KEY · an OpenAI-compatible LLM endpoint · ELEVENLABS_API_KEY and VOICE_ID
 uvicorn server.app:app --port 8080
@@ -234,5 +234,5 @@ language model you plug in.
 
 0.1, alpha, extracted from a companion phone-call system still in development. The decision layer is the tested part;
 the browser client and energy VAD are minimal. Jev is a hosted API (`JEV_API_KEY`). License to be decided before the
-repository is made public. jev-interaction is an independent project built on Jev; it is not affiliated with or
+repository is made public. JEV-Interaction is an independent project built on Jev; it is not affiliated with or
 endorsed by TypeSafe.
