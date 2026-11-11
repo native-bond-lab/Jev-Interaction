@@ -16,12 +16,16 @@ user {text}, pace {pace, probs}, decision {...}. Client messages: playback {stat
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 import re
+import statistics
 import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Awaitable, Callable
+
+import numpy as np
 
 from .adapters.base import VAD, Recognizer, Responder, Segment
 from .config import Config, Pace
@@ -32,6 +36,12 @@ from .ledger import Ledger
 from .profile import Profile
 from .policy import ThresholdPolicy
 from .recorder import Recorder
+
+def frame_db(pcm: bytes) -> float:
+    """Loudness of one PCM16 frame in dB (0 dB = full scale)."""
+    x = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768
+    return 20 * math.log10(float(np.sqrt(np.mean(x ** 2))) + 1e-6) if len(x) else -120.0
+
 
 SYSTEM_TEMPLATE = (__import__("pathlib").Path(__file__).parent / "prompts" / "system.md").read_text(encoding="utf-8")
 LANGUAGES = {"en": "English", "zh": "Chinese", "ja": "Japanese"}
@@ -49,6 +59,15 @@ class Utterance:
     segments: list[tuple[float, str]] = field(default_factory=list)
     speech_ms: int = 0
     over: bool = False               # began while the agent was speaking
+    levels: list[float] = field(default_factory=list)   # dB of each voiced frame
+
+    @property
+    def level(self) -> float | None:
+        """How loud the voice was: the louder half of its voiced frames, in dB (pauses do not count)."""
+        if not self.levels:
+            return None
+        top = sorted(self.levels)[len(self.levels) // 2:]
+        return sum(top) / len(top)
 
     @property
     def text(self) -> str:
@@ -81,6 +100,7 @@ class Session:
         self.spoke_into_quiet = 0
         self.listen_last = 0.0
         self.reply_gaps: list[float] = []
+        self.caller_levels: list[float] = []   # loudness of the utterances answered as the caller's (Config.far_db)
         self.hanging_up = False
         self.busy: set[str] = set()
         self._tasks: set[asyncio.Task] = set()
@@ -123,6 +143,7 @@ class Session:
             if self.utt is None:
                 self._open_utterance()
             self.utt.speech_ms += step
+            self.utt.levels.append(frame_db(pcm))
             self.silence_ms = 0
             if self.speaking and not self.held and self.utt.speech_ms >= self.cfg.hold_after_ms:
                 self.held = True                  # the user comes first: the agent's audio pauses until the words decide
@@ -203,6 +224,26 @@ class Session:
             self.rec.write("pace", pace=choice, probs=probs)
             await self.send(type="pace", pace=choice, probs=probs)
 
+    # ------------------------------------------------------------------ not said to me (tested knobs, off by default)
+    def _offer_elsewhere(self) -> bool:
+        return self.cfg.not_for_me and self.user_turns >= 1      # the call's first words are the caller's
+
+    def _far(self) -> bool:
+        """This voice is Config.far_db or more under the caller's answered words: someone farther from the phone."""
+        if self.cfg.far_db is None or self.utt is None or self.utt.level is None or not self.caller_levels:
+            return False
+        return statistics.median(self.caller_levels) - self.utt.level >= self.cfg.far_db
+
+    async def _not_for_me(self, why: str):
+        """The words were someone else's: not answered, not added to the history; the line goes on."""
+        text = self.utt.text if self.utt else ""
+        self.rec.write("not_for_me", why=why, text=text, level=self.utt.level if self.utt else None)
+        await self.send(type="decision", what="not_for_me", why=why, text=text)
+        if self.held:
+            self.held = False
+            await self.send(type="unhold", gen=self.gen)
+        self.utt, self.judged = None, None
+
     # ------------------------------------------------------------------ judgements
     def _header(self) -> str:
         return S.header(self.p, self.pace, self.ledger, self.cfg.judge_turns, self.cfg.judge_turn_chars)
@@ -224,9 +265,15 @@ class Session:
             may_listen = not self.speaking and not self.generating and time.monotonic() - self.listen_last >= self.cfg.listen_gap_s
             if may_listen:
                 qs["listen"] = Q.listen(self.p.short)
+            if self._offer_elsewhere():
+                qs["kind"]["criteria"]["elsewhere"] = Q.elsewhere(self.p.short)
             state = self._header() + S.user_turn(self.p.short, self.utt.segments, time.monotonic(), self.silence_ms, self.speaking)
             a = await self._ask("turn", qs, state)
             if self.utt is None or self.utt.id != utt_id:
+                return
+            kind = P(a, "kind")
+            if self._far() or (self._offer_elsewhere() and kind and max(kind, key=kind.get) == "elsewhere"):
+                await self._not_for_me("far" if self._far() else "jev")
                 return
             await self._update_pace(P(a, "pace"))
             wait = P(a, "wait")
@@ -249,9 +296,16 @@ class Session:
             pace = self.params()
             line = (self.ledger.last_agent().text if self.ledger.last_agent() else "")
             criteria = Q.floor_criteria(self.p.short, finish=not pace.leads, overrule=pace.cut_in, aside=pace.leads and not pace.cut_in, jump=True)
+            if self._offer_elsewhere():
+                criteria["elsewhere"] = Q.elsewhere(self.p.short)
             state = self._header() + S.overlap(self.p.short, line, self.utt.text, self.utt.speech_ms)
             a = await self._ask("floor", {"floor": Q.floor(self.p.short, criteria)}, state)
             if gen != self.gen:
+                return
+            fp = P(a, "floor")
+            if self._far() or (self._offer_elsewhere() and fp and max(fp, key=fp.get) == "elsewhere"):
+                await self.send(type="decision", what="floor", action="carry_on", probs=fp)
+                await self._not_for_me("far" if self._far() else "jev")
                 return
             policy = self.policies["floor"]
             if isinstance(policy, ThresholdPolicy):
@@ -331,11 +385,17 @@ class Session:
                 go = self.policies["end_of_turn"].draw(j["finished"])
                 await self.send(type="decision", what="end_of_turn", finished=round(j["finished"], 2), go=go)
                 if go:
+                    if self._far():
+                        await self._not_for_me("far")
+                        return
                     await self.respond("spoke")
                     return
                 if self.policies["listen"].draw(0.5):
                     self._spawn(self.listen_in("continuer", inviting=True))
             if self.silence_ms >= pace.max_wait_ms + 1000:
+                if self._far():
+                    await self._not_for_me("far")
+                    return
                 await self.respond("spoke")       # the user has stopped: the turn is theirs no longer
             elif j and j["drawn"] and self.silence_ms in (1000, 2000):
                 self._spawn(self.ask_turn(self.utt.id))
@@ -376,6 +436,8 @@ class Session:
         self.generating = True
         line = self.data_line(kind, quiet_s)
         if self.utt is not None and kind in ("spoke", "cut_in", "overrule", "aside", "jump_in"):
+            if self.utt.level is not None:
+                self.caller_levels = (self.caller_levels + [self.utt.level])[-20:]
             self.ledger.user(self.utt.text, line)
             await self.send(type="user", text=self.utt.text, partial=False)
             self.user_turns += 1
@@ -418,7 +480,7 @@ class Session:
         async for line in self.llm.lines(messages, max_tokens=14):
             text = line
             break
-        if not text or len(text.split()) > 6 or self.speaking or self.generating:
+        if not text or len(text.split()) > self.cfg.listen_max_words or self.speaking or self.generating:
             return
         line_id = uuid.uuid4().hex
         self.lines[line_id] = text

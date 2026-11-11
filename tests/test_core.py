@@ -131,3 +131,48 @@ def test_a_profile_brings_its_own_policies(tmp_path):
     p = Profile.load(f)
     assert isinstance(p.policies["floor"], ThresholdPolicy) and p.policies["floor"].default == 0.7
     assert isinstance(p.policies["quiet"], ArgmaxPolicy)
+
+
+def loud(db: float) -> bytes:
+    """A 200 ms PCM16 frame at roughly this loudness in dB (a square wave at that RMS)."""
+    import numpy as np
+    a = int(32767 * 10 ** (db / 20))
+    return (np.array([a, -a] * 1600, dtype=np.int16)).tobytes()
+
+
+async def test_not_said_to_me_is_offered_only_after_the_first_answer_and_drops_the_words():
+    answers = {**TURN, "kind": {"reply": 0.2, "sound": 0.1, "elsewhere": 0.7}}
+    s, events, judge = make(answers, {"end_of_turn": SamplePolicy(rng=lambda: 0.1)})
+    s.cfg.not_for_me = True
+    await s.on_segment(Segment("Turn off the lights."))         # the call's first words: always the caller's
+    await asyncio.sleep(0.05)
+    assert s.utt is not None and not any(e.get("what") == "not_for_me" for e in events)
+    s.user_turns = 1                                           # after one answer the choice is offered
+    s.utt = None
+    await s.on_segment(Segment("Honey, did you feed the cat?"))
+    await asyncio.sleep(0.05)
+    assert any(e.get("what") == "not_for_me" and e["why"] == "jev" for e in events)
+    assert s.utt is None and not s.ledger.turns
+
+
+async def test_a_voice_far_under_the_caller_is_not_answered():
+    s, events, _ = make(TURN, {"end_of_turn": SamplePolicy(rng=lambda: 0.1)})
+    s.cfg.far_db = 10
+    s.caller_levels = [-14.0]                                  # the caller's answered words
+    s.vad.voice = True
+    for _ in range(5):
+        await s.on_audio(loud(-30))                           # 16 dB under the caller: the room, not the caller
+    s.vad.voice = False
+    await s.on_segment(Segment("We should water the plants later."))
+    await asyncio.sleep(0.05)
+    assert any(e.get("what") == "not_for_me" and e["why"] == "far" for e in events)
+    assert not any(e["type"] == "line" for e in events)
+
+
+async def test_a_long_listening_sound_is_dropped():
+    s, events, _ = make(TURN)
+    s.cfg.listen_max_words = 3
+    s.llm.out = ["Oh yeah? What do you have in mind?"]
+    s.utt = None
+    await s.listen_in("feeling")
+    assert not any(e["type"] == "listen" for e in events)

@@ -211,6 +211,22 @@ def laugh(name: str) -> dict:
 Ask it from the session where it belongs, give it a policy in `Config.policies`, and replay recorded calls with
 `tools/replay.py` to see where its answers land.
 
+### Tested knobs
+
+The knobs measured in "All knobs together" below, as `Config` fields. Off by default; each one is a trade-off.
+
+```python
+from jev_interaction import Config
+cfg = Config(hold_after_ms=1000, listen_max_words=3, not_for_me=True, far_db=10)
+```
+
+| field | what it does | measured effect |
+|---|---|---|
+| `hold_after_ms=1000` | pause the agent's audio only after 1 s of voice over it (default 400) | an "mm-hm" no longer stops the line (stop latency 0.36 s → 3.3 s); a real interruption stops about 0.6 s later |
+| `listen_max_words=3` | drop listening sounds longer than this (default 6) | fewer pauses counted as taking the turn (Full-Duplex-Bench counts 4+ words as a turn) |
+| `not_for_me=True` | a "not said to me" choice in the turn and floor questions, never before the first answer | side remarks and background voices let pass instead of answered |
+| `far_db=10` | a voice this many dB under the caller's answered words is someone else's | background speech "resume" 0.28 → 0.56; pair it with a voiceprint in production, or a quiet caller can be dropped |
+
 ## Early results
 
 Measured on the companion-call engine this framework was extracted from (same decision layer, ElevenLabs Scribe and
@@ -450,7 +466,7 @@ docs/                 architecture diagram and benchmark charts
 
 - Send the first sentence to synthesis as soon as it ends, not at the line break.
 - Neural VAD and a second recognizer behind the existing protocols.
-- Ship the tested knobs, with the voiceprint beside the 10 dB rule (a quiet real caller must not become "someone else").
+- Turn the tested knobs on in the production engine (here they are `Config` options), with a voiceprint beside the 10 dB rule (a quiet real caller must not become "someone else").
 - Judge v1.5 against a fixed clean answer (same reply in both runs).
 - A small audio turn model as one more line in Jev's state, for the pure-timing benchmarks (eot-bench, TurnBench EOT).
 - Full TurnBench dev (38 conversations) for thresholds, then the hidden test set; larger task-profile runs.

@@ -42,7 +42,8 @@ class Config:
         "floor": ThresholdPolicy(fallback="carry_on"),   # yield's threshold comes from the (blended) pace
         "cut_in": SamplePolicy(), "quiet": SamplePolicy()})
 
-    hold_after_ms: int = 400           # the user talks over the agent this long: its audio pauses (user first, every pace)
+    hold_after_ms: int = 400           # the user talks over the agent this long: its audio pauses (user first, every pace);
+                                       # tested at 1000: an "mm-hm" no longer pauses the line, a real interruption stops ~0.6 s later
     hold_release_ms: int = 700         # held, the user quiet again with no words: the line goes on
     listen_gap_s: float = 3.0          # at least this long between two listening sounds
     listen_finished_max: float = 0.65  # no listening sound once Jev is this sure the user has finished
@@ -53,6 +54,13 @@ class Config:
     judge_turns: int = 8               # recent turns in every Jev state
     judge_turn_chars: int = 300
     safe_words: tuple = ("red",)       # stop everything, no judgement involved
+    listen_max_words: int = 6          # a longer listening sound is dropped (tested at 3: benchmarks count 4+ words as a turn)
+
+    # tested knobs, off by default (README: "Tested knobs")
+    not_for_me: bool = False           # a "not said to me" choice in the turn and floor questions; picked, the words are
+                                       # someone else's and are not answered; never offered before the first answer
+    far_db: float | None = None        # a voice this many dB under the caller's answered words is someone else's (tested at 10;
+                                       # pair it with a voiceprint in production, or a quiet caller can be dropped)
 
     def pace(self, name: str) -> Pace:
         return next(p for p in self.paces if p.name == name)

@@ -70,6 +70,12 @@ def floor_criteria(name: str, *, finish: bool, overrule: bool, aside: bool, jump
     return c
 
 
+def elsewhere(name: str) -> str:
+    """The "not said to me" choice (Config.not_for_me), offered in the turn and floor questions."""
+    return (f"the words are not meant for {name}: the user is talking to someone else in the room (often by name), or it is "
+            f"another voice in the background; {name} carries on as if nothing was said to them")
+
+
 def floor(name: str, criteria: dict) -> dict:
     return {"type": "choice", "instructions": f"Both are talking at once. What is the user doing, and what does {name} do?",
             "criteria": criteria}
