@@ -10,17 +10,42 @@
 
 </div>
 
+> **Built on [Jev](https://typesafe.ai).** Every turn-taking decision here is a question Jev answers in tens of
+> milliseconds. Without it, none of this would work.
+
 ![JEV-Interaction architecture](docs/architecture.svg)
 
-Most voice agents bolt a turn detector onto speech recognition → language model → speech synthesis: a small model trained
-to guess *"has the user finished?"*. Everything else people do on a call is left to timers: the listening "mm-hm",
-letting a pause stand, stopping when talked over, picking the conversation back up after a silence, knowing when to
-hang up.
+**Full duplex from a cascade.** Speech recognition → Jev's decisions → any language model → any speech synthesis. The
+agent listens while it talks, says "mm-hm" while you talk, lets a pause stand, carries on through a backchannel, yields
+or finishes its sentence when you cut in, and picks the call back up after a silence.
 
-**JEV-Interaction turns each of those into an explicit decision.** A decision is a plain-language multiple-choice
-question; [Jev](https://typesafe.ai) answers it with a probability for every choice, in tens of milliseconds; a policy
-turns the probabilities into an action. Questions, policies and the agent's manner are all text you can read, change
-and replay against real calls.
+Most voice agents bolt a small trained model onto that pipeline to guess *"has the user finished?"* and leave the rest
+to timers. **JEV-Interaction turns each of those moments into an explicit decision.** A decision is a plain-language
+multiple-choice question; Jev answers it with a probability for every choice; a policy turns the probabilities into an
+action. Questions, policies and the agent's manner are text you can read, change and replay against real calls.
+
+**Demo video: on the way.**
+
+## What you get
+
+- **Every piece is yours to choose.** The intelligence (any language model), the voice (any synthesizer and voice),
+  the style, the task and the persona. The persona reaches the interaction itself, not only the words: an impatient
+  character cuts in and answers half-sentences, a gentle one says "mm-hm" often and waits you out, a tutor finishes the
+  explanation before yielding, a support agent stays brief and stops the moment you speak.
+- **The pace routes itself, turn by turn.** Each turn Jev also judges which pace the call is in: normal conversation,
+  listening (the caller is pouring something out: more listening sounds, longer waits, fewer interruptions), narrating
+  (the agent is telling a story: an "mm-hm" does not stop it) or eager (quick to take the floor). One call moves between
+  them on its own, from small talk into a game and back.
+- **A new task is a few knobs, zero-shot.** Nothing here is trained on any benchmark or on your data. A task profile is
+  a page of text; the pause problem in Full-Duplex-Bench was fixed with two knobs, and each trade-off is measured, not
+  guessed.
+- **Every number comes with a reason.** Each decision is logged with the state Jev read and the probabilities it gave,
+  so a bad moment points at the step that caused it, and a reworded question can be replayed against recorded calls
+  before it ships.
+- **Calls of any length.** No session is held open on a model provider; each decision and each reply is a fresh request
+  over a text history.
+- **Cheap.** A decision is a few hundred tokens to Jev; in our runs a reply cost about $0.002 of language model and a
+  400-sample benchmark round about $2.
 
 ## Why
 
@@ -403,6 +428,12 @@ responder sees is windowed, so a very long call keeps its early turns only throu
 language model you plug in.
 
 **What does it cost?** On our measurements, a minute of call audio is a few cents, most of it the language model.
+
+## Acknowledgements
+
+Thanks to [Jev](https://typesafe.ai) and the TypeSafe team: the idea of turn-taking as questions only works because a
+judge can answer them in tens of milliseconds, with a probability per choice, from plain text. Thanks also to the
+authors of Full-Duplex-Bench, LiveKit eot-bench and TurnBench for open benchmarks and published baselines.
 
 ## Status
 
