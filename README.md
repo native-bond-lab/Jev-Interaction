@@ -28,10 +28,16 @@ when to wait, when to yield and when to say "mm-hm", and a slow one that works o
 mind, deciding each moment in tens of milliseconds; the language model is the slow one, writing the words. Neither
 waits for the other.
 
-Most voice agents bolt a small trained model onto that pipeline to guess *"has the user finished?"* and leave the rest
-to timers. **Jev-Interaction turns each of those moments into an explicit decision.** A decision is a plain-language
-multiple-choice question; Jev answers it with a probability for every choice; a policy turns the probabilities into an
-action. Questions, policies and the agent's manner are text you can read, change and replay against real calls.
+Voice agents today take one of two roads. **Cascades** bolt a small trained model onto that pipeline to guess *"has
+the user finished?"* and leave everything else to timers. **End-to-end full-duplex models** (Moshi, GPT-4o Realtime,
+Gemini Live) learn turn-taking inside one large speech model: fast and natural, but a black box. You cannot see why it
+stopped, cannot change how it takes turns for a product or a persona, and are tied to the vendor's model, voices and
+session limits.
+
+**Jev-Interaction keeps the cascade's freedom and gives it the judgement.** Every one of those moments becomes an
+explicit decision: a plain-language multiple-choice question, a probability from Jev for every choice, and a policy
+that turns the probabilities into an action. Questions, policies and the agent's manner are text you can read, change
+and replay against real calls.
 
 **Demo video: on the way.**
 
