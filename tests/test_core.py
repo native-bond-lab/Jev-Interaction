@@ -176,3 +176,34 @@ async def test_a_long_listening_sound_is_dropped():
     s.utt = None
     await s.listen_in("feeling")
     assert not any(e["type"] == "listen" for e in events)
+
+
+def test_presets_carry_production_and_tested_settings():
+    from jev_interaction.presets import config
+    prod = config("production")
+    assert prod.quiet_marks_s[-1] == 240.0 and prod.hold_after_ms == 400 and not prod.not_for_me
+    tested = config("tested", language="zh")
+    assert tested.hold_after_ms == 1000 and tested.not_for_me and tested.far_db == 10.0 and tested.language == "zh"
+    with pytest.raises(KeyError):
+        config("nope")
+
+
+def test_every_example_profile_loads_with_a_card():
+    import pathlib
+    for f in sorted((pathlib.Path(__file__).resolve().parents[1] / "examples" / "profiles").glob("*.yaml")):
+        p = Profile.load(f)
+        d = p.extra.get("display") or {}
+        assert p.name and p.manner and d.get("title") and d.get("title_zh") and d.get("language") in ("en", "zh"), f.name
+
+
+def test_dashscope_messages_and_closed_sentences():
+    from jev_interaction.adapters.dashscope_asr import closed_sentence, finish_task, run_task
+    from jev_interaction.adapters.dashscope_tts import tts_continue, tts_run_task
+    rt = run_task("t1", "paraformer-realtime-v2", 16000, ["zh", "en"], 400)
+    assert rt["header"]["action"] == "run-task" and rt["payload"]["parameters"]["sample_rate"] == 16000
+    assert finish_task("t1")["header"]["task_id"] == "t1"
+    partial = {"header": {"event": "result-generated"}, "payload": {"output": {"sentence": {"text": "你好", "end_time": None}}}}
+    done = {"header": {"event": "result-generated"}, "payload": {"output": {"sentence": {"text": "你好呀。", "sentence_end": True}}}}
+    assert closed_sentence(partial) is None and closed_sentence(done) == "你好呀。"
+    assert tts_run_task("t2", "cosyvoice-v2", "longcheng_v2", 24000)["payload"]["parameters"]["voice"] == "longcheng_v2"
+    assert tts_continue("t2", "嗨")["payload"]["input"]["text"] == "嗨"

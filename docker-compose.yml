@@ -1,0 +1,13 @@
+services:
+  jev-interaction:
+    build:
+      context: .
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file: .env
+    volumes:
+      - ./runs:/app/runs              # call logs, for tools/replay.py
+      - ./examples/profiles:/app/examples/profiles   # edit or add profiles without rebuilding
+    restart: unless-stopped

@@ -118,6 +118,10 @@ Jev    feeling 0.46 · quiet 0.27 · continuer 0.22 · answer_due 0.05
 | [客服](examples/profiles/support.yaml) | 简短一声"好" | 等着（对方可能在念号码） | 立刻停 | 等着，久了问一次 | 阈值 |
 | [家教](examples/profiles/tutor.yaml) | 鼓励的声音 | 非常耐心 | 先讲完这句 | 给个提示 | 抽签 |
 | [面试官](examples/profiles/interviewer.yaml) | 不出声 | 让对方想 | 跑题就打断 | 等回答 | 混合 |
+| [Vera · 演讲教练](examples/profiles/vera.yaml) | 几乎不出声 | 让沉默替她说话 | 先说完这句 | 直接给下一个练习 | 阈值 |
+| [话唠阿乐](examples/profiles/chatterbox_zh.yaml) | 不停应声 | 抢着接话 | 先说完这句 | 一秒都忍不了 | 抽签 |
+| [小奶狗小言](examples/profiles/puppy_zh.yaml) | 轻轻"嗯，然后呢" | 耐心等 | 你一开口就停 | 问你怎么啦 | 抽签 |
+| [电商客服小安](examples/profiles/support_zh.yaml) | 偶尔一句"好的" | 报订单号时绝不打断 | 立刻停 | 只问一次 | 阈值 |
 
 ```yaml
 name: Sam
@@ -133,14 +137,35 @@ policies:
 
 ## 快速开始
 
+一条命令装好依赖、问一次密钥、启动服务并打开页面：
+
 ```bash
 git clone https://github.com/native-bond-lab/Jev-Interaction && cd Jev-Interaction
-pip install -e ".[server]"
-cp .env.example .env     # JEV_API_KEY · 兼容 OpenAI 接口的大模型 · ELEVENLABS_API_KEY 和 VOICE_ID
-uvicorn server.app:app --port 8080
+./scripts/setup.sh            # 海外：xAI grok + ElevenLabs（我们生产环境在用的组合）
+./scripts/setup.sh --china    # 中国大陆：阿里云百炼（通义千问 + Paraformer + CosyVoice），并使用国内 PyPI 镜像
 ```
 
-打开 <http://localhost:8080>，选一个任务配置，点 **Call**。自带的是简单的能量 VAD，建议戴耳机。
+或者用 Docker（任何系统）：
+
+```bash
+cp .env.example .env          # 中国大陆用 .env.china.example；填好密钥
+docker compose up             # 打开 http://localhost:8080
+```
+
+打开 <http://localhost:8080>，选一个角色，点 **通话**。还没有密钥？页面自带模拟通话（`?demo=1`）。自带的是简单的能量 VAD，建议戴耳机。
+
+| | 海外 | 中国大陆 |
+|---|---|---|
+| 配置模板 | `.env.example` | `.env.china.example` |
+| 法官 | Jev | Jev（如果访问 `api.typesafe.ai` 慢，给这个进程设 `HTTPS_PROXY`） |
+| 大模型 | grok-4.3（任意兼容 OpenAI 接口的服务） | 通过百炼调用 qwen-plus；也可用 DeepSeek、豆包 |
+| 语音识别 | ElevenLabs Scribe v2 realtime turbo | Paraformer realtime v2 |
+| 语音合成 | ElevenLabs eleven_v4_turbo | CosyVoice v2（每个角色可配音色） |
+| 需要的密钥 | Jev、xAI、ElevenLabs | Jev、一个百炼（DashScope）密钥 |
+
+**预设。** `JEV_PRESET=production`（默认）是生产引擎现在的时间参数；`tested` 在此基础上打开下文测过的旋钮；`default` 是库的默认值。代码里用 `jev_interaction.presets.config("production")`。
+
+**Hugging Face Space。** `HF_TOKEN=... ./scripts/push_hf_space.sh <owner>/<space>` 会把本仓库发布成 Docker Space（[说明](deploy/huggingface/README.md)）；密钥放在 Space 的 secrets 里，并设置 `MAX_CONCURRENT_CALLS` / `MAX_CALL_SECONDS`，因为每通电话都按这些密钥计费。
 
 ### 在自己的代码里用
 
@@ -368,9 +393,9 @@ cfg = Config(hold_after_ms=1000, listen_max_words=3, not_for_me=True, far_db=10)
 | 部件 | 接口 | 自带实现 |
 |---|---|---|
 | VAD | `is_voice(pcm) -> bool` | `EnergyVAD` |
-| 语音识别 | 流式，按段输出 | `ScribeRealtime`（ElevenLabs） |
+| 语音识别 | 流式，按段输出 | `ScribeRealtime`（ElevenLabs）、`ParaformerRealtime`（阿里云百炼） |
 | 大模型 | `lines(messages)`，逐句流式 | `OpenAICompatResponder` |
-| 语音合成 | `audio(text)`，流式字节 | `ElevenLabsTTS` |
+| 语音合成 | `audio(text)`，流式字节 | `ElevenLabsTTS`、`CosyVoiceTTS`（阿里云百炼） |
 | 法官 | `ask(questions, state)` | `JevClient` |
 | 策略 | `choose(probs, allowed)`、`draw(p)` | 抽签、阈值、取最大 |
 
@@ -383,11 +408,14 @@ jev_interaction/
   policy.py           抽签 · 阈值 · 取最大
   profile.py          任务配置
   config.py           节奏、时间参数、默认策略
+  presets.py          production · tested · default 预设
   ledger.py           通话记录
   recorder.py         每个事件一行 JSON，供重放
   adapters/           VAD · 识别 · 大模型 · 合成
   prompts/system.md   大模型默认系统提示
-server/app.py         WebSocket 通话服务和音频路由
+server/app.py         WebSocket 通话服务、音频路由、/api/profiles 和 /api/health
+scripts/setup.sh      一键本地部署（--china 使用中国大陆服务）
+deploy/huggingface/   Hugging Face Space 说明；scripts/push_hf_space.sh 负责发布
 web/                  最简网页客户端
 tools/replay.py       用改过的题重问录下来的决策
 docs/                 架构图和基准图表

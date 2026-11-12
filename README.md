@@ -153,6 +153,10 @@ read.
 | [support](examples/profiles/support.yaml) | a short "okay" | waits (numbers being read) | stops at once | waits, then one check | thresholds |
 | [tutor](examples/profiles/tutor.yaml) | encouraging | very patient | finishes the explanation | offers a prompt | sample |
 | [interviewer](examples/profiles/interviewer.yaml) | none | lets thinking run | cuts in on rambling | waits for the answer | mixed |
+| [Vera · speaking coach](examples/profiles/vera.yaml) | almost none | lets silence work | finishes her sentence | gives the next exercise | thresholds |
+| [话唠阿乐 · chatterbox](examples/profiles/chatterbox_zh.yaml) | constant | jumps in | finishes his sentence | can't bear one | sample |
+| [小奶狗小言 · sweet puppy](examples/profiles/puppy_zh.yaml) | soft "mm, and then?" | waits | stops the moment you speak | asks if you're okay | sample |
+| [电商客服小安 · support (Chinese)](examples/profiles/support_zh.yaml) | a rare "好的" | never cuts in on an order number | stops at once | one check | thresholds |
 
 ```yaml
 name: Sam
@@ -168,15 +172,39 @@ policies:
 
 ## Quickstart
 
+One command sets everything up, asks for your keys once, starts the server and opens the page:
+
 ```bash
 git clone https://github.com/native-bond-lab/Jev-Interaction && cd Jev-Interaction
-pip install -e ".[server]"
-cp .env.example .env     # JEV_API_KEY · an OpenAI-compatible LLM endpoint · ELEVENLABS_API_KEY and VOICE_ID
-uvicorn server.app:app --port 8080
+./scripts/setup.sh            # global: xAI grok + ElevenLabs (the setup we run in production)
+./scripts/setup.sh --china    # mainland China: Alibaba Cloud Bailian (Qwen + Paraformer + CosyVoice), domestic PyPI mirror
 ```
 
-Open <http://localhost:8080>, pick a profile and press **Call**. The built-in VAD is a simple energy detector, so use
-headphones.
+Or with Docker (any OS):
+
+```bash
+cp .env.example .env          # or .env.china.example; fill in the keys
+docker compose up             # http://localhost:8080
+```
+
+Open <http://localhost:8080>, pick a persona and press **Call**. No keys yet? The page has a built-in simulated call
+(`?demo=1`). The built-in VAD is a simple energy detector, so use headphones.
+
+| | global | mainland China |
+|---|---|---|
+| template | `.env.example` | `.env.china.example` |
+| judge | Jev | Jev (set `HTTPS_PROXY` if `api.typesafe.ai` is slow from your network) |
+| language model | grok-4.3 (any OpenAI-compatible endpoint) | qwen-plus via DashScope; or DeepSeek, Doubao |
+| recognition | ElevenLabs Scribe v2 realtime turbo | Paraformer realtime v2 |
+| synthesis | ElevenLabs eleven_v4_turbo | CosyVoice v2 (per-persona voices) |
+| keys | Jev, xAI, ElevenLabs | Jev, one DashScope key |
+
+**Presets.** `JEV_PRESET=production` (default) is the timing the production engine runs today; `tested` adds the knobs
+measured below; `default` is the library defaults. In code: `jev_interaction.presets.config("production")`.
+
+**Hugging Face Space.** `HF_TOKEN=... ./scripts/push_hf_space.sh <owner>/<space>` publishes this repository as a Docker
+Space ([card](deploy/huggingface/README.md)); add the keys as Space secrets and set `MAX_CONCURRENT_CALLS` /
+`MAX_CALL_SECONDS`, since every call is billed to them.
 
 ### In your own code
 
@@ -443,9 +471,9 @@ logged with the state Jev read and the probabilities it returned. What the trace
 | piece | protocol | included |
 |---|---|---|
 | VAD | `is_voice(pcm) -> bool` | `EnergyVAD` |
-| recognizer | streaming, closed segments | `ScribeRealtime` (ElevenLabs) |
+| recognizer | streaming, closed segments | `ScribeRealtime` (ElevenLabs), `ParaformerRealtime` (Alibaba Cloud Bailian) |
 | responder | `lines(messages) -> async lines` | `OpenAICompatResponder` |
-| synthesizer | `audio(text) -> async bytes` | `ElevenLabsTTS` |
+| synthesizer | `audio(text) -> async bytes` | `ElevenLabsTTS`, `CosyVoiceTTS` (Alibaba Cloud Bailian) |
 | judge | `ask(questions, state) -> probabilities` | `JevClient` |
 | policy | `choose(probs, allowed)`, `draw(p)` | `SamplePolicy`, `ThresholdPolicy`, `ArgmaxPolicy` |
 
@@ -458,11 +486,14 @@ jev_interaction/
   policy.py           sample · threshold · argmax
   profile.py          task profiles
   config.py           paces, timings, default policies
+  presets.py          production · tested · default
   ledger.py           the call's history, for both readers
   recorder.py         one JSON line per event, for replay
   adapters/           VAD · recognizer · responder · synthesizer
   prompts/system.md   the responder's default system prompt
-server/app.py         WebSocket call server and line-audio route
+server/app.py         WebSocket call server, line audio, /api/profiles and /api/health
+scripts/setup.sh      one-click local setup (--china for mainland providers)
+deploy/huggingface/   Hugging Face Space card; scripts/push_hf_space.sh publishes it
 web/                  minimal browser client
 tools/replay.py       re-ask recorded decisions with changed questions
 docs/                 architecture diagram and benchmark charts
