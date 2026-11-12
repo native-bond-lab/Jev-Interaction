@@ -4,7 +4,7 @@
     ThresholdPolicy  act only when a choice is at least this likely (support lines that must be predictable)
     ArgmaxPolicy     the most likely choice, always
 
-Every decision in Config.policies names one of these; `allowed` lets the session remove choices that do not apply now
+Every decision in Config.policies names one of these; `allowed` lets a decision remove choices that do not apply now
 (e.g. hang_up after a short pause) and the remaining mass is renormalised before the policy sees it.
 """
 from __future__ import annotations
