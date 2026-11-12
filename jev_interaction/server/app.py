@@ -38,6 +38,7 @@ MAX_LINES = 2000
 MAX_CALLS = int(os.getenv("MAX_CONCURRENT_CALLS", "0"))     # 0 = no limit; set it for a public demo (e.g. a HF Space)
 MAX_CALL_S = float(os.getenv("MAX_CALL_SECONDS", "0"))      # 0 = no limit
 DAY_BUDGET_S = 60 * float(os.getenv("MAX_CALL_MINUTES_PER_DAY", "0"))   # 0 = no limit; all calls together, per UTC day
+VAD_NAME = type(best_vad()).__name__     # which ear this server has: TenVAD, or EnergyVAD without the ten-vad package
 ACTIVE = {"calls": 0}
 SPENT = {"day": "", "seconds": 0.0}     # call time already used today (finished calls)
 
@@ -88,7 +89,7 @@ def health():
     missing = registry.missing_settings()
     llm = f"{os.getenv('LLM_MODEL', '')} @ {os.getenv('LLM_BASE_URL', '')}" if os.getenv("LLM_BASE_URL") else None
     return {"ready": not missing, "missing": missing, "preset": os.getenv("JEV_PRESET", "production"),
-            "vad": type(best_vad()).__name__,
+            "vad": VAD_NAME,
             "providers": {"judge": os.getenv("JEV_MODEL", "jev-latest"), "llm": llm, "asr": registry.selected("asr"),
                           "tts": registry.selected("tts")}, "speech": registry.speech_style()}
 

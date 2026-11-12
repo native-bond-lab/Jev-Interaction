@@ -18,6 +18,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libc++1   # TEN VAD's native library
       - run: pip install -e ".[server,dev]"
       - run: pytest -q
       - run: python examples/minimal.py
@@ -25,7 +26,7 @@ jobs:
         run: |
           cd "$RUNNER_TEMP" && jev-interaction serve --port 8099 --quiet &
           for i in $(seq 1 20); do curl -sf localhost:8099/api/health && break; sleep 1; done
-          curl -sf localhost:8099/api/profiles | grep -q companion
+          curl -sf localhost:8099/api/profiles | grep -q kai
           curl -sf localhost:8099/ | grep -qi "<html"
 
   lint:
