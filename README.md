@@ -198,7 +198,7 @@ docker compose up             # http://localhost:8080
 Open <http://localhost:8080>. Setup goes one node at a time: the judge (Jev), a language model, speech recognition, a
 voice. Paste a key and the page recognises whose it is; pick the language model from the endpoint's own model list; test
 each step before moving on. Settings are saved to `.env` in the folder you started from. Then pick a persona and click
-the orb to call (click it again to hang up). The built-in VAD is a simple energy detector, so use headphones.
+the orb to call (click it again to hang up). The voice detector is TEN VAD, the one production runs on; headphones still give the cleanest call.
 
 **Every node is your choice.** The language model is any OpenAI-compatible endpoint (xAI, OpenAI, DeepSeek, Qwen,
 Doubao, GLM, Kimi, OpenRouter, Groq, a local Ollama or vLLM server); recognition and voice come from the provider
@@ -227,7 +227,7 @@ Space ([card](deploy/huggingface/README.md)); add the keys as Space secrets and 
 
 ```python
 from jev_interaction import Config, Profile
-from jev_interaction.adapters import EnergyVAD
+from jev_interaction.adapters import best_vad
 from jev_interaction.adapters.openai_compat import OpenAICompatResponder
 from jev_interaction.adapters.scribe import ScribeRealtime
 from jev_interaction.judge import JevClient
@@ -239,7 +239,7 @@ session = Session(
     judge=JevClient(),
     recognizer=ScribeRealtime(language="en"),
     responder=OpenAICompatResponder(),   # any OpenAI-compatible endpoint
-    vad=EnergyVAD(),
+    vad=best_vad(),                      # TEN VAD (pip install ten-vad), or the energy detector without it
     config=Config(language="en"),
 )
 await session.start()
@@ -522,7 +522,7 @@ logged with the state Jev read and the probabilities it returned. What the trace
 
 | piece | protocol | included |
 |---|---|---|
-| VAD | `is_voice(pcm) -> bool` | `EnergyVAD` |
+| VAD | `is_voice(pcm) -> bool`, optionally `voiced_ms(pcm, playing) -> int` | `TenVAD`, `EnergyVAD` |
 | recognizer | streaming, closed segments | `ScribeRealtime` (ElevenLabs), `ParaformerRealtime` (Alibaba Cloud Bailian) |
 | responder | `lines(messages) -> async lines` | `OpenAICompatResponder` |
 | synthesizer | `audio(text) -> async bytes` | `ElevenLabsTTS`, `CosyVoiceTTS` (Alibaba Cloud Bailian) |
@@ -559,7 +559,7 @@ docs/                 architecture diagram and benchmark charts
 ## Roadmap
 
 - Send the first sentence to synthesis as soon as it ends, not at the line break.
-- Neural VAD and a second recognizer behind the existing protocols.
+- A second recognizer behind the existing protocols.
 - Turn the tested knobs on in the production engine (here they are `Config` options), with a voiceprint beside the 10 dB rule (a quiet real caller must not become "someone else").
 - Judge v1.5 against a fixed clean answer (same reply in both runs).
 - A small audio turn model as one more line in Jev's state, for the pure-timing benchmarks (eot-bench, TurnBench EOT).
@@ -593,15 +593,15 @@ authors of Full-Duplex-Bench, LiveKit eot-bench and TurnBench for open benchmark
 application company, on real calls with real users: the same design of decisions, questions, paces and policies, with
 Jev judging every moment. Every benchmark number above was measured on that engine.
 
-**This repository: 0.1, alpha.** The decision layer is the tested part. The browser client and the energy VAD are
-minimal stand-ins; bring your own VAD, recognizer, language model and voice through the protocols in
+**This repository: 0.1, alpha.** The decision layer is the tested part. The browser client is a
+minimal stand-in; bring your own VAD, recognizer, language model and voice through the protocols in
 [Swappable pieces](#swappable-pieces). Jev is a hosted API (`JEV_API_KEY`).
 
 | | |
 |---|---|
 | decision layer (questions, state, policies, paces, profiles) | tested, in production upstream |
 | session and server | working; used by the tests and the browser client |
-| browser client, energy VAD | minimal, for trying it out |
+| browser client | minimal, for trying it out |
 | benchmark harnesses | not in this repository yet (see the roadmap) |
 
 Licensed under Apache-2.0 (see [LICENSE](LICENSE)). Jev-Interaction is an independent project built on Jev; it is not

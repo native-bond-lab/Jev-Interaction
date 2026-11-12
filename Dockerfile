@@ -3,6 +3,7 @@
 FROM python:3.12-slim
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} PIP_NO_CACHE_DIR=1 PYTHONUNBUFFERED=1 PORT=8080
+RUN apt-get update && apt-get install -y --no-install-recommends libc++1 && rm -rf /var/lib/apt/lists/*   # TEN VAD's native library
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY jev_interaction ./jev_interaction

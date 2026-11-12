@@ -13,6 +13,8 @@ class Segment:
 
 
 class VAD(Protocol):
+    """`is_voice` is all a detector needs. One that also has `voiced_ms(pcm, playing) -> int` is asked that instead:
+    how much of the frame is voice, with its bar raised while the agent's own line is playing."""
     def is_voice(self, pcm: bytes) -> bool: ...
 
 

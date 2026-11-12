@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "httpx>=0.27", "websockets>=12", "python-socks[asyncio]>=2.4", "pyyaml>=6"]   # python-socks: system SOCKS proxies (Clash, V2ray)
 
 [project.optional-dependencies]
-server = ["fastapi>=0.110", "uvicorn>=0.29"]
+server = ["fastapi>=0.110", "uvicorn>=0.29", "ten-vad>=1.0.6"]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.6"]
 
 [project.scripts]

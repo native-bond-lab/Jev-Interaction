@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The ear production runs on: TEN VAD (`adapters.best_vad()`, the energy detector when `ten-vad` is not installed),
+  the bar raised while the agent's own line plays, a hold only after 400 ms of real voice, and the agent's own words
+  coming back through the microphone are dropped. A loud room no longer reads as the user talking without end.
 - The page: the orb in the middle is the call button (click to call, click to hang up) and beats with whoever is
   speaking; personas follow the page language; the simulated call is gone.
 - Personas `kai` and `kai_zh`: the companion call this framework was extracted from, moving through all four paces with

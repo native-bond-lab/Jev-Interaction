@@ -25,7 +25,7 @@ paths.load_env()
 
 from jev_interaction import Profile  # noqa: E402  (after .env, so adapters read the keys)
 from jev_interaction import preset as preset_config  # noqa: E402
-from jev_interaction.adapters import EnergyVAD, registry  # noqa: E402
+from jev_interaction.adapters import best_vad, registry  # noqa: E402
 from jev_interaction.recorder import Recorder  # noqa: E402
 from jev_interaction.server import settings as S  # noqa: E402
 from jev_interaction.session import Session  # noqa: E402
@@ -87,6 +87,7 @@ def health():
     missing = registry.missing_settings()
     llm = f"{os.getenv('LLM_MODEL', '')} @ {os.getenv('LLM_BASE_URL', '')}" if os.getenv("LLM_BASE_URL") else None
     return {"ready": not missing, "missing": missing, "preset": os.getenv("JEV_PRESET", "production"),
+            "vad": type(best_vad()).__name__,
             "providers": {"judge": os.getenv("JEV_MODEL", "jev-latest"), "llm": llm, "asr": registry.selected("asr"),
                           "tts": registry.selected("tts")}, "speech": registry.speech_style()}
 
@@ -195,7 +196,7 @@ async def call(ws: WebSocket):
 
     judge = registry.create("judge")
     session = Session(profile, send=send, judge=judge, recognizer=make_recognizer(language),
-                      responder=registry.create("llm"), vad=EnergyVAD(), config=cfg,
+                      responder=registry.create("llm"), vad=best_vad(), config=cfg,
                       recorder=Recorder(paths.runs_dir() / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl" if RECORD else None))
     ACTIVE["calls"] += 1
     started = time.monotonic()

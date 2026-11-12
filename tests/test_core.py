@@ -311,3 +311,44 @@ def test_key_fields_are_not_password_fields():
     for f in web.glob("*.*"):
         text = f.read_text(encoding="utf-8")
         assert "type: 'password'" not in text and 'type="password"' not in text and "? 'text' : 'password'" not in text, f.name
+
+
+async def test_the_agents_own_words_back_through_the_microphone_are_not_the_users():
+    s, events, _ = make({"floor": {"carry_on": 0.0, "yield": 1.0, "finish_first": 0.0, "jump_in": 0.0}})
+    s.speaking = True
+    s.ledger.agent("So the thing about my morning is the swell came in early.")
+    s.lines["a"] = "So the thing about my morning is the swell came in early."
+    await s.on_segment(Segment("the thing about my morning"))            # a speaker next to the microphone
+    await asyncio.sleep(0.05)
+    assert s.utt is None and not any(e["type"] in ("stop", "user") for e in events)
+    await s.on_segment(Segment("Wait, can I ask something?"))            # the user's own words still take the floor
+    await asyncio.sleep(0.05)
+    assert any(e["type"] == "stop" for e in events)
+
+
+async def test_a_detector_that_measures_voice_is_asked_how_much_and_told_when_the_line_plays():
+    s, events, _ = make({})
+
+    class Measured:
+        asked = []
+
+        def voiced_ms(self, pcm, playing=False):
+            self.asked.append(playing)
+            return 80                                                    # 80 ms of voice in every 200 ms frame
+
+    s.vad = Measured()
+    s.speaking = True
+    for _ in range(4):
+        await s.on_audio(b"\x00" * 6400)
+    assert s.vad.asked == [True] * 4
+    assert s.utt.speech_ms == 320 and not any(e["type"] == "hold" for e in events)   # 400 ms of real voice, not two frames
+    await s.on_audio(b"\x00" * 6400)
+    assert any(e["type"] == "hold" for e in events)
+
+
+def test_the_energy_detector_raises_its_bar_while_the_line_plays():
+    import numpy as np
+
+    from jev_interaction.adapters import EnergyVAD
+    tone = (np.sin(np.arange(3200) * 0.2) * 0.03 * 32767).astype(np.int16).tobytes()   # a faint sound: an echo off a speaker
+    assert EnergyVAD().voiced_ms(tone) == 200 and EnergyVAD().voiced_ms(tone, playing=True) == 0

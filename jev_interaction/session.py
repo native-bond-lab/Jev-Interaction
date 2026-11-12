@@ -112,12 +112,17 @@ class Session:
     # ------------------------------------------------------------------ inputs
     async def on_audio(self, pcm: bytes):
         await self.asr.send(pcm)
-        voiced = self.vad.is_voice(pcm)
         step = self.cfg.frame_ms
+        if hasattr(self.vad, "voiced_ms"):       # how much of the frame is voice, the bar raised while the agent's line plays
+            heard = self.vad.voiced_ms(pcm, self.speaking)
+            voiced = heard >= self.cfg.voice_min_ms
+        else:
+            voiced = self.vad.is_voice(pcm)
+            heard = step
         if voiced:
             if self.utt is None:
                 self._open_utterance()
-            self.utt.speech_ms += step
+            self.utt.speech_ms += heard
             self.utt.levels.append(frame_db(pcm))
             self.silence_ms = 0
             if self.speaking and not self.held and self.utt.speech_ms >= self.cfg.hold_after_ms:
@@ -155,6 +160,9 @@ class Session:
         if any(re.search(rf"\b{re.escape(w)}\b", text, re.I) for w in self.cfg.safe_words):
             await self.safe_word(text)
             return
+        if self.speaking and self._own_words(text):
+            self.rec.write("echo", text=text)       # the agent's own line, back through the microphone: nobody said it
+            return
         if self.utt is None:
             self._open_utterance()
             self.utt.speech_ms = max(self.utt.speech_ms, 400)
@@ -162,6 +170,12 @@ class Session:
         await self.send(type="user", text=self.utt.text, partial=True)
         for d in list(self.decisions.values()):
             d.on_words(self)                      # floor while the agent speaks; turn (and cut_in) while it is quiet
+
+    def _own_words(self, text: str) -> bool:
+        """The recognizer heard words of the agent's own recent lines (a speaker next to the microphone)."""
+        norm = lambda s: re.sub(r"[\W_]+", "", s).lower()  # noqa: E731
+        heard = norm(text)
+        return len(heard) >= 2 and any(heard in norm(line) for line in list(self.lines.values())[-6:])
 
     def _open_utterance(self):
         now = time.monotonic()

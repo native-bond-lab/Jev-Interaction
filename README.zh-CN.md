@@ -160,7 +160,7 @@ cp .env.example .env          # 手动填，或者留空，用页面上的设置
 docker compose up             # 打开 http://localhost:8080
 ```
 
-打开 <http://localhost:8080>。设置一次一个节点：法官（Jev）、大模型、语音识别、音色。粘贴密钥，页面会认出是哪家的；大模型从该服务自己的模型列表里选；每一步测试通过再往下走。设置保存在启动目录下的 `.env`。然后选一个角色，点中间的圆开始通话（再点一次挂断）。自带的是简单的能量 VAD，建议戴耳机。
+打开 <http://localhost:8080>。设置一次一个节点：法官（Jev）、大模型、语音识别、音色。粘贴密钥，页面会认出是哪家的；大模型从该服务自己的模型列表里选；每一步测试通过再往下走。设置保存在启动目录下的 `.env`。然后选一个角色，点中间的圆开始通话（再点一次挂断）。人声检测用的是 TEN VAD，和线上一致；戴耳机通话最干净。
 
 **每个节点都由你选。** 大模型是任意兼容 OpenAI 接口的服务（xAI、OpenAI、DeepSeek、通义千问、豆包、智谱 GLM、Kimi、OpenRouter、Groq、本地 Ollama 或 vLLM）；识别和音色来自服务商注册表，第三方包也能注册自己的（[docs/adapters.md](docs/adapters.md)）。大模型会按你选的音色调整写法：能演绎音频标签的音色（ElevenLabs v3/v4）用带 `[laughs]`、`[whispers]` 的写法，其他音色只写说出口的话（`jev_interaction/prompts/speech/`）。
 
@@ -182,7 +182,7 @@ docker compose up             # 打开 http://localhost:8080
 
 ```python
 from jev_interaction import Config, Profile
-from jev_interaction.adapters import EnergyVAD
+from jev_interaction.adapters import best_vad
 from jev_interaction.adapters.openai_compat import OpenAICompatResponder
 from jev_interaction.adapters.scribe import ScribeRealtime
 from jev_interaction.judge import JevClient
@@ -194,7 +194,7 @@ session = Session(
     judge=JevClient(),
     recognizer=ScribeRealtime(language="en"),
     responder=OpenAICompatResponder(),   # 任意兼容 OpenAI 接口的模型
-    vad=EnergyVAD(),
+    vad=best_vad(),                      # TEN VAD（pip install ten-vad），没装就用能量检测
     config=Config(language="en"),
 )
 await session.start()
@@ -436,7 +436,7 @@ cfg = Config(hold_after_ms=1000, listen_max_words=3, not_for_me=True, far_db=10)
 
 | 部件 | 接口 | 自带实现 |
 |---|---|---|
-| VAD | `is_voice(pcm) -> bool` | `EnergyVAD` |
+| VAD | `is_voice(pcm) -> bool`，可选 `voiced_ms(pcm, playing) -> int` | `TenVAD`、`EnergyVAD` |
 | 语音识别 | 流式，按段输出 | `ScribeRealtime`（ElevenLabs）、`ParaformerRealtime`（阿里云百炼） |
 | 大模型 | `lines(messages)`，逐句流式 | `OpenAICompatResponder` |
 | 语音合成 | `audio(text)`，流式字节 | `ElevenLabsTTS`、`CosyVoiceTTS`（阿里云百炼） |
@@ -473,7 +473,7 @@ docs/                 架构图和基准图表
 ## 路线图
 
 - 一句话写到句号就先送去合成，不等换行。
-- 在现有接口后面接神经网络 VAD 和第二路识别。
+- 在现有接口后面接第二路识别。
 - 在生产引擎里打开测过的旋钮（本仓库里已是 `Config` 选项），10 dB 规则要和声纹一起用（说话轻的真实来电者不能被当成别人）。
 - v1.5 用固定的干净版本回答重新评（两次用同一个回答）。
 - 加一个小的声音轮次模型，作为 Jev 状态里的一条线索，用在纯节奏的基准上（eot-bench、TurnBench 说完了）。
@@ -498,13 +498,13 @@ docs/                 架构图和基准图表
 
 **已在生产环境运行。** 这个框架抽取自一套语音通话引擎，那套引擎已经在一家消费级应用公司的产品里稳定运行，面对真实用户、真实通话：决策、题目、节奏和策略的设计都一样，每个时刻都由 Jev 判断。上面所有的基准数字都是在那套引擎上测的。
 
-**本仓库：0.1，alpha。** 决策层是测过的部分。网页客户端和能量 VAD 只是最简单的示例实现；VAD、语音识别、大模型和声音都可以按[可替换的部件](#可替换的部件)里的接口换成你自己的。Jev 是托管 API（`JEV_API_KEY`）。
+**本仓库：0.1，alpha。** 决策层是测过的部分。网页客户端只是最简单的示例实现；VAD、语音识别、大模型和声音都可以按[可替换的部件](#可替换的部件)里的接口换成你自己的。Jev 是托管 API（`JEV_API_KEY`）。
 
 | | |
 |---|---|
 | 决策层（题目、状态、策略、节奏、任务配置） | 测过，上游已在生产环境运行 |
 | 会话和服务端 | 可用；测试和网页客户端都在用 |
-| 网页客户端、能量 VAD | 最简实现，用来试用 |
+| 网页客户端 | 最简实现，用来试用 |
 | 基准测试脚本 | 还没放进本仓库（见路线图） |
 
 采用 Apache-2.0 许可证（见 [LICENSE](LICENSE)）。Jev-Interaction 是基于 Jev 的独立项目，与 TypeSafe 无关联、未获其背书。
