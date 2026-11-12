@@ -303,3 +303,11 @@ def test_voice_overrides(monkeypatch):
     from jev_interaction.server import app as server
     monkeypatch.setenv("TTS_VOICES", "companion=abc, vera = xyz ,bad,=nope")
     assert server.voice_overrides() == {"companion": "abc", "vera": "xyz"}
+
+
+def test_key_fields_are_not_password_fields():
+    """Browser password managers save the first key typed into a password field and fill it into every other one."""
+    web = pathlib.Path(__file__).resolve().parents[1] / "jev_interaction" / "server" / "web"
+    for f in web.glob("*.*"):
+        text = f.read_text(encoding="utf-8")
+        assert "type: 'password'" not in text and 'type="password"' not in text and "? 'text' : 'password'" not in text, f.name

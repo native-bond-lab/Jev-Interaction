@@ -220,7 +220,11 @@
   const link = (host) => h('a', { class: 'doc', href: 'https://' + host, target: '_blank', rel: 'noopener', text: host.replace(/\/.*$/, '') + ' ↗' });
   function keyInput(st, f) {                                  // f is null on asr / tts until a provider is chosen
     const set = f && isSet(st, f);
-    const input = h('input', { type: shown[st.id] ? 'text' : 'password', autocomplete: 'off', spellcheck: 'false', data: { name: 'key' },
+    // A text field masked by CSS, not type=password: browser password managers ignore autocomplete=off on password
+    // fields, offer to save the first key typed and then fill that same key into every other step's field.
+    const input = h('input', { type: 'text', class: shown[st.id] ? '' : 'masked', autocomplete: 'off', spellcheck: 'false', data: { name: 'key' },
+      name: 'jev-' + st.id + '-key', autocapitalize: 'off', 'data-1p-ignore': true, 'data-lpignore': 'true', 'data-bwignore': 'true',
+      'data-form-type': 'other',
       placeholder: set ? '•••••••• ' + t('saved') : t('paste'), value: (f ? draft[f.name] : typed[st.id]) || '',
       'aria-label': f ? loc(f, 'label') : t('key'),
       oninput: () => {
@@ -231,7 +235,7 @@
         if (st.id === 'llm') { clearTimeout(timers.models); timers.models = setTimeout(loadModels, 700); }
       } });
     const eye = h('button', { type: 'button', class: 'in-btn', html: EYE, 'aria-label': t(shown[st.id] ? 'hide' : 'show'), 'aria-pressed': String(!!shown[st.id]),
-      onclick: () => { shown[st.id] = !shown[st.id]; input.type = shown[st.id] ? 'text' : 'password'; eye.setAttribute('aria-pressed', String(shown[st.id])); } });
+      onclick: () => { shown[st.id] = !shown[st.id]; input.classList.toggle('masked', !shown[st.id]); eye.setAttribute('aria-pressed', String(shown[st.id])); } });
     const docs = st.id === 'llm' ? (vendor() && vendor() !== 'custom' ? vendor().docs : '') : (prov(st) || {}).docs;
     return h('div', { class: 'field wide' },
       h('label', null, h('span', { text: f ? loc(f, 'label') : t('key') }), docs ? link(docs) : null),
@@ -405,7 +409,7 @@
     if (st && st.id === 'llm') paintModels();
     if (keep) {
       const el = body.querySelector(`[data-name="${keep}"]`);
-      if (el) { el.focus({ preventScroll: true }); if (!focus && typeof at === 'number' && el.setSelectionRange && el.type !== 'password') { try { el.setSelectionRange(at, at); } catch (e) { /* not a text field */ } } }
+      if (el) { el.focus({ preventScroll: true }); if (!focus && typeof at === 'number' && el.setSelectionRange && !el.classList.contains('masked')) { try { el.setSelectionRange(at, at); } catch (e) { /* not a text field */ } } }
     }
   }
 

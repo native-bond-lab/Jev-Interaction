@@ -318,6 +318,8 @@ body[data-state="yielded"] .status-dot { background: var(--yield); }
 .input:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, transparent); background: rgba(0, 0, 0, .4); }
 .input input, .input select { flex: 1; min-width: 0; width: 100%; padding: 8px 11px; border: 0; outline: 0; background: none; color: var(--ink); font: 13px var(--mono); border-radius: 12px; }
 .input input::placeholder { color: var(--ink-3); }
+.input input.masked { -webkit-text-security: disc; text-security: disc; }   /* keys: masked without being a password field */
+.input input.masked::placeholder { -webkit-text-security: none; }
 .input input:disabled, .input select:disabled { color: var(--ink-2); opacity: 1; -webkit-text-fill-color: var(--ink-2); }
 .input select { appearance: none; -webkit-appearance: none; padding-right: 30px; cursor: pointer; }
 .input select option { background: #11131a; color: var(--ink); }

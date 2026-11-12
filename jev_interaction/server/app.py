@@ -231,9 +231,12 @@ async def call(ws: WebSocket):
             await judge.aclose()
 
 
+NO_STALE = {"Cache-Control": "no-cache"}     # revalidate the page's files each time, so an update is never half-applied
+
+
 @app.get("/")
 def index():
-    return FileResponse(WEB / "index.html")
+    return FileResponse(WEB / "index.html", headers=NO_STALE)
 
 
 @app.get("/{name:path}")
@@ -242,4 +245,4 @@ def web_file(name: str):
     path = (WEB / name).resolve()
     if WEB.resolve() not in path.parents or not path.is_file():
         raise HTTPException(404)
-    return FileResponse(path)
+    return FileResponse(path, headers=NO_STALE)
