@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/cover.png" alt="Jev-Interaction — full-duplex voice, turn-taking you control" width="100%">
+
 # Jev-Interaction
 
 **System-One-controlled full-duplex voice interaction.**<br>Turn-taking as decisions you write — not a model you train.
