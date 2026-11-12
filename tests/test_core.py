@@ -297,3 +297,9 @@ def test_profiles_by_id_and_user_override(tmp_path, monkeypatch):
     assert paths.profiles()["support"] == mine
     assert paths.env_file() == tmp_path / ".env"
     assert Profile.load("support").name and Profile.load(mine).name == "Mine"
+
+
+def test_voice_overrides(monkeypatch):
+    from jev_interaction.server import app as server
+    monkeypatch.setenv("TTS_VOICES", "companion=abc, vera = xyz ,bad,=nope")
+    assert server.voice_overrides() == {"companion": "abc", "vera": "xyz"}

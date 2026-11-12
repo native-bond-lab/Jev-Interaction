@@ -174,7 +174,7 @@ docker compose up             # 打开 http://localhost:8080
 
 **预设。** `JEV_PRESET=production`（默认）是生产引擎现在的时间参数；`tested` 在此基础上打开下文测过的旋钮；`default` 是库的默认值。代码里用 `jev_interaction.preset("production", language="zh")`。
 
-**Hugging Face Space。** `HF_TOKEN=... ./scripts/push_hf_space.sh <owner>/<space>` 会把本仓库发布成 Docker Space（[说明](deploy/huggingface/README.md)）；密钥放在 Space 的 secrets 里，并设置 `MAX_CONCURRENT_CALLS` / `MAX_CALL_SECONDS`，因为每通电话都按这些密钥计费。
+**Hugging Face Space。** `HF_TOKEN=... ./scripts/push_hf_space.sh <owner>/<space>` 会把本仓库发布成 Docker Space（[说明](deploy/huggingface/README.md)）；密钥放在 Space 的 secrets 里，首次发布会自动设好 `MAX_CONCURRENT_CALLS`、`MAX_CALL_SECONDS` 和每日总分钟数 `MAX_CALL_MINUTES_PER_DAY`，因为每通电话都按这些密钥计费。
 
 ### 在自己的代码里用
 

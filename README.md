@@ -218,8 +218,8 @@ how to write for the voice you pick: voices that perform audio tags (ElevenLabs 
 measured below; `default` is the library defaults. In code: `jev_interaction.preset("production", language="en")`.
 
 **Hugging Face Space.** `HF_TOKEN=... ./scripts/push_hf_space.sh <owner>/<space>` publishes this repository as a Docker
-Space ([card](deploy/huggingface/README.md)); add the keys as Space secrets and set `MAX_CONCURRENT_CALLS` /
-`MAX_CALL_SECONDS`, since every call is billed to them.
+Space ([card](deploy/huggingface/README.md)); add the keys as Space secrets and the push sets `MAX_CONCURRENT_CALLS`,
+`MAX_CALL_SECONDS` and `MAX_CALL_MINUTES_PER_DAY` as variables, since every call is billed to them.
 
 ### In your own code
 

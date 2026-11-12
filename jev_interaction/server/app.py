@@ -37,16 +37,33 @@ LINES: OrderedDict[str, tuple[str, object]] = OrderedDict()   # line id -> (text
 MAX_LINES = 2000
 MAX_CALLS = int(os.getenv("MAX_CONCURRENT_CALLS", "0"))     # 0 = no limit; set it for a public demo (e.g. a HF Space)
 MAX_CALL_S = float(os.getenv("MAX_CALL_SECONDS", "0"))      # 0 = no limit
+DAY_BUDGET_S = 60 * float(os.getenv("MAX_CALL_MINUTES_PER_DAY", "0"))   # 0 = no limit; all calls together, per UTC day
 ACTIVE = {"calls": 0}
+SPENT = {"day": "", "seconds": 0.0}     # call time already used today (finished calls)
+
+
+def spent_today() -> float:
+    day = time.strftime("%Y-%m-%d", time.gmtime())
+    if SPENT["day"] != day:
+        SPENT.update(day=day, seconds=0.0)
+    return SPENT["seconds"]
 
 
 def make_recognizer(language: str):
     return registry.create("asr", language=language)
 
 
-def make_synthesizer(profile: Profile):
+def voice_overrides() -> dict[str, str]:
+    """TTS_VOICES="companion=<voice>,vera=<voice>": a voice per persona for this deployment (e.g. voices only your
+    account has), over the persona file's own voice for the chosen provider."""
+    pairs = (item.split("=", 1) for item in os.getenv("TTS_VOICES", "").split(",") if "=" in item)
+    return {k.strip(): v.strip() for k, v in pairs if k.strip() and v.strip()}
+
+
+def make_synthesizer(profile: Profile, persona: str | None = None):
     voices = profile.extra.get("voices") or {}
-    return registry.create("tts", voice=voices.get(registry.selected("tts")))
+    voice = voice_overrides().get(persona or "") or voices.get(registry.selected("tts"))
+    return registry.create("tts", voice=voice)
 
 
 def profile_card(pid: str, path) -> dict:
@@ -148,6 +165,10 @@ async def call(ws: WebSocket):
         await ws.send_text(json.dumps({"type": "busy", "text": "All lines are busy, try again in a minute."}))
         await ws.close(code=4429)
         return
+    if DAY_BUDGET_S and spent_today() >= DAY_BUDGET_S:
+        await ws.send_text(json.dumps({"type": "busy", "text": "Today's call minutes are used up. Try the simulated call, or run it yourself."}))
+        await ws.close(code=4429)
+        return
     start = json.loads(await ws.receive_text())
     pid = str(start.get("profile") or "companion").rsplit("/", 1)[-1].removesuffix(".yaml")   # an id, or an old-style path
     path = paths.profiles().get(pid)
@@ -163,7 +184,7 @@ async def call(ws: WebSocket):
     profile = Profile.load(path)
     language = start.get("language") or (profile.extra.get("display") or {}).get("language", "en")
     cfg = preset_config(os.getenv("JEV_PRESET", "production"), language=language)
-    synth = make_synthesizer(profile)
+    synth = make_synthesizer(profile, pid)
 
     async def send(event: dict):
         if event.get("type") in ("line", "listen"):
@@ -188,6 +209,9 @@ async def call(ws: WebSocket):
             if MAX_CALL_S and time.monotonic() - started > MAX_CALL_S:
                 await ws.send_text(json.dumps({"type": "hangup", "why": "time limit"}))
                 break
+            if DAY_BUDGET_S and spent_today() + time.monotonic() - started > DAY_BUDGET_S:
+                await ws.send_text(json.dumps({"type": "hangup", "why": "daily limit"}))
+                break
             msg = await ws.receive()
             if msg.get("type") == "websocket.disconnect":
                 break
@@ -199,6 +223,8 @@ async def call(ws: WebSocket):
         pass
     finally:
         ACTIVE["calls"] -= 1
+        spent_today()
+        SPENT["seconds"] += time.monotonic() - started
         try:
             await session.close()
         finally:
