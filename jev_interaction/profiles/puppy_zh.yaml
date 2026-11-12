@@ -13,4 +13,4 @@ policies:
   floor: {type: threshold, default: 0.35, fallback: carry_on}
   quiet: sample
 voices: {dashscope: longcheng_v2}
-display: {title: Sweet puppy, title_zh: 小奶狗小言, tagline: "Gentle, attentive, stops the moment you speak", tagline_zh: "温柔黏人，你一开口他就让", language: zh, accent: "#f9a8d4", order: 40}
+display: {title: Sweet puppy, title_zh: 小奶狗小言, tagline: "Gentle, attentive, stops the moment you speak", tagline_zh: "温柔黏人，你一开口他就让", language: zh, accent: "#f9a8d4", order: 80, group: fun}

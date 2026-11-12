@@ -40,11 +40,14 @@ SYSTEM_TEMPLATE = (__import__("pathlib").Path(__file__).parent / "prompts" / "sy
 class Session:
     def __init__(self, profile: Profile, *, send: Callable[[dict], Awaitable[None]], judge: JevClient, recognizer: Recognizer,
                  responder: Responder, vad: VAD, config: Config | None = None, recorder: Recorder | None = None,
-                 system_template: str = SYSTEM_TEMPLATE):
+                 system_template: str = SYSTEM_TEMPLATE, speech: str | None = None):
         self.p, self.cfg, self.send_event = profile, config or Config(), send
         self.judge, self.asr, self.llm, self.vad = judge, recognizer, responder, vad
         self.rec = recorder or Recorder(None)
-        self.system = system_template.format(name=profile.name, profile=profile.prompt or profile.task)
+        if speech is None:                       # how to write for the voice in use: the synthesizer's speaking style
+            from .adapters import registry
+            speech = registry.speech_prompt()
+        self.system = system_template.format(name=profile.name, profile=profile.prompt or profile.task, speech=speech)
         self.policies = {**self.cfg.policies, **profile.policies}   # a task type may bring its own policies
         self.decisions: dict[str, Decision] = dict(DECISIONS)       # asked in this order on new words and on each tick
         self.ledger = Ledger()

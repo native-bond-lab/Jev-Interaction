@@ -14,4 +14,4 @@ policies:
   floor: {type: threshold, default: 0.6, fallback: carry_on}
   quiet: argmax
 voices: {dashscope: longwan_v2}
-display: {title: Vera · speaking coach, title_zh: Vera · 演讲教练, tagline: "Low voice, few words, lets silence work", tagline_zh: "声音低沉、话少，让沉默替她说话", language: en, accent: "#e5e7eb", order: 20}
+display: {title: Vera · speaking coach, title_zh: Vera · 演讲教练, tagline: "Low voice, few words, lets silence work", tagline_zh: "声音低沉、话少，让沉默替她说话", language: en, accent: "#e5e7eb", order: 40, group: task}

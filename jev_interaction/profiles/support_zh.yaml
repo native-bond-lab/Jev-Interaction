@@ -13,4 +13,4 @@ policies:
   floor: {type: threshold, default: 0.5, fallback: carry_on}
   quiet: argmax
 voices: {dashscope: longxiaochun_v2}
-display: {title: Support (Chinese), title_zh: 电商客服小安, tagline: "Precise and brief; never cuts in while you read an order number", tagline_zh: "准确简洁，报订单号时绝不打断", language: zh, accent: "#38bdf8", order: 45}
+display: {title: Support (Chinese), title_zh: 电商客服小安, tagline: "Precise and brief; never cuts in while you read an order number", tagline_zh: "准确简洁，报订单号时绝不打断", language: zh, accent: "#38bdf8", order: 15, group: task}

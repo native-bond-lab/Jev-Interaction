@@ -55,7 +55,8 @@ def profile_card(pid: str, path) -> dict:
     return {"id": pid, "path": pid, "name": p.name, "title": d.get("title", p.name),
             "title_zh": d.get("title_zh", d.get("title", p.name)), "tagline": d.get("tagline", p.task),
             "tagline_zh": d.get("tagline_zh", d.get("tagline", p.task)), "language": d.get("language", "en"),
-            "accent": d.get("accent", "#3ee0c8"), "order": d.get("order", 100)}
+            "accent": d.get("accent", "#3ee0c8"), "order": d.get("order", 100),
+            "group": d.get("group", "task")}
 
 
 @app.get("/api/profiles")
@@ -67,9 +68,10 @@ def profiles():
 @app.get("/api/health")
 def health():
     missing = registry.missing_settings()
+    llm = f"{os.getenv('LLM_MODEL', '')} @ {os.getenv('LLM_BASE_URL', '')}" if os.getenv("LLM_BASE_URL") else None
     return {"ready": not missing, "missing": missing, "preset": os.getenv("JEV_PRESET", "production"),
-            "providers": {"llm": f"{os.getenv('LLM_MODEL', 'grok-4.3')} @ {os.getenv('LLM_BASE_URL', 'https://api.x.ai/v1')}",
-                          "asr": registry.selected("asr"), "tts": registry.selected("tts"), "judge": os.getenv("JEV_MODEL", "jev-latest")}}
+            "providers": {"judge": os.getenv("JEV_MODEL", "jev-latest"), "llm": llm, "asr": registry.selected("asr"),
+                          "tts": registry.selected("tts")}, "speech": registry.speech_style()}
 
 
 def _who(request) -> tuple[str | None, str, str]:
@@ -104,6 +106,18 @@ async def save_settings(request: Request):
 async def test_settings(request: Request):
     body = await _local_json(request)
     return await S.test(body.get("node", ""), make_recognizer, make_synthesizer)
+
+
+@app.post("/api/settings/detect")
+async def detect_key(request: Request):
+    body = await _local_json(request)
+    return {"candidates": registry.detect(str(body.get("node", "")), str(body.get("key", "")))}
+
+
+@app.post("/api/settings/models")
+async def list_models(request: Request):
+    body = await _local_json(request)
+    return await S.models(str(body.get("base_url", "")), body.get("key") or None)
 
 
 @app.get("/tts/{line_id}")

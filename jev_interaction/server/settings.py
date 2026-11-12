@@ -1,8 +1,12 @@
 """Settings for a local deployment: every node's provider and key, edited from the page and saved to .env.
 
-GET  /api/settings        what each node uses; secrets come back only as set / not set
-POST /api/settings        {"values": {NAME: value}} -> written to .env (0600) and applied to this process at once
-POST /api/settings/test   {"node": "judge" | "llm" | "asr" | "tts"} -> a live call with the saved values
+GET  /api/settings          the setup steps (judge, language model, recognition, synthesis): each step's providers, their
+                            fields and what is still missing; secrets come back only as set / not set. Plus reference
+                            setups (what we run) to copy from, never applied unless asked.
+POST /api/settings          {"values": {NAME: value}} -> written to .env (0600) and applied to this process at once
+POST /api/settings/test     {"node": "judge" | "llm" | "asr" | "tts"} -> a live call with the saved values
+POST /api/settings/detect   {"node": "llm" | "asr" | "tts", "key": "..."} -> whose key it looks like (nothing is sent)
+POST /api/settings/models   {"base_url": "...", "key"?: "..."} -> the endpoint's own model list (GET {base_url}/models)
 
 Writes are accepted only from this machine (localhost), unless SETTINGS_WRITABLE=1 (Docker, where the browser on the host
 reaches the container through the bridge; docker-compose binds the port to 127.0.0.1 for that reason).
@@ -23,8 +27,16 @@ def env_path() -> pathlib.Path:
     return ENV_FILE or paths.env_file()
 
 
-# The two quick-fill templates (non-secret values). The commented .env.example / .env.china.example at the repo root
-# say the same; a test keeps them in step.
+# Reference setups: what we run, offered to copy from and never applied by default. .env.example carries the same
+# values as comments; a test keeps them in step.
+REFERENCES = [
+    {"id": "global", "title": "What we run in production", "title_zh": "我们生产环境在用的组合",
+     "note": "xAI grok-4.3 with reasoning off, ElevenLabs Scribe v2 realtime and eleven_v4_turbo. Keys: Jev, xAI, ElevenLabs.",
+     "note_zh": "xAI grok-4.3（关闭思考）、ElevenLabs Scribe v2 实时识别和 eleven_v4_turbo 合成。需要 Jev、xAI、ElevenLabs 三把密钥。"},
+    {"id": "china", "title": "A mainland China setup", "title_zh": "中国大陆可用的组合",
+     "note": "Qwen, Paraformer and CosyVoice on Alibaba Cloud Bailian. Keys: Jev and one DashScope key.",
+     "note_zh": "阿里云百炼上的通义千问、Paraformer 和 CosyVoice。需要 Jev 和一把百炼密钥。"},
+]
 TEMPLATES = {
     "global": {"JEV_MODEL": "jev-latest", "LLM_BASE_URL": "https://api.x.ai/v1", "LLM_MODEL": "grok-4.3", "LLM_TEMPERATURE": "0.7",
                "ASR_PROVIDER": "elevenlabs", "TTS_PROVIDER": "elevenlabs", "ELEVENLABS_ASR_MODEL": "scribe_v2_realtime_turbo",
@@ -35,6 +47,9 @@ TEMPLATES = {
 }
 
 from jev_interaction.adapters import registry as R  # noqa: E402
+
+for _r in REFERENCES:
+    _r["values"] = TEMPLATES[_r["id"]]
 
 TIMING = {"id": "timing", "title": "Timing preset", "title_zh": "时间参数预设", "fields": [
     {"name": "JEV_PRESET", "label": "Preset", "label_zh": "预设", "default": "production", "options": ["production", "tested", "default"]}]}
@@ -47,7 +62,7 @@ def build_nodes() -> list[dict]:
         fields: list[dict] = []
         provs = R.providers(kind)
         if kind in R.SELECTOR:
-            fields.append({"name": R.SELECTOR[kind], "label": "Provider", "label_zh": "服务商", "default": R.DEFAULT[kind],
+            fields.append({"name": R.SELECTOR[kind], "label": "Provider", "label_zh": "服务商", "default": "",
                            "options": [p.name for p in provs]})
         for p in provs:
             for st in p.settings:
@@ -71,11 +86,6 @@ def parse_env(path: pathlib.Path) -> dict[str, str]:
             k, v = line.split("=", 1)
             out[k.strip()] = v.strip()
     return out
-
-
-def templates() -> dict[str, dict[str, str]]:
-    """The non-secret values of the two templates, for the page's quick-fill buttons."""
-    return {name: {k: v for k, v in t.items() if k in NAMES} for name, t in TEMPLATES.items()}
 
 
 LOOPBACK = ("127.0.0.1", "::1", "localhost")
@@ -104,20 +114,72 @@ def is_writable(client_host: str | None, host_header: str = "", origin: str = ""
     return True
 
 
+def _field(st) -> dict:
+    out = st.card()
+    current = os.getenv(st.name, "")
+    if st.secret:
+        out["set"] = bool(current)
+    else:
+        out["value"] = current
+        if st.default:
+            out["default"] = st.default
+    if st.required and (st.required() if callable(st.required) else True):
+        out["required"] = True
+    return out
+
+
+def steps() -> list[dict]:
+    """One step per node, in pipeline order. `selected` is the chosen provider (None: the user has not chosen one)."""
+    out = []
+    for kind, (title, title_zh) in R.KINDS.items():
+        chosen = R.selected(kind)
+        provs = []
+        for p in R.providers(kind):
+            card = {"name": p.name, "label": p.label, "fields": [_field(st) for st in p.settings], "missing": p.missing()}
+            if p.docs:
+                card["docs"] = p.docs
+            if kind == "tts":
+                card["speech"] = R.speech_style(p.name)
+            provs.append(card)
+        step = {"id": kind, "title": title, "title_zh": title_zh, "selected": chosen, "providers": provs}
+        if kind in R.SELECTOR:
+            step["selector"] = R.SELECTOR[kind]
+        if kind == "llm":
+            step["vendors"] = [v.card() for v in R.LLM_VENDORS]
+        mine = next((c for c in provs if c["name"] == chosen), None)
+        step["ready"] = bool(mine) and not mine["missing"]
+        out.append(step)
+    return out
+
+
 def read(client_host: str | None, host_header: str = "", origin: str = "") -> dict:
-    nodes = []
-    for node in NODES:
-        fields = []
-        for f in node["fields"]:
-            out = {k: v for k, v in f.items() if k != "default"}
-            current = os.getenv(f["name"], "")
-            if f.get("secret"):
-                out["set"] = bool(current)
-            else:
-                out["value"] = current or f.get("default", "")
-            fields.append(out)
-        nodes.append({**node, "fields": fields})
-    return {"writable": is_writable(client_host, host_header, origin), "env_file": str(env_path()), "nodes": nodes, "templates": templates()}
+    st = steps()
+    timing = {**TIMING, "fields": [{**f, "value": os.getenv(f["name"], "") or f["default"]} for f in TIMING["fields"]]}
+    return {"writable": is_writable(client_host, host_header, origin), "env_file": str(env_path()),
+            "ready": all(s["ready"] for s in st), "missing": R.missing_settings(), "steps": st,
+            "references": REFERENCES, "timing": timing}
+
+
+async def models(base_url: str, key: str | None = None) -> dict:
+    """The model ids an OpenAI-compatible endpoint lists. Without a key, the saved one is used only for the saved
+    endpoint (a saved key is never sent to a different host)."""
+    import httpx
+    base_url = (base_url or "").strip().rstrip("/")
+    if not base_url.startswith(("http://", "https://")):
+        return {"ok": False, "error": "base_url must start with http:// or https://"}
+    if not key and _host_only(base_url) == _host_only(os.getenv("LLM_BASE_URL", "")):
+        key = os.getenv("LLM_API_KEY", "")
+    try:
+        async with httpx.AsyncClient(timeout=10) as http:
+            r = await http.get(f"{base_url}/models", headers={"Authorization": f"Bearer {key}"} if key else {})
+        if r.status_code != 200:
+            return {"ok": False, "error": f"{r.status_code}: {r.text[:160]}"}
+        data = r.json()
+        items = data.get("data", data.get("models", [])) if isinstance(data, dict) else data
+        ids = sorted({(m.get("id") or m.get("name")) if isinstance(m, dict) else str(m) for m in items} - {None})
+        return {"ok": True, "models": ids}
+    except Exception as exc:  # noqa: BLE001 - reported to the page
+        return {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
 
 
 def write(values: dict[str, str]) -> None:
@@ -168,7 +230,7 @@ async def test(node: str, make_recognizer, make_synthesizer) -> dict:
                     return
             await asyncio.wait_for(first_chunk(), 20)
         elif node == "asr":
-            if os.getenv("ASR_PROVIDER", "elevenlabs").lower() == "elevenlabs":
+            if R.selected("asr") == "elevenlabs":
                 import httpx  # the realtime socket accepts a bad key at connect time: check the key itself
                 async with httpx.AsyncClient(timeout=15) as http:
                     r = await http.get("https://api.elevenlabs.io/v1/user", headers={"xi-api-key": os.getenv("ELEVENLABS_API_KEY", "")})

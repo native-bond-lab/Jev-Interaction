@@ -13,4 +13,4 @@ policies:
   listen: {type: threshold, default: 0.8}
   floor: {type: threshold, default: 0.5, fallback: carry_on}
   quiet: argmax
-display: {title: Support line, title_zh: 宽带客服, tagline: "Brief, predictable, waits while you read a number", tagline_zh: "简洁可靠，你念号码时耐心等", language: en, accent: "#60a5fa", order: 50}
+display: {title: Support line, title_zh: 宽带客服, tagline: "Brief, predictable, waits while you read a number", tagline_zh: "简洁可靠，你念号码时耐心等", language: en, accent: "#60a5fa", order: 10, group: task}

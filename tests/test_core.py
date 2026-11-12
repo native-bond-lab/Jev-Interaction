@@ -215,27 +215,75 @@ def test_provider_registry_drives_factories_health_and_settings(monkeypatch):
     from jev_interaction.adapters import registry as R
     for k in ("JEV_API_KEY", "LLM_API_KEY", "LLM_BASE_URL", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID", "DASHSCOPE_API_KEY"):
         monkeypatch.delenv(k, raising=False)
-    monkeypatch.setenv("ASR_PROVIDER", "dashscope")
+    for k in ("ASR_PROVIDER", "TTS_PROVIDER", "LLM_MODEL"):
+        monkeypatch.delenv(k, raising=False)
+    assert R.missing_settings() == ["JEV_API_KEY", "LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL", "ASR_PROVIDER", "TTS_PROVIDER"]
+    monkeypatch.setenv("ASR_PROVIDER", "dashscope")                    # speech is never chosen for the user
     monkeypatch.setenv("TTS_PROVIDER", "elevenlabs")
-    assert R.missing_settings() == ["JEV_API_KEY", "LLM_API_KEY", "DASHSCOPE_API_KEY", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID"]
+    monkeypatch.setenv("LLM_MODEL", "llama3")
+    assert R.missing_settings() == ["JEV_API_KEY", "LLM_BASE_URL", "LLM_API_KEY", "DASHSCOPE_API_KEY", "ELEVENLABS_API_KEY",
+                                    "ELEVENLABS_VOICE_ID"]
     monkeypatch.setenv("LLM_BASE_URL", "http://localhost:11434/v1")      # a local model needs no key
     assert "LLM_API_KEY" not in R.missing_settings()
     R.register("asr", "toy", lambda language="en", **_: ("toy-asr", language), [R.Setting("TOY_KEY", "Toy key", secret=True, required=True)])
     monkeypatch.setenv("ASR_PROVIDER", "toy")
     assert R.create("asr", language="zh") == ("toy-asr", "zh") and "TOY_KEY" in R.missing_settings()
     from jev_interaction.server import settings as S
-    asr = next(n for n in S.build_nodes() if n["id"] == "asr")
-    assert "toy" in asr["fields"][0]["options"] and any(f["name"] == "TOY_KEY" and f["provider"] == "toy" for f in asr["fields"])
+    asr = next(s for s in S.steps() if s["id"] == "asr")
+    toy = next(p for p in asr["providers"] if p["name"] == "toy")
+    assert asr["selected"] == "toy" and toy["missing"] == ["TOY_KEY"] and not asr["ready"]
     R._PROVIDERS.pop(("asr", "toy"))
 
 
-def test_settings_templates_match_env_examples():
+def test_no_speech_provider_is_chosen_for_the_user(monkeypatch):
+    from jev_interaction.adapters import registry as R
+    monkeypatch.delenv("TTS_PROVIDER", raising=False)
+    assert R.selected("tts") is None and R.speech_style() == "plain"
+    with pytest.raises(R.NotChosen):
+        R.create("tts")
+
+
+def test_the_language_model_is_told_how_to_write_for_the_voice(monkeypatch):
+    from jev_interaction.adapters import registry as R
+    monkeypatch.setenv("TTS_PROVIDER", "elevenlabs")
+    monkeypatch.setenv("ELEVENLABS_TTS_MODEL", "eleven_v4_turbo")
+    assert R.speech_style() == "audio_tags" and "[laughs]" in R.speech_prompt()
+    s, _, _ = make({})
+    assert "[laughs]" in s.system                                          # the session picks it up from the registry
+    monkeypatch.setenv("ELEVENLABS_TTS_MODEL", "eleven_multilingual_v2")   # an older model reads tags aloud
+    assert R.speech_style() == "plain"
+    monkeypatch.setenv("TTS_PROVIDER", "dashscope")
+    assert R.speech_style() == "plain" and "no stage directions" in R.speech_prompt()
+    R.register_style("whisper_only", "Whisper everything.")
+    R.register("tts", "toy", lambda **_: None, speech=lambda: "whisper_only")
+    assert R.speech_prompt("toy") == "Whisper everything."
+    R._PROVIDERS.pop(("tts", "toy"))
+
+
+def test_a_pasted_key_is_recognised_by_its_shape():
+    from jev_interaction.adapters import registry as R
+    ids = lambda kind, key: [c["id"] for c in R.detect(kind, key)]  # noqa: E731
+    assert ids("llm", "xai-" + "a" * 40) == ["xai"]
+    assert ids("llm", "sk-proj-" + "a" * 40) == ["openai"]
+    assert ids("llm", "sk-or-v1-" + "a" * 40) == ["openrouter"]
+    assert ids("llm", "gsk_" + "a" * 40) == ["groq"]
+    plain = ids("llm", "sk-" + "0123456789abcdef" * 2)                  # several vendors share this shape: all offered
+    assert {"openai", "deepseek", "dashscope", "moonshot"} <= set(plain)
+    assert ids("llm", "01234567-89ab-cdef-0123-456789abcdef")[:2] == ["volcengine", "byteplus"]
+    assert ids("tts", "sk_" + "0123456789abcdef" * 3) == ["elevenlabs"]
+    assert ids("asr", "sk-" + "0123456789abcdef" * 2) == ["dashscope"]
+    assert R.detect("llm", "") == []
+
+
+def test_reference_setups_match_env_example_and_are_not_the_default():
     from jev_interaction.server import settings as S
-    root = pathlib.Path(__file__).resolve().parents[1]
-    for name, file in (("global", ".env.example"), ("china", ".env.china.example")):
-        shipped = S.parse_env(root / file)
-        for k, v in S.TEMPLATES[name].items():
-            assert shipped.get(k) == v, (file, k, shipped.get(k), v)
+    text = (pathlib.Path(__file__).resolve().parents[1] / ".env.example").read_text(encoding="utf-8")
+    active = S.parse_env(pathlib.Path(__file__).resolve().parents[1] / ".env.example")
+    for name, values in S.TEMPLATES.items():
+        for k, v in values.items():
+            assert active.get(k) == v or f"# {k}={v}" in text, (name, k, v)
+    for k in ("LLM_BASE_URL", "LLM_MODEL", "ASR_PROVIDER", "TTS_PROVIDER"):
+        assert active[k] == ""                                             # vendors are the user's choice
 
 
 def test_profiles_by_id_and_user_override(tmp_path, monkeypatch):

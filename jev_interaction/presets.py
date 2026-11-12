@@ -9,8 +9,8 @@ tested      production plus the knobs measured in the README ("All knobs togethe
             sounds, a "not said to me" choice, voices 10 dB under the caller treated as someone else's
 default     the library defaults
 
-The providers that go with production are in .env.example (grok-4.3, ElevenLabs Scribe v2 realtime turbo, ElevenLabs
-eleven_v4_turbo, jev-latest); the mainland-China providers are in .env.china.example.
+Presets are timing only; providers are your choice. The ones our production runs with are a reference setup on the
+settings page and at the bottom of .env.example.
 """
 from __future__ import annotations
 

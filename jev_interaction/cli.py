@@ -1,7 +1,7 @@
 """The `jev-interaction` command.
 
     jev-interaction serve [--host 127.0.0.1] [--port 8080] [--preset production] [--home .]
-    jev-interaction init [--china]            write a .env template and a profiles/ folder here
+    jev-interaction init [--reference global|china]   write .env (empty, or a reference setup's values) and profiles/
     jev-interaction replay runs/*.jsonl --purpose floor [--edit my_questions.py]
 """
 from __future__ import annotations
@@ -38,9 +38,9 @@ def _init(a: argparse.Namespace) -> int:
     if env.exists():
         print(f"{env} already exists; leaving it alone.")
     else:
-        t = settings.TEMPLATES["china" if a.china else "global"]
+        t = settings.TEMPLATES[a.reference] if a.reference else {}
         keys = sorted(settings.SECRETS)
-        body = ["# Jev-Interaction settings. Fill in the keys, or use the Settings panel on the page."]
+        body = ["# Jev-Interaction settings. Fill them in here, or follow the setup steps on the page."]
         body += [f"{k}=" for k in keys] + [f"{k}={v}" for k, v in t.items()]
         env.write_text("\n".join(body) + "\n", encoding="utf-8")
         env.chmod(0o600)
@@ -61,7 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--quiet", action="store_true")
     s.set_defaults(run=_serve)
     i = sub.add_parser("init", help="write a .env template and a profiles/ folder")
-    i.add_argument("--china", action="store_true", help="mainland China providers (DashScope)")
+    i.add_argument("--reference", choices=["global", "china"], help="start from a reference setup (what we run / mainland China)")
     i.add_argument("--home")
     i.set_defaults(run=_init)
     r = sub.add_parser("replay", help="re-ask the decisions recorded in call logs, as asked or reworded")

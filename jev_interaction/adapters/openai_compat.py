@@ -27,9 +27,11 @@ def no_reasoning(base_url: str) -> dict:
 
 class OpenAICompatResponder:
     def __init__(self, base_url: str | None = None, api_key: str | None = None, model: str | None = None, temperature: float | None = None):
-        self.base_url = (base_url or os.getenv("LLM_BASE_URL", "https://api.x.ai/v1")).rstrip("/")
+        self.base_url = (base_url or os.getenv("LLM_BASE_URL", "")).rstrip("/")
         self.key = api_key or os.getenv("LLM_API_KEY", "")
-        self.model = model or os.getenv("LLM_MODEL", "grok-4.3")
+        self.model = model or os.getenv("LLM_MODEL", "")
+        if not self.base_url or not self.model:
+            raise ValueError("set LLM_BASE_URL and LLM_MODEL (any OpenAI-compatible endpoint and one of its models)")
         self.temperature = temperature if temperature is not None else float(os.getenv("LLM_TEMPERATURE", "0.7"))
         self.extra = {**no_reasoning(self.base_url), **json.loads(os.getenv("LLM_EXTRA_BODY", "") or "{}")}
 
