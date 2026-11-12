@@ -5,9 +5,12 @@ services:
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     ports:
-      - "${PORT:-8080}:8080"
+      - "127.0.0.1:${PORT:-8080}:8080"   # this machine only: the settings page writes keys into .env
     env_file: .env
+    environment:
+      SETTINGS_WRITABLE: "1"
     volumes:
+      - ./.env:/app/.env                 # keys saved from the settings page land in your .env
       - ./runs:/app/runs              # call logs, for tools/replay.py
       - ./examples/profiles:/app/examples/profiles   # edit or add profiles without rebuilding
     restart: unless-stopped

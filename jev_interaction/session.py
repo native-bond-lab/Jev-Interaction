@@ -118,8 +118,10 @@ class Session:
     async def close(self):
         self.closed = True
         self.gen += 1
-        for t in list(self._tasks):
+        tasks = list(self._tasks)
+        for t in tasks:
             t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         await self.asr.close()
         self.rec.write("end", ledger=[t.__dict__ for t in self.ledger.turns])
         self.rec.close()
@@ -127,8 +129,14 @@ class Session:
     def _spawn(self, coro):
         t = asyncio.get_running_loop().create_task(coro)
         self._tasks.add(t)
-        t.add_done_callback(self._tasks.discard)
+        t.add_done_callback(self._task_done)
         return t
+
+    def _task_done(self, t: asyncio.Task):
+        self._tasks.discard(t)
+        if not t.cancelled() and t.exception() is not None:
+            exc = t.exception()
+            self.rec.write("task_error", error=f"{type(exc).__name__}: {str(exc)[:200]}")
 
     async def send(self, **event):
         self.rec.write("send", **event)
@@ -249,9 +257,16 @@ class Session:
         return S.header(self.p, self.pace, self.ledger, self.cfg.judge_turns, self.cfg.judge_turn_chars)
 
     async def _ask(self, purpose: str, questions: dict, state: str) -> dict:
+        """Jev's answers, or {} when the judge fails or is slow: every decision then takes its fallback (floor -> carry on,
+        turn -> the pace's max wait, quiet -> nothing), so a judge error never freezes the call."""
         t = time.monotonic()
-        answers = await self.judge.ask(questions, state)
-        self.rec.write("judge", purpose=purpose, ms=int((time.monotonic() - t) * 1000), state=state,
+        try:
+            answers = await asyncio.wait_for(self.judge.ask(questions, state), self.cfg.judge_timeout_s)
+        except Exception as exc:  # noqa: BLE001
+            self.rec.write("judge_error", purpose=purpose, error=f"{type(exc).__name__}: {str(exc)[:200]}")
+            await self.send(type="error", what="judge", purpose=purpose, text=f"{type(exc).__name__}: {str(exc)[:120]}")
+            return {}
+        self.rec.write("judge", purpose=purpose, ms=int((time.monotonic() - t) * 1000), state=state, questions=questions,
                        answers={k: P(answers, k) for k in questions})
         return answers
 

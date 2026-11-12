@@ -215,3 +215,43 @@ def test_reasoning_is_switched_off_where_the_provider_has_a_switch():
     assert no_reasoning("https://ark.ap-southeast.bytepluses.com/api/v3") == {"thinking": {"type": "disabled"}}
     assert no_reasoning("https://dashscope.aliyuncs.com/compatible-mode/v1") == {"enable_thinking": False}
     assert no_reasoning("https://api.openai.com/v1") == {} and no_reasoning("http://localhost:11434/v1") == {}
+
+
+async def test_a_failing_judge_never_leaves_the_line_held():
+    class BrokenJudge:
+        async def ask(self, questions, state):
+            raise RuntimeError("judge down")
+    s, events, _ = make({})
+    s.judge = BrokenJudge()
+    s.speaking = True
+    s.ledger.agent("So the thing about my morning is")
+    s.vad.voice = True
+    for _ in range(3):
+        await s.on_audio(b"\x00" * 6400)
+    assert s.held
+    await s.on_segment(Segment("Wait, what?"))
+    await asyncio.sleep(0.05)
+    assert not s.held and any(e["type"] == "unhold" for e in events)
+    assert any(e["type"] == "error" and e["what"] == "judge" for e in events)
+
+
+def test_settings_are_written_only_from_this_servers_own_page(monkeypatch):
+    from server import settings as S
+    monkeypatch.delenv("SETTINGS_WRITABLE", raising=False)
+    assert S.is_writable("127.0.0.1", "localhost:8080", "http://localhost:8080")
+    assert S.is_writable("::1", "[::1]:8080", "")
+    assert not S.is_writable("192.168.1.9", "localhost:8080", "")                    # another machine
+    assert not S.is_writable("127.0.0.1", "localhost:8080", "https://evil.example")    # another site in this browser
+    assert not S.is_writable("127.0.0.1", "evil.example:8080", "http://evil.example")  # DNS rebinding
+
+
+def test_settings_write_keeps_other_lines_and_rejects_unknown_names(tmp_path, monkeypatch):
+    from server import settings as S
+    env = tmp_path / ".env"
+    env.write_text("# keys\nJEV_API_KEY=old\nOTHER=1\n")
+    monkeypatch.setattr(S, "ENV_FILE", env)
+    S.write({"JEV_API_KEY": "new", "LLM_MODEL": "grok-4.3"})
+    text = env.read_text()
+    assert "# keys" in text and "JEV_API_KEY=new" in text and "OTHER=1" in text and "LLM_MODEL=grok-4.3" in text
+    with pytest.raises(KeyError):
+        S.write({"PATH": "/tmp"})

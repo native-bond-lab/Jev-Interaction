@@ -51,6 +51,7 @@ class Config:
     quiet_jitter: float = 0.3
     check_min_quiet_s: float = 10.0    # "are you there?" only after this much quiet
     hangup_min_quiet_s: float = 25.0   # a hang-up only after this much quiet, and never as the first thing said into it
+    judge_timeout_s: float = 3.0       # a judge answer slower than this is dropped and the decision takes its fallback
     judge_turns: int = 8               # recent turns in every Jev state
     judge_turn_chars: int = 300
     safe_words: tuple = ("red",)       # stop everything, no judgement involved

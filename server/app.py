@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import json
 import os
+from collections import OrderedDict
 import pathlib
 import time
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -32,11 +33,13 @@ from jev_interaction.judge import JevClient  # noqa: E402
 from jev_interaction.presets import config as preset_config  # noqa: E402
 from jev_interaction.recorder import Recorder  # noqa: E402
 from jev_interaction.session import Session  # noqa: E402
+from server import settings as S  # noqa: E402
 
 WEB = ROOT / "web"
 PROFILES = ROOT / "examples" / "profiles"
 app = FastAPI(title="Jev-Interaction")
-LINES: dict[str, tuple[str, object]] = {}      # line id -> (text, the synthesizer that voices it)
+LINES: "OrderedDict[str, tuple[str, object]]" = OrderedDict()   # line id -> (text, synthesizer); the newest MAX_LINES
+MAX_LINES = 2000
 MAX_CALLS = int(os.getenv("MAX_CONCURRENT_CALLS", "0"))     # 0 = no limit; set it for a public demo (e.g. a HF Space)
 MAX_CALL_S = float(os.getenv("MAX_CALL_SECONDS", "0"))      # 0 = no limit
 ACTIVE = {"calls": 0}
@@ -100,6 +103,40 @@ def health():
                           "asr": asr_provider(), "tts": tts_provider(), "judge": os.getenv("JEV_MODEL", "jev-latest")}}
 
 
+def _who(request) -> tuple[str | None, str, str]:
+    return (request.client.host if request.client else None, request.headers.get("host", ""), request.headers.get("origin", ""))
+
+
+async def _local_json(request: Request) -> dict:
+    """The body of a settings request that really comes from this server's own page on this machine."""
+    if not S.is_writable(*_who(request)):
+        raise HTTPException(403, "Settings can only be changed from this server's page, on the machine running it.")
+    if not request.headers.get("content-type", "").startswith("application/json"):
+        raise HTTPException(415, "Send JSON.")      # a cross-site form or text/plain post is refused before it is read
+    return await request.json()
+
+
+@app.get("/api/settings")
+def get_settings(request: Request):
+    return S.read(*_who(request))
+
+
+@app.post("/api/settings")
+async def save_settings(request: Request):
+    body = await _local_json(request)
+    try:
+        S.write(body.get("values") or {})
+    except KeyError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"ok": True, "health": health()}
+
+
+@app.post("/api/settings/test")
+async def test_settings(request: Request):
+    body = await _local_json(request)
+    return await S.test(body.get("node", ""), make_recognizer, make_synthesizer)
+
+
 @app.get("/tts/{line_id}")
 async def tts(line_id: str):
     found = LINES.get(line_id)
@@ -109,8 +146,20 @@ async def tts(line_id: str):
     return StreamingResponse(synth.audio(text), media_type=synth.media_type)
 
 
+def same_origin(origin: str, host: str) -> bool:
+    """A call may be opened only by this server's own page (or an origin listed in ALLOWED_ORIGINS): any other site
+    could otherwise open a billed call through the visitor's browser."""
+    if not origin:
+        return True
+    allowed = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+    return S._host_only(origin) == S._host_only(host) or origin in allowed
+
+
 @app.websocket("/ws")
 async def call(ws: WebSocket):
+    if not same_origin(ws.headers.get("origin", ""), ws.headers.get("host", "")):
+        await ws.close(code=4403)
+        return
     await ws.accept()
     if MAX_CALLS and ACTIVE["calls"] >= MAX_CALLS:
         await ws.send_text(json.dumps({"type": "busy", "text": "All lines are busy, try again in a minute."}))
@@ -129,15 +178,22 @@ async def call(ws: WebSocket):
     async def send(event: dict):
         if event.get("type") in ("line", "listen"):
             LINES[event["id"]] = (event["text"], synth)
+            while len(LINES) > MAX_LINES:
+                LINES.popitem(last=False)
         await ws.send_text(json.dumps(event, ensure_ascii=False))
 
-    session = Session(profile, send=send, judge=JevClient(), recognizer=make_recognizer(language),
+    judge = JevClient()
+    session = Session(profile, send=send, judge=judge, recognizer=make_recognizer(language),
                       responder=OpenAICompatResponder(), vad=EnergyVAD(), config=cfg,
                       recorder=Recorder(ROOT / "runs" / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"))
     ACTIVE["calls"] += 1
     started = time.monotonic()
-    await session.start()
     try:
+        try:
+            await session.start()
+        except Exception as exc:  # noqa: BLE001 - e.g. the recognizer refused the key: tell the page, end the call
+            await ws.send_text(json.dumps({"type": "error", "what": "start", "text": f"{type(exc).__name__}: {str(exc)[:160]}"}))
+            return
         while True:
             if MAX_CALL_S and time.monotonic() - started > MAX_CALL_S:
                 await ws.send_text(json.dumps({"type": "hangup", "why": "time limit"}))
@@ -153,7 +209,10 @@ async def call(ws: WebSocket):
         pass
     finally:
         ACTIVE["calls"] -= 1
-        await session.close()
+        try:
+            await session.close()
+        finally:
+            await judge.aclose()
 
 
 @app.get("/")
