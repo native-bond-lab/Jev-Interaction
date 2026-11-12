@@ -157,7 +157,7 @@ async def call(ws: WebSocket):
     missing = registry.missing_settings()
     if missing:
         await ws.send_text(json.dumps({"type": "error", "what": "settings", "missing": missing,
-                                       "text": "Missing settings: " + ", ".join(missing) + " (open Settings on the page)"}))
+                                       "text": "Missing settings: " + ", ".join(missing)}))
         await ws.close(code=4412)
         return
     profile = Profile.load(path)
