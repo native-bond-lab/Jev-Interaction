@@ -51,7 +51,6 @@ class Session:
         self.policies = {**self.cfg.policies, **profile.policies}   # a task type may bring its own policies
         self.decisions: dict[str, Decision] = dict(DECISIONS)       # asked in this order on new words and on each tick
         self.ledger = Ledger()
-        self.said_over: list[str] = []           # words the user said over lines that went on, for their next turn
         self.lines: dict[str, str] = {}          # line id -> text, fetched by the client from the TTS route
         self.pace, self.pace_probs, self.transition = self.cfg.start_pace, {}, None
         self.user_turns = 0
@@ -179,11 +178,6 @@ class Session:
         for d in list(self.decisions.values()):
             d.on_words(self)                      # floor while the agent speaks; turn (and cut_in) while it is quiet
 
-    def _with_said_over(self, text: str) -> str:
-        """The user's turn for the responder, with what they said over the agent's lines since their last turn."""
-        over, self.said_over = " ".join(self.said_over), []
-        return f"(over you: {over}) {text}".strip() if over else text
-
     def _own_words(self, text: str) -> bool:
         """The recognizer heard words of the agent's own recent lines (a speaker next to the microphone)."""
         norm = lambda s: re.sub(r"[\W_]+", "", s).lower()  # noqa: E731
@@ -309,14 +303,14 @@ class Session:
         if self.utt is not None and event.answers_user:
             if self.utt.level is not None:
                 self.caller_levels = (self.caller_levels + [self.utt.level])[-20:]
-            self.ledger.user(self._with_said_over(self.utt.text), line)
+            self.ledger.user(self.utt.text, line)
             await self.send(type="user", text=self.utt.text, partial=False)
             self.user_turns += 1
             self.spoke_into_quiet = 0
             self.utt = None
             self.judged = None
         else:
-            self.ledger.user(self._with_said_over(""), line)
+            self.ledger.user("", line)
         messages = [{"role": "system", "content": self.system}, *self.ledger.messages()]
         turn = self.ledger.agent("")
         self.rec.write("respond", gen=gen, kind=kind, data_line=line)

@@ -59,8 +59,8 @@ class Floor(Decision):
         if action == "carry_on":
             s.held = False
             await s.send(type="unhold", gen=s.gen)
-            if s.speaking:                                  # said over a line that goes on: filed, not a turn to answer;
-                s.said_over.append(s.utt.text)              # the next sound starts from nothing
+            if s.speaking:                                  # said over a line that goes on: into the call's record at once
+                s.ledger.said_over(s.utt.text)              # (not a turn to answer); the next sound starts from nothing
                 s.utt, s.judged = None, None
             else:
                 s.utt.over_ms = 0

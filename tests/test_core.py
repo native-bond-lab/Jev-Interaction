@@ -386,7 +386,12 @@ async def test_after_carry_on_the_next_sound_holds_afresh_and_lets_go_without_wo
     await s.on_segment(Segment("no way"))
     await asyncio.sleep(0.05)
     assert [e["type"] for e in events if e["type"] in ("hold", "unhold")] == ["hold", "unhold"]
-    assert s.utt is None and s.said_over == ["no way"]                   # filed for the next turn, the story goes on
+    assert s.utt is None and s.ledger.turns[-1].over                     # in the record at once; the story goes on
+    assert s.ledger.messages()[-1] == {"role": "user", "content": "(over you: no way)"}
+    assert "who went on): no way" in s.ledger.recent_text("Mara", 8, 300)
+    s.ledger.user("so what happened", "[event]")
+    assert s.ledger.messages()[-1]["content"] == "(over you: no way)\n[event]\nso what happened"
+    s.ledger.turns.pop()
     await s.on_audio(b"\x00" * 6400)                                    # a laugh a little later
     assert [e["type"] for e in events if e["type"] in ("hold", "unhold")] == ["hold", "unhold"]
     await s.on_audio(b"\x00" * 6400)
