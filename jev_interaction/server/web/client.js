@@ -74,8 +74,8 @@
       tagline: 'Lets you search for the word, then helps', tagline_zh: '让你自己想词，再轻轻帮一把' },
     { id: 'interviewer', name: 'Alex', title: 'Interviewer', title_zh: '面试官', accent: '#b9a2ff', language: 'en', group: 'task',
       tagline: 'Keeps to time, lets answers run, moves on firmly', tagline_zh: '把控时间，让你把话说完，再果断往下走' },
-    { id: 'companion', name: 'Mara', title: 'Companion', title_zh: '陪伴', accent: '#ff9a6b', language: 'en', group: 'fun',
-      tagline: 'A late-night radio host who listens out loud', tagline_zh: '深夜电台主持人，边听边应' },
+    { id: 'kai', name: 'Kai', title: 'Companion', title_zh: '陪伴', accent: '#3ee0c8', language: 'en', group: 'task',
+      tagline: 'All four paces, every decision: the call we run in production', tagline_zh: '四种节奏、全部决策：我们线上在跑的那通电话' },
   ];
   let profiles = FALLBACK_PROFILES, selected = null, health = null, funOpen = false;
 

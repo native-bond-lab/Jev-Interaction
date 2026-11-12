@@ -11,4 +11,4 @@ policies:
   end_of_turn: sample
   listen: sample
   quiet: sample
-display: {title: Companion, title_zh: 陪伴, tagline: "A late-night radio host who loves your stories", tagline_zh: "爱听你讲故事的深夜电台主持人", language: en, accent: "#f59e0b", order: 60, group: fun}
+display: {title: Companion, title_zh: 陪伴, tagline: "A late-night radio host who loves your stories", tagline_zh: "爱听你讲故事的深夜电台主持人", language: en, accent: "#f59e0b", order: 60, group: fun, listed: false}

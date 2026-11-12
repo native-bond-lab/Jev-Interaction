@@ -140,7 +140,7 @@ body[data-state="yielded"] .status-dot { background: var(--yield); }
 /* ---------- persona picker ---------- */
 .picker { width: 100%; max-width: 860px; margin-top: 2px; }
 .picker { max-width: 780px; }
-.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .cards.fun { margin-top: 10px; animation: fun-in .35s var(--ease) both; }
 @keyframes fun-in { from { opacity: 0; transform: translateY(-6px); } }
 .card.more { border-style: dashed; }

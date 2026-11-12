@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The page lists four personas per language: the companion (Kai / 江屿) and three working ones (support, tutor,
+  interviewer; `tutor_zh` and `interviewer_zh` are new). Vera, Mara, 阿乐 and 小言 stay in the package, unlisted.
 - The ear production runs on: TEN VAD (`adapters.best_vad()`, the energy detector when `ten-vad` is not installed),
   the bar raised while the agent's own line plays, a hold only after 400 ms of real voice, and the agent's own words
   coming back through the microphone are dropped. A loud room no longer reads as the user talking without end.

@@ -73,13 +73,14 @@ def profile_card(pid: str, path) -> dict:
             "title_zh": d.get("title_zh", d.get("title", p.name)), "tagline": d.get("tagline", p.task),
             "tagline_zh": d.get("tagline_zh", d.get("tagline", p.task)), "language": d.get("language", "en"),
             "accent": d.get("accent", "#3ee0c8"), "order": d.get("order", 100),
-            "group": d.get("group", "task")}
+            "group": d.get("group", "task"), "listed": d.get("listed", True)}
 
 
 @app.get("/api/profiles")
 def profiles():
     cards = [profile_card(pid, f) for pid, f in paths.profiles().items()]
-    return sorted(cards, key=lambda c: (c["order"], c["id"]))
+    # the page lists the working personas; the others (display.listed: false) are still there to load and to call by id
+    return sorted((c for c in cards if c["listed"]), key=lambda c: (c["order"], c["id"]))
 
 
 @app.get("/api/health")
