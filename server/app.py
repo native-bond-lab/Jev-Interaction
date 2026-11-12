@@ -27,9 +27,7 @@ for line in (ROOT / ".env").read_text(encoding="utf-8").splitlines() if (ROOT / 
         os.environ.setdefault(k.strip(), v.strip())
 
 from jev_interaction import Profile  # noqa: E402  (after .env, so adapters read the keys)
-from jev_interaction.adapters import EnergyVAD  # noqa: E402
-from jev_interaction.adapters.openai_compat import OpenAICompatResponder  # noqa: E402
-from jev_interaction.judge import JevClient  # noqa: E402
+from jev_interaction.adapters import EnergyVAD, registry  # noqa: E402
 from jev_interaction.presets import config as preset_config  # noqa: E402
 from jev_interaction.recorder import Recorder  # noqa: E402
 from jev_interaction.session import Session  # noqa: E402
@@ -45,29 +43,13 @@ MAX_CALL_S = float(os.getenv("MAX_CALL_SECONDS", "0"))      # 0 = no limit
 ACTIVE = {"calls": 0}
 
 
-def asr_provider() -> str:
-    return os.getenv("ASR_PROVIDER", "elevenlabs").lower()
-
-
-def tts_provider() -> str:
-    return os.getenv("TTS_PROVIDER", "elevenlabs").lower()
-
-
 def make_recognizer(language: str):
-    if asr_provider() == "dashscope":
-        from jev_interaction.adapters.dashscope_asr import ParaformerRealtime
-        return ParaformerRealtime(language=language)
-    from jev_interaction.adapters.scribe import ScribeRealtime
-    return ScribeRealtime(language=language)
+    return registry.create("asr", language=language)
 
 
 def make_synthesizer(profile: Profile):
     voices = profile.extra.get("voices") or {}
-    if tts_provider() == "dashscope":
-        from jev_interaction.adapters.dashscope_tts import CosyVoiceTTS
-        return CosyVoiceTTS(voice=voices.get("dashscope"))
-    from jev_interaction.adapters.elevenlabs_tts import ElevenLabsTTS
-    return ElevenLabsTTS(voice_id=voices.get("elevenlabs"))
+    return registry.create("tts", voice=voices.get(registry.selected("tts")))
 
 
 def profile_card(path: pathlib.Path) -> dict:
@@ -87,20 +69,10 @@ def profiles():
 
 @app.get("/api/health")
 def health():
-    need = ["JEV_API_KEY"]
-    local_llm = any(h in os.getenv("LLM_BASE_URL", "") for h in ("localhost", "127.0.0.1", "0.0.0.0"))
-    if not local_llm:
-        need.append("LLM_API_KEY")
-    if "elevenlabs" in (asr_provider(), tts_provider()):
-        need.append("ELEVENLABS_API_KEY")
-    if tts_provider() == "elevenlabs":
-        need.append("ELEVENLABS_VOICE_ID")
-    if "dashscope" in (asr_provider(), tts_provider()):
-        need.append("DASHSCOPE_API_KEY")
-    missing = [k for k in need if not os.getenv(k)]
+    missing = registry.missing_settings()
     return {"ready": not missing, "missing": missing, "preset": os.getenv("JEV_PRESET", "production"),
             "providers": {"llm": f"{os.getenv('LLM_MODEL', 'grok-4.3')} @ {os.getenv('LLM_BASE_URL', 'https://api.x.ai/v1')}",
-                          "asr": asr_provider(), "tts": tts_provider(), "judge": os.getenv("JEV_MODEL", "jev-latest")}}
+                          "asr": registry.selected("asr"), "tts": registry.selected("tts"), "judge": os.getenv("JEV_MODEL", "jev-latest")}}
 
 
 def _who(request) -> tuple[str | None, str, str]:
@@ -182,9 +154,9 @@ async def call(ws: WebSocket):
                 LINES.popitem(last=False)
         await ws.send_text(json.dumps(event, ensure_ascii=False))
 
-    judge = JevClient()
+    judge = registry.create("judge")
     session = Session(profile, send=send, judge=judge, recognizer=make_recognizer(language),
-                      responder=OpenAICompatResponder(), vad=EnergyVAD(), config=cfg,
+                      responder=registry.create("llm"), vad=EnergyVAD(), config=cfg,
                       recorder=Recorder(ROOT / "runs" / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"))
     ACTIVE["calls"] += 1
     started = time.monotonic()

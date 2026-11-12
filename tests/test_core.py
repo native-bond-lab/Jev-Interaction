@@ -255,3 +255,21 @@ def test_settings_write_keeps_other_lines_and_rejects_unknown_names(tmp_path, mo
     assert "# keys" in text and "JEV_API_KEY=new" in text and "OTHER=1" in text and "LLM_MODEL=grok-4.3" in text
     with pytest.raises(KeyError):
         S.write({"PATH": "/tmp"})
+
+
+def test_provider_registry_drives_factories_health_and_settings(monkeypatch):
+    from jev_interaction.adapters import registry as R
+    for k in ("JEV_API_KEY", "LLM_API_KEY", "LLM_BASE_URL", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID", "DASHSCOPE_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("ASR_PROVIDER", "dashscope")
+    monkeypatch.setenv("TTS_PROVIDER", "elevenlabs")
+    assert R.missing_settings() == ["JEV_API_KEY", "LLM_API_KEY", "DASHSCOPE_API_KEY", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID"]
+    monkeypatch.setenv("LLM_BASE_URL", "http://localhost:11434/v1")      # a local model needs no key
+    assert "LLM_API_KEY" not in R.missing_settings()
+    R.register("asr", "toy", lambda language="en", **_: ("toy-asr", language), [R.Setting("TOY_KEY", "Toy key", secret=True, required=True)])
+    monkeypatch.setenv("ASR_PROVIDER", "toy")
+    assert R.create("asr", language="zh") == ("toy-asr", "zh") and "TOY_KEY" in R.missing_settings()
+    from server import settings as S
+    asr = next(n for n in S.build_nodes() if n["id"] == "asr")
+    assert "toy" in asr["fields"][0]["options"] and any(f["name"] == "TOY_KEY" and f["provider"] == "toy" for f in asr["fields"])
+    R._PROVIDERS.pop(("asr", "toy"))
