@@ -1,7 +1,8 @@
 import asyncio
-import importlib.util
 import json
 import pathlib
+
+from test_core import make
 
 from jev_interaction import ArgmaxPolicy, Config, speaking
 from jev_interaction.adapters.base import Segment
@@ -9,8 +10,6 @@ from jev_interaction.decisions import DECISIONS, Decision, register
 from jev_interaction.judge import questions as Q
 from jev_interaction.judge.client import probs as P
 from jev_interaction.recorder import Recorder
-
-from test_core import make
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -76,10 +75,8 @@ async def test_a_failing_judge_leaves_a_new_decision_with_no_choice():
 
 
 def load_replay():
-    spec = importlib.util.spec_from_file_location("replay_tool", ROOT / "tools" / "replay.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    from jev_interaction import replay
+    return replay
 
 
 class RecordingJudge:

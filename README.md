@@ -209,7 +209,7 @@ started from. Your own personas go in `./profiles/*.yaml`; one with the same nam
 | keys | Jev, xAI, ElevenLabs | Jev, one DashScope key |
 
 **Presets.** `JEV_PRESET=production` (default) is the timing the production engine runs today; `tested` adds the knobs
-measured below; `default` is the library defaults. In code: `jev_interaction.presets.config("production")`.
+measured below; `default` is the library defaults. In code: `jev_interaction.preset("production", language="en")`.
 
 **Hugging Face Space.** `HF_TOKEN=... ./scripts/push_hf_space.sh <owner>/<space>` publishes this repository as a Docker
 Space ([card](deploy/huggingface/README.md)); add the keys as Space secrets and set `MAX_CONCURRENT_CALLS` /
@@ -287,7 +287,7 @@ config = Config(policies={**Config().policies, "laugh": SamplePolicy()})
 Nothing else changes: the session offers every registered decision each new segment of words (`on_words`) and each
 100 ms tick (`on_tick`), and logs the state, the questions and the answers. `allowed` narrows the choices to what
 applies now and `state` adds to what Jev reads; the five built-in decisions in `jev_interaction/decisions/` are the
-examples. Replay recorded calls with `python tools/replay.py runs/*.jsonl --purpose laugh` to see where its answers land.
+examples. Replay recorded calls with `jev-interaction replay runs/*.jsonl --purpose laugh` to see where its answers land.
 
 ### Tested knobs
 
@@ -540,10 +540,11 @@ jev_interaction/
   prompts/system.md   the responder's default system prompt
   profiles/           the built-in personas
   server/             call server (WebSocket, line audio, profiles, health, settings) and its page (web/)
-  cli.py              `jev-interaction serve` / `init`
+  replay.py           re-ask the recorded questions, as asked or reworded
+  testing.py          fake judge, recognizer, responder, VAD and synthesizer: a call with no keys
+  cli.py              `jev-interaction serve` / `init` / `replay`
 scripts/setup.sh      one-click local setup (--china for mainland providers)
 deploy/huggingface/   Hugging Face Space card; scripts/push_hf_space.sh publishes it
-tools/replay.py       re-ask the recorded questions, as asked or reworded
 docs/                 architecture diagram and benchmark charts
 ```
 

@@ -24,3 +24,4 @@ Without keys the page runs its built-in simulated call (demo mode). To make real
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` | speech (or `ASR_PROVIDER` / `TTS_PROVIDER` = `dashscope` with `DASHSCOPE_API_KEY`) |
 | `MAX_CONCURRENT_CALLS` | e.g. `2`: every call is billed to the keys above |
 | `MAX_CALL_SECONDS` | e.g. `180` |
+| `JEV_RECORD_CALLS` | `0`: keep no call logs of your visitors |

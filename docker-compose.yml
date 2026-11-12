@@ -11,6 +11,6 @@ services:
       SETTINGS_WRITABLE: "1"
     volumes:
       - ./.env:/app/.env                 # keys saved from the settings page land in your .env
-      - ./runs:/app/runs                 # call logs, for tools/replay.py
+      - ./runs:/app/runs                 # call logs, for jev-interaction replay
       - ./profiles:/app/profiles         # your own personas; same file name replaces a built-in one
     restart: unless-stopped

@@ -7,7 +7,7 @@
 Response latency is mostly the responder's first line: a faster model there makes the whole call faster, and the
 interaction decisions do not change.
 """
-from .base import VAD, Recognizer, Responder, Synthesizer, Segment
+from .base import VAD, Recognizer, Responder, Segment, Synthesizer
 from .energy_vad import EnergyVAD
 
 __all__ = ["VAD", "Recognizer", "Responder", "Synthesizer", "Segment", "EnergyVAD"]

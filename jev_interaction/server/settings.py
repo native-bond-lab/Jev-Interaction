@@ -169,7 +169,7 @@ async def test(node: str, make_recognizer, make_synthesizer) -> dict:
             await asyncio.wait_for(first_chunk(), 20)
         elif node == "asr":
             if os.getenv("ASR_PROVIDER", "elevenlabs").lower() == "elevenlabs":
-                import httpx    # the realtime socket accepts a bad key at connect time: check the key itself
+                import httpx  # the realtime socket accepts a bad key at connect time: check the key itself
                 async with httpx.AsyncClient(timeout=15) as http:
                     r = await http.get("https://api.elevenlabs.io/v1/user", headers={"xi-api-key": os.getenv("ELEVENLABS_API_KEY", "")})
                     if r.status_code != 200:

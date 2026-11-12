@@ -17,7 +17,7 @@ The tests use a fake judge and fake adapters, so they need no API keys. A real c
 
 | change | where | how to check it |
 |---|---|---|
-| reword a question or a choice | `jev_interaction/judge/questions.py` | `python tools/replay.py <call logs> --purpose <decision> --edit <file>` shows which recorded answers flip |
+| reword a question or a choice | `jev_interaction/judge/questions.py` | `jev-interaction replay <call logs> --purpose <decision> --edit <file>` shows which recorded answers flip |
 | add a decision | the question in `judge/questions.py`, one module in `jev_interaction/decisions/` registered in `DECISIONS`, a policy in `Config.policies` | a test in `tests/`, then replay recorded calls |
 | change what Jev reads | `jev_interaction/judge/state.py` | replay: the state is the only input besides the question |
 | a new VAD, recognizer, responder or synthesizer | `jev_interaction/adapters/` | implement the protocol in the README table "Swappable pieces"; add a fake-driven test |

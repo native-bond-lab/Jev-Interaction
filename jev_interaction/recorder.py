@@ -1,6 +1,6 @@
 """Every decision is written down: the state Jev read, the questions, the probabilities, what was done.
 
-A call's log is one JSON line per event. tools/replay.py re-asks the recorded questions, as asked or reworded, which is how
+A call's log is one JSON line per event. `jev-interaction replay` re-asks the recorded questions, as asked or reworded, which is how
 a wording change is checked against real calls before it ships.
 """
 from __future__ import annotations

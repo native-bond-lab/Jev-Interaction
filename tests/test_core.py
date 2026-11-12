@@ -1,13 +1,11 @@
 import asyncio
 import pathlib
-import time
 
 import pytest
 
-from jev_interaction import ArgmaxPolicy, Config, Profile, SamplePolicy, ThresholdPolicy
+from jev_interaction import ArgmaxPolicy, Profile, SamplePolicy, ThresholdPolicy
 from jev_interaction.adapters.base import Segment
 from jev_interaction.judge import questions as Q
-from jev_interaction.session import Session
 
 
 def test_policies():
@@ -33,56 +31,11 @@ def test_questions_offer_choices_by_pace():
     assert set(Q.listen("Mara")["criteria"]) == {"continuer", "feeling", "echo", "quiet", "answer_due"}
 
 
-class FakeJudge:
-    def __init__(self, answers):
-        self.answers, self.asked = answers, []
-
-    async def ask(self, questions, state):
-        self.asked.append((set(questions), state))
-        return {k: {"choice": max(v, key=v.get), "probabilities": v} for k, v in self.answers.items() if k in questions}
-
-
-class FakeASR:
-    def __init__(self):
-        self.q = asyncio.Queue()
-
-    async def connect(self): ...
-    async def send(self, pcm): ...
-    async def close(self): ...
-
-    async def segments(self):
-        while (s := await self.q.get()) is not None:
-            yield s
-
-
-class FakeLLM:
-    def __init__(self, lines=("Hey.", "What's up?")):
-        self.seen, self.out = [], lines
-
-    async def lines(self, messages, max_tokens=160):
-        self.seen.append(messages)
-        for x in self.out:
-            yield x
-
-
-class FakeVAD:
-    def __init__(self):
-        self.voice = False
-
-    def is_voice(self, pcm):
-        return self.voice
+from jev_interaction.testing import FakeASR, FakeJudge, FakeLLM, FakeVAD, scripted_session  # noqa: E402,F401
 
 
 def make(answers, policies=None):
-    events = []
-
-    async def send(e):
-        events.append(e)
-    cfg = Config(policies={**Config().policies, **(policies or {})}, opening_turns=0)
-    judge = FakeJudge(answers)
-    s = Session(Profile("Mara Quinn", task="A companion who chats.", manner="Chatty listener."), send=send, judge=judge,
-                recognizer=FakeASR(), responder=FakeLLM(), vad=FakeVAD(), config=cfg)
-    return s, events, judge
+    return scripted_session(answers, policies)
 
 
 TURN = {"done": {"finished": 0.9, "continuing": 0.1}, "wait": {"now": 1.0, "half_second": 0, "two_seconds": 0, "hold": 0},

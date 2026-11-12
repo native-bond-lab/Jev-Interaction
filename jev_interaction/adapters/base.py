@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import AsyncIterator, Protocol
+from typing import Protocol
 
 
 @dataclass
@@ -29,8 +30,8 @@ class Responder(Protocol):
 
 
 class Synthesizer(Protocol):
-    async def audio(self, text: str) -> AsyncIterator[bytes]:
-        """Encoded audio for a line, streamed (the client starts playing on the first chunk)."""
-        ...
-
     media_type: str
+
+    def audio(self, text: str) -> AsyncIterator[bytes]:
+        """Encoded audio for a line, streamed (the client starts playing on the first chunk); usually an async generator."""
+        ...

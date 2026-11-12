@@ -21,7 +21,7 @@ import random
 import re
 import time
 import uuid
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from . import speaking
 from .adapters.base import VAD, Recognizer, Responder, Segment

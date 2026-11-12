@@ -13,9 +13,10 @@ whether they are secret or required). A third-party package registers its own pr
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from importlib.metadata import entry_points
-from typing import Any, Callable
+from typing import Any
 
 KINDS = {"judge": ("Judge", "法官 (Jev)"), "llm": ("Language model", "大模型"),
          "asr": ("Speech recognition", "语音识别"), "tts": ("Speech synthesis", "语音合成")}

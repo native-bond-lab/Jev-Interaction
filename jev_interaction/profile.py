@@ -41,7 +41,7 @@ class Profile:
         return " ".join(parts)
 
     @classmethod
-    def load(cls, path: str | pathlib.Path) -> "Profile":
+    def load(cls, path: str | pathlib.Path) -> Profile:
         """A profile from a YAML file, or a built-in one by name ("support", "vera", ...)."""
         p = pathlib.Path(path)
         if not p.exists() and p.suffix == "" and len(p.parts) == 1:

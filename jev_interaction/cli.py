@@ -1,7 +1,8 @@
 """The `jev-interaction` command.
 
     jev-interaction serve [--host 127.0.0.1] [--port 8080] [--preset production] [--home .]
-    jev-interaction init                      write a .env template and a profiles/ folder here
+    jev-interaction init [--china]            write a .env template and a profiles/ folder here
+    jev-interaction replay runs/*.jsonl --purpose floor [--edit my_questions.py]
 """
 from __future__ import annotations
 
@@ -63,6 +64,10 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--china", action="store_true", help="mainland China providers (DashScope)")
     i.add_argument("--home")
     i.set_defaults(run=_init)
+    r = sub.add_parser("replay", help="re-ask the decisions recorded in call logs, as asked or reworded")
+    from jev_interaction import replay as R
+    R.add_arguments(r)
+    r.set_defaults(run=lambda a: __import__("asyncio").run(R.run(a)))
     a = ap.parse_args(argv)
     return a.run(a)
 

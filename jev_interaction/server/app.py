@@ -24,15 +24,16 @@ from jev_interaction.server import paths
 paths.load_env()
 
 from jev_interaction import Profile  # noqa: E402  (after .env, so adapters read the keys)
+from jev_interaction import preset as preset_config  # noqa: E402
 from jev_interaction.adapters import EnergyVAD, registry  # noqa: E402
-from jev_interaction.presets import config as preset_config  # noqa: E402
 from jev_interaction.recorder import Recorder  # noqa: E402
-from jev_interaction.session import Session  # noqa: E402
 from jev_interaction.server import settings as S  # noqa: E402
+from jev_interaction.session import Session  # noqa: E402
 
 WEB = paths.WEB
+RECORD = os.getenv("JEV_RECORD_CALLS", "1") != "0"     # call logs in runs/ for replay; a public demo sets 0
 app = FastAPI(title="Jev-Interaction")
-LINES: "OrderedDict[str, tuple[str, object]]" = OrderedDict()   # line id -> (text, synthesizer); the newest MAX_LINES
+LINES: OrderedDict[str, tuple[str, object]] = OrderedDict()   # line id -> (text, synthesizer); the newest MAX_LINES
 MAX_LINES = 2000
 MAX_CALLS = int(os.getenv("MAX_CONCURRENT_CALLS", "0"))     # 0 = no limit; set it for a public demo (e.g. a HF Space)
 MAX_CALL_S = float(os.getenv("MAX_CALL_SECONDS", "0"))      # 0 = no limit
@@ -160,7 +161,7 @@ async def call(ws: WebSocket):
     judge = registry.create("judge")
     session = Session(profile, send=send, judge=judge, recognizer=make_recognizer(language),
                       responder=registry.create("llm"), vad=EnergyVAD(), config=cfg,
-                      recorder=Recorder(paths.runs_dir() / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"))
+                      recorder=Recorder(paths.runs_dir() / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl" if RECORD else None))
     ACTIVE["calls"] += 1
     started = time.monotonic()
     try:

@@ -10,6 +10,12 @@
   test per node; writes only from this machine.
 - Mainland China providers: DashScope Paraformer and CosyVoice. Presets: production, tested, default.
 - A call without its keys says which ones are missing; system SOCKS proxies work (python-socks).
+- Each decision is its own module (`jev_interaction/decisions/`); a new one is a module, `register()` and a policy.
+- `from jev_interaction import Session, Profile, JevClient, Recorder, preset`; `presets.config` is now `preset` (old
+  name kept). `jev_interaction.testing` has fakes for every provider; `examples/minimal.py` runs a call with no keys.
+- `jev-interaction replay` (was tools/replay.py, which still works). `JEV_RECORD_CALLS=0` keeps no call logs.
+- Fix: on the floor decision a sampled "elsewhere" that is not the likeliest answer carries on instead of being spoken.
+- `py.typed`; ruff in CI; Python 3.13 in the test matrix; CI starts the installed command and checks the page.
 - Hardening: settings writes need loopback, same origin and JSON; WebSocket origin check; a failed or slow judge falls
   back instead of freezing the call; call slots and line audio are bounded.
 

@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.11", "3.12"]
+        python: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,3 +20,20 @@ jobs:
           cache: pip
       - run: pip install -e ".[server,dev]"
       - run: pytest -q
+      - run: python examples/minimal.py
+      - name: the installed command serves the page
+        run: |
+          cd "$RUNNER_TEMP" && jev-interaction serve --port 8099 --quiet &
+          for i in $(seq 1 20); do curl -sf localhost:8099/api/health && break; sleep 1; done
+          curl -sf localhost:8099/api/profiles | grep -q companion
+          curl -sf localhost:8099/ | grep -qi "<html"
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "ruff>=0.6"
+      - run: ruff check .

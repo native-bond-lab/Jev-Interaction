@@ -170,7 +170,7 @@ docker compose up             # 打开 http://localhost:8080
 | 语音合成 | ElevenLabs eleven_v4_turbo | CosyVoice v2（每个角色可配音色） |
 | 需要的密钥 | Jev、xAI、ElevenLabs | Jev、一个百炼（DashScope）密钥 |
 
-**预设。** `JEV_PRESET=production`（默认）是生产引擎现在的时间参数；`tested` 在此基础上打开下文测过的旋钮；`default` 是库的默认值。代码里用 `jev_interaction.presets.config("production")`。
+**预设。** `JEV_PRESET=production`（默认）是生产引擎现在的时间参数；`tested` 在此基础上打开下文测过的旋钮；`default` 是库的默认值。代码里用 `jev_interaction.preset("production", language="zh")`。
 
 **Hugging Face Space。** `HF_TOKEN=... ./scripts/push_hf_space.sh <owner>/<space>` 会把本仓库发布成 Docker Space（[说明](deploy/huggingface/README.md)）；密钥放在 Space 的 secrets 里，并设置 `MAX_CONCURRENT_CALLS` / `MAX_CALL_SECONDS`，因为每通电话都按这些密钥计费。
 
@@ -242,7 +242,7 @@ register(Laugh())                                 # jev_interaction.decisions; �
 config = Config(policies={**Config().policies, "laugh": SamplePolicy()})
 ```
 
-别的地方都不用改：会话在每段新识别出的话（`on_words`）和每 100 毫秒一次的 tick（`on_tick`）上把所有注册过的决策过一遍，并把状态、题目和答案记进日志。`allowed` 用来收窄此刻可选的选项，`state` 用来补充 Jev 读到的内容；`jev_interaction/decisions/` 里的五个内置决策就是例子。用 `python tools/replay.py runs/*.jsonl --purpose laugh` 拿录下的通话重放，看它的答案落在哪里。
+别的地方都不用改：会话在每段新识别出的话（`on_words`）和每 100 毫秒一次的 tick（`on_tick`）上把所有注册过的决策过一遍，并把状态、题目和答案记进日志。`allowed` 用来收窄此刻可选的选项，`state` 用来补充 Jev 读到的内容；`jev_interaction/decisions/` 里的五个内置决策就是例子。用 `jev-interaction replay runs/*.jsonl --purpose laugh` 拿录下的通话重放，看它的答案落在哪里。
 
 ### 测过的旋钮
 
@@ -458,10 +458,11 @@ jev_interaction/
   prompts/system.md   大模型默认系统提示
   profiles/           内置角色
   server/             通话服务（WebSocket、音频、角色、健康检查、设置）和网页（web/）
-  cli.py              `jev-interaction serve` / `init`
+  replay.py           重问录下来的题目，原样或改写后
+  testing.py          假的法官、识别、大模型、VAD 和合成：不要密钥也能跑一通电话
+  cli.py              `jev-interaction serve` / `init` / `replay`
 scripts/setup.sh      一键本地部署（--china 使用中国大陆服务）
 deploy/huggingface/   Hugging Face Space 说明；scripts/push_hf_space.sh 负责发布
-tools/replay.py       重问录下来的题目，原样或改写后
 docs/                 架构图和基准图表
 ```
 

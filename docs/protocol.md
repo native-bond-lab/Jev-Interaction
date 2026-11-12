@@ -41,4 +41,4 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `GET /api/settings`, `POST /api/settings`, `POST /api/settings/test` | the settings page; writes only from this server's own page on this machine |
 
 Each call is logged to `runs/call-*.jsonl` (one JSON line per event and judgement, including the state Jev read, the
-questions and the answers) for `tools/replay.py`.
+questions and the answers) for `jev-interaction replay`.

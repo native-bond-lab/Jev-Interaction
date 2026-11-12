@@ -10,7 +10,8 @@ whatever `questions` notes for `apply` (the choices it offered, the pace it saw)
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from ..judge import state as S
 from ..judge.client import probs as P
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 
 
 class Decision:
-    name: str = ""       # the purpose in the call log, and what `session.ask(name)` and tools/replay.py call it
+    name: str = ""       # the purpose in the call log, and what `session.ask(name)` and `jev-interaction replay --purpose` call it
     policy: str = ""     # the key in Config.policies (and a profile's policies) that turns probabilities into a choice
 
     # ---------------------------------------------------------------- when

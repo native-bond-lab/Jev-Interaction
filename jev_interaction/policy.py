@@ -10,8 +10,8 @@ Every decision in Config.policies names one of these; `allowed` lets a decision 
 from __future__ import annotations
 
 import random
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Callable, Iterable
 
 
 def restrict(probs: dict[str, float], allowed: Iterable[str] | None) -> dict[str, float]:

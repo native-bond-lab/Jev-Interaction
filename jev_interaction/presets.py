@@ -1,6 +1,6 @@
 """Named configurations: the settings we run in production, and the knobs tested on the benchmarks.
 
-    from jev_interaction.presets import config
+    from jev_interaction import preset
     cfg = config("production", language="zh")
 
 production  the timing of the companion-call engine this framework was extracted from, as it runs today
@@ -33,8 +33,11 @@ PRESETS: dict[str, dict] = {
 PRESETS["tested"] = {**PRESETS["production"], "hold_after_ms": 1000, "listen_max_words": 3, "not_for_me": True, "far_db": 10.0}
 
 
-def config(name: str = "production", **overrides) -> Config:
+def preset(name: str = "production", **overrides) -> Config:
     """A Config from a named preset, with any field overridden."""
     if name not in PRESETS:
         raise KeyError(f"unknown preset {name!r}; choose one of {sorted(PRESETS)}")
     return Config(**{**PRESETS[name], **overrides})
+
+
+config = preset     # the 0.1.0 name

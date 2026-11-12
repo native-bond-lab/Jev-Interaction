@@ -1,7 +1,7 @@
 """The interaction decisions, each a plain-language multiple-choice question for Jev.
 
 Adding a behaviour is adding a question here and a module in decisions/ that asks it; changing one is editing its
-words and re-asking recorded moments (tools/replay.py). Which choices are offered can depend on the pace. `name` is the
+words and re-asking recorded moments (`jev-interaction replay`). Which choices are offered can depend on the pace. `name` is the
 agent's short name.
 
     when                                   question    choices
