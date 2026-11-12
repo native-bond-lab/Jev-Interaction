@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The page: the orb in the middle is the call button (click to call, click to hang up) and beats with whoever is
+  speaking; personas follow the page language; the simulated call is reached with `?demo=1` only.
+- Personas `kai` and `kai_zh`: the companion call this framework was extracted from, moving through all four paces with
+  every decision open.
 - Vendor-neutral setup. No recognition or voice provider is chosen for you; the language model needs an endpoint and a
   model you pick. What we run in production is a reference setup you can copy from, not the default. A pasted key is
   recognised by its shape; the endpoint's own model list is offered. `.env.china.example` is folded into `.env.example`
