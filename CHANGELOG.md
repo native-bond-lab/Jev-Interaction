@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A hold is measured on voice over the line only (an earlier cough gave it a head start), lets go when no new words
+  follow, and words said over a line that carries on are filed for the user's next turn instead of holding the next sound.
 - The page lists four personas per language: the companion (Kai / 江屿) and three working ones (support, tutor,
   interviewer; `tutor_zh` and `interviewer_zh` are new). Vera, Mara, 阿乐 and 小言 stay in the package, unlisted.
 - The ear production runs on: TEN VAD (`adapters.best_vad()`, the energy detector when `ten-vad` is not installed),

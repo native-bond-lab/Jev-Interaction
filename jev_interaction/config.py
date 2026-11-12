@@ -45,6 +45,7 @@ class Config:
     voice_min_ms: int = 60             # a frame with this much voice in it is the user making sound
     hold_after_ms: int = 400           # the user talks over the agent this long: its audio pauses (user first, every pace);
                                        # tested at 1000: an "mm-hm" no longer pauses the line, a real interruption stops ~0.6 s later
+    sound_close_ms: int = 1500         # a sound with no words behind it is over after this much quiet (a cough, a breath)
     hold_release_ms: int = 700         # held, the user quiet again with no words: the line goes on
     listen_gap_s: float = 3.0          # at least this long between two listening sounds
     listen_finished_max: float = 0.65  # no listening sound once Jev is this sure the user has finished

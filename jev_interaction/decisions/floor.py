@@ -59,8 +59,14 @@ class Floor(Decision):
         if action == "carry_on":
             s.held = False
             await s.send(type="unhold", gen=s.gen)
+            if s.speaking:                                  # said over a line that goes on: filed, not a turn to answer;
+                s.said_over.append(s.utt.text)              # the next sound starts from nothing
+                s.utt, s.judged = None, None
+            else:
+                s.utt.over_ms = 0
         elif action == "finish_first":
             s.held = False
+            s.utt.over_ms = 0
             await s.send(type="unhold", gen=s.gen)
             await s.send(type="finish_line", gen=s.gen)     # the queued lines are dropped; their turn comes after
         elif action == "yield":

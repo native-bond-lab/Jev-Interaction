@@ -25,6 +25,8 @@ class Utterance:
     segments: list[tuple[float, str]] = field(default_factory=list)
     speech_ms: int = 0
     over: bool = False               # began while the agent was speaking
+    over_ms: int = 0                 # voice over the agent's line since it last went on: what a hold is measured on
+    held_at: int = 0                 # how many segments there were when the line was put on hold
     levels: list[float] = field(default_factory=list)   # dB of each voiced frame
 
     @property

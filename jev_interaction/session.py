@@ -51,6 +51,7 @@ class Session:
         self.policies = {**self.cfg.policies, **profile.policies}   # a task type may bring its own policies
         self.decisions: dict[str, Decision] = dict(DECISIONS)       # asked in this order on new words and on each tick
         self.ledger = Ledger()
+        self.said_over: list[str] = []           # words the user said over lines that went on, for their next turn
         self.lines: dict[str, str] = {}          # line id -> text, fetched by the client from the TTS route
         self.pace, self.pace_probs, self.transition = self.cfg.start_pace, {}, None
         self.user_turns = 0
@@ -125,15 +126,22 @@ class Session:
             self.utt.speech_ms += heard
             self.utt.levels.append(frame_db(pcm))
             self.silence_ms = 0
-            if self.speaking and not self.held and self.utt.speech_ms >= self.cfg.hold_after_ms:
+            if self.speaking:
+                self.utt.over_ms += heard         # only voice over the line counts toward a hold, not what came before it
+            if self.speaking and not self.held and self.utt.over_ms >= self.cfg.hold_after_ms:
                 self.held = True                  # the user comes first: the agent's audio pauses until the words decide
+                self.utt.held_at = len(self.utt.segments)
                 await self.send(type="hold", gen=self.gen)
         elif self.utt is not None:
             self.silence_ms += step
-            if self.held and not self.utt.segments and self.silence_ms >= self.cfg.hold_release_ms:
-                self.held = False                 # a breath or a laugh over the line, no words: the line goes on
+            if self.held and len(self.utt.segments) <= self.utt.held_at and self.silence_ms >= self.cfg.hold_release_ms:
+                self.held = False                 # a breath or a laugh over the line, no new words: the line goes on
+                self.utt.over_ms = 0
                 await self.send(type="unhold", gen=self.gen)
-                self.utt = None
+                if not self.utt.segments:
+                    self.utt = None
+            elif not self.held and not self.utt.segments and self.silence_ms >= self.cfg.sound_close_ms:
+                self.utt = None                   # a sound and nothing after it: nobody's turn, and no head start on a hold
 
     async def on_client(self, msg: dict):
         if msg.get("type") == "playback":
@@ -170,6 +178,11 @@ class Session:
         await self.send(type="user", text=self.utt.text, partial=True)
         for d in list(self.decisions.values()):
             d.on_words(self)                      # floor while the agent speaks; turn (and cut_in) while it is quiet
+
+    def _with_said_over(self, text: str) -> str:
+        """The user's turn for the responder, with what they said over the agent's lines since their last turn."""
+        over, self.said_over = " ".join(self.said_over), []
+        return f"(over you: {over}) {text}".strip() if over else text
 
     def _own_words(self, text: str) -> bool:
         """The recognizer heard words of the agent's own recent lines (a speaker next to the microphone)."""
@@ -296,14 +309,14 @@ class Session:
         if self.utt is not None and event.answers_user:
             if self.utt.level is not None:
                 self.caller_levels = (self.caller_levels + [self.utt.level])[-20:]
-            self.ledger.user(self.utt.text, line)
+            self.ledger.user(self._with_said_over(self.utt.text), line)
             await self.send(type="user", text=self.utt.text, partial=False)
             self.user_turns += 1
             self.spoke_into_quiet = 0
             self.utt = None
             self.judged = None
         else:
-            self.ledger.user("", line)
+            self.ledger.user(self._with_said_over(""), line)
         messages = [{"role": "system", "content": self.system}, *self.ledger.messages()]
         turn = self.ledger.agent("")
         self.rec.write("respond", gen=gen, kind=kind, data_line=line)

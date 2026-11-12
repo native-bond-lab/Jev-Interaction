@@ -352,3 +352,45 @@ def test_the_energy_detector_raises_its_bar_while_the_line_plays():
     from jev_interaction.adapters import EnergyVAD
     tone = (np.sin(np.arange(3200) * 0.2) * 0.03 * 32767).astype(np.int16).tobytes()   # a faint sound: an echo off a speaker
     assert EnergyVAD().voiced_ms(tone) == 200 and EnergyVAD().voiced_ms(tone, playing=True) == 0
+
+
+async def test_a_sound_before_the_line_gives_no_head_start_on_a_hold():
+    s, events, _ = make({})
+    s.vad.voice = True
+    for _ in range(3):
+        await s.on_audio(b"\x00" * 6400)                                # a cough while nobody is speaking
+    s.speaking = True                                                    # the agent's line starts
+    await s.on_audio(b"\x00" * 6400)
+    assert not any(e["type"] == "hold" for e in events)                  # 200 ms over the line, not 800
+    await s.on_audio(b"\x00" * 6400)
+    assert any(e["type"] == "hold" for e in events)
+
+
+async def test_a_wordless_sound_is_over_after_a_quiet_stretch():
+    s, _, _ = make({})
+    s.vad.voice = True
+    await s.on_audio(b"\x00" * 6400)
+    s.vad.voice = False
+    for _ in range(8):
+        await s.on_audio(b"\x00" * 6400)
+    assert s.utt is None
+
+
+async def test_after_carry_on_the_next_sound_holds_afresh_and_lets_go_without_words():
+    s, events, _ = make({"floor": {"carry_on": 0.9, "yield": 0.1, "finish_first": 0.0, "jump_in": 0.0}})
+    s.speaking = True
+    s.ledger.agent("So there I was, forty seconds of dead air")
+    s.vad.voice = True
+    for _ in range(2):
+        await s.on_audio(b"\x00" * 6400)
+    await s.on_segment(Segment("no way"))
+    await asyncio.sleep(0.05)
+    assert [e["type"] for e in events if e["type"] in ("hold", "unhold")] == ["hold", "unhold"]
+    assert s.utt is None and s.said_over == ["no way"]                   # filed for the next turn, the story goes on
+    await s.on_audio(b"\x00" * 6400)                                    # a laugh a little later
+    assert [e["type"] for e in events if e["type"] in ("hold", "unhold")] == ["hold", "unhold"]
+    await s.on_audio(b"\x00" * 6400)
+    s.vad.voice = False
+    for _ in range(4):
+        await s.on_audio(b"\x00" * 6400)
+    assert [e["type"] for e in events if e["type"] in ("hold", "unhold")] == ["hold", "unhold", "hold", "unhold"]
