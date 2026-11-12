@@ -1,276 +1,448 @@
-// The settings sheet: every node's key and provider, filled in from the page instead of .env.
-// GET api/settings describes the nodes and their fields; POST api/settings saves the changed ones; POST api/settings/test
-// checks one node against the saved values. Secrets never come back from the server, only whether they are set.
-// With no server (opened as a file, or the endpoint is missing) it shows a read-only sample and says so.
+// The setup flow: one step per pipeline node (judge, language model, recognition, synthesis), then a summary.
+// GET api/settings describes the steps; nothing is chosen for the user. Each step: choose a provider, paste a key
+// (POST api/settings/detect guesses whose key it is), fill what is left, save and test (POST api/settings, then
+// api/settings/test). A reference setup can be copied into the form (non-secret values only); it is never applied
+// unasked. Secrets never come back from the server, only whether they are set.
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
   const S = {
     en: {
-      loading: 'Loading…', quick: 'Quick start', save: 'Save', saving: 'Saving…', reset: 'Discard changes', test: 'Test', save_test: 'Save & test',
-      tpl_global: 'Global', tpl_global_sub: 'what our production runs', tpl_china: 'Mainland China', tpl_china_sub: '阿里云百炼 DashScope',
-      st_missing: 'Key missing', st_set: 'Ready', st_unsaved: 'Unsaved', st_testing: 'Testing…', st_ok: 'OK', st_error: 'Failed',
-      saved_ph: 'saved', paste: 'Paste key', will_clear: 'Will be removed when you save', show: 'Show', hide: 'Hide', clear: 'Clear', undo: 'Undo',
-      saved_toast: 'Saved', save_failed: 'Could not save.', unreachable: 'Could not reach the server.', changes: 'unsaved', saved_to: 'Saved to',
-      note_readonly: 'Read-only here. Settings can only be changed on the machine running the server (open this page at localhost).',
-      note_sample: 'This is a sample. Settings live on the local server: run ./scripts/setup.sh, then open http://localhost:8080.',
+      title: 'Set up', done: 'Done', readonly: 'Read-only', offline: 'Server offline', loading: 'Loading…',
+      ref: 'Copy a reference setup', ref_done: 'Copied', paste: 'Paste key', saved: 'saved', key: 'API key', show: 'Show', hide: 'Hide',
+      custom: 'Custom endpoint', endpoint: 'Endpoint', model: 'Model', models_n: '{n} models', reload: 'Reload', we_run: 'We run',
+      advanced: 'Advanced', back: 'Back', next: 'Next', skip: 'Skip', test: 'Test', test_all: 'Test all', save_test: 'Save & test',
+      saving: 'Saving…', testing: 'Testing…', ok: 'OK', failed: 'Failed', unsaved: 'Unsaved', set: 'Set', not_set: 'Not set',
+      call: 'Call', demo: 'Simulated call', audio_tags: 'audio tags', plain: 'plain text', preset: 'Timing preset',
+      save_failed: 'Could not save', unreachable: 'Server unreachable', key_saved: 'key saved', provider: 'Provider',
+      r_judge: 'Judge', r_llm: 'Language model', r_asr: 'Recognition', r_tts: 'Voice',
     },
     zh: {
-      loading: '加载中…', quick: '快速填写', save: '保存', saving: '保存中…', reset: '放弃修改', test: '测试', save_test: '保存并测试',
-      tpl_global: '海外', tpl_global_sub: '与我们线上一致', tpl_china: '中国大陆', tpl_china_sub: '阿里云百炼',
-      st_missing: '缺少密钥', st_set: '已就绪', st_unsaved: '未保存', st_testing: '测试中…', st_ok: '正常', st_error: '失败',
-      saved_ph: '已保存', paste: '粘贴密钥', will_clear: '保存后将被清除', show: '显示', hide: '隐藏', clear: '清除', undo: '撤销',
-      saved_toast: '已保存', save_failed: '保存失败。', unreachable: '连不上服务。', changes: '项未保存', saved_to: '保存到',
-      note_readonly: '当前为只读。只能在运行服务的那台机器上修改设置（用 localhost 打开本页）。',
-      note_sample: '这里是示例。设置保存在本地服务里：先运行 ./scripts/setup.sh，再打开 http://localhost:8080。',
+      title: '配置', done: '完成', readonly: '只读', offline: '服务未连接', loading: '加载中…',
+      ref: '复制参考配置', ref_done: '已填入', paste: '粘贴密钥', saved: '已保存', key: '密钥', show: '显示', hide: '隐藏',
+      custom: '自定义接口', endpoint: '接口地址', model: '模型', models_n: '{n} 个模型', reload: '刷新', we_run: '我们在用',
+      advanced: '高级', back: '上一步', next: '下一步', skip: '跳过', test: '测试', test_all: '全部测试', save_test: '保存并测试',
+      saving: '保存中…', testing: '测试中…', ok: '正常', failed: '失败', unsaved: '未保存', set: '已填', not_set: '未填',
+      call: '拨打', demo: '模拟通话', audio_tags: '音频标签', plain: '纯文本', preset: '时间参数预设',
+      save_failed: '保存失败', unreachable: '连不上服务', key_saved: '密钥已保存', provider: '服务商',
+      r_judge: '法官', r_llm: '大模型', r_asr: '识别', r_tts: '合成',
     },
   };
-  const EL = 'elevenlabs', DS = 'dashscope';
-  const SAMPLE = {
-    writable: false, env_file: '.env', templates: {},
-    nodes: [
-      { id: 'judge', title: 'Judge', title_zh: '法官 (Jev)', fields: [
-        { name: 'JEV_API_KEY', label: 'Jev API key', secret: true, set: false, hint: 'console.typesafe.ai' },
-        { name: 'JEV_MODEL', label: 'Model', label_zh: '模型', value: 'jev-latest' }] },
-      { id: 'llm', title: 'Language model', title_zh: '大模型', fields: [
-        { name: 'LLM_BASE_URL', label: 'Base URL', label_zh: '接口地址', value: 'https://api.x.ai/v1' },
-        { name: 'LLM_API_KEY', label: 'API key', label_zh: '密钥', secret: true, set: false },
-        { name: 'LLM_MODEL', label: 'Model', label_zh: '模型', value: 'grok-4.3' },
-        { name: 'LLM_TEMPERATURE', label: 'Temperature', label_zh: '温度', value: '0.7' }] },
-      { id: 'asr', title: 'Speech recognition', title_zh: '语音识别', fields: [
-        { name: 'ASR_PROVIDER', label: 'Provider', label_zh: '服务商', value: EL, options: [EL, DS] },
-        { name: 'ELEVENLABS_API_KEY', label: 'ElevenLabs API key', label_zh: 'ElevenLabs 密钥', secret: true, set: false, provider: EL },
-        { name: 'ELEVENLABS_ASR_MODEL', label: 'Model', label_zh: '模型', value: 'scribe_v2_realtime_turbo', provider: EL },
-        { name: 'DASHSCOPE_API_KEY', label: 'DashScope API key', label_zh: '百炼密钥', secret: true, set: false, provider: DS },
-        { name: 'DASHSCOPE_ASR_MODEL', label: 'Model', label_zh: '模型', value: 'paraformer-realtime-v2', provider: DS }] },
-      { id: 'tts', title: 'Speech synthesis', title_zh: '语音合成', fields: [
-        { name: 'TTS_PROVIDER', label: 'Provider', label_zh: '服务商', value: EL, options: [EL, DS] },
-        { name: 'ELEVENLABS_API_KEY', label: 'ElevenLabs API key', label_zh: 'ElevenLabs 密钥', secret: true, set: false, provider: EL },
-        { name: 'ELEVENLABS_VOICE_ID', label: 'Voice', label_zh: '音色', value: '', provider: EL },
-        { name: 'DASHSCOPE_API_KEY', label: 'DashScope API key', label_zh: '百炼密钥', secret: true, set: false, provider: DS },
-        { name: 'DASHSCOPE_TTS_VOICE', label: 'Voice', label_zh: '音色', value: '', provider: DS }] },
-      { id: 'timing', title: 'Timing preset', title_zh: '时间参数预设', fields: [
-        { name: 'JEV_PRESET', label: 'Preset', label_zh: '预设', value: 'production', options: ['production', 'tested', 'default'] }] },
-    ],
-  };
-  const TESTABLE = { judge: 1, llm: 1, asr: 1, tts: 1 };
   const EYE = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>';
+  const BASE = 'LLM_BASE_URL', LLM_KEY = 'LLM_API_KEY', LLM_MODEL = 'LLM_MODEL';
 
-  let opts = {}, data = null, sample = false, draft = {}, cleared = {}, tests = {}, busy = false, opener = null, refs = {}, toastTimer = 0;
+  let opts = {}, data = null, offline = false, cur = 'judge', opener = null, busy = '';
+  let draft = {};        // NAME -> value typed or copied, not saved yet
+  let typed = {};        // step id -> the key typed on that step (asr / tts: before a provider is chosen it has no field)
+  let clicked = {};      // step id -> the user chose the provider by hand (detection then only suggests)
+  let suggest = {};      // step id -> provider / vendor ids the pasted key looks like
+  let tests = {};        // step id -> {ok, ms} | {ok:false, error} | {testing:true}
+  let adv = {}, shown = {}, timers = {};
+  let mdl = { sig: '', list: [], error: '', loading: false };
+
   const lang = () => (opts.lang ? opts.lang() : 'en');
-  const t = (k) => (S[lang()] || S.en)[k] || S.en[k] || k;
+  const t = (k) => S[lang()][k] || S.en[k] || k;
   const loc = (o, k) => (lang() === 'zh' && o[k + '_zh']) || o[k] || '';
-  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-  const isOpen = () => !$('settings').hidden;
-  const writable = () => !!(data && data.writable && !sample);
 
-  // ---------- the draft: only what differs from the server ----------
-  const field = (name) => { for (const n of data.nodes) for (const f of n.fields) if (f.name === name) return f; return null; };
-  const orig = (f) => (f.secret || f.value == null ? '' : String(f.value));
-  const cur = (name) => (name in draft ? draft[name] : orig(field(name)));
-  const dirty = () => Object.keys(draft).length + Object.keys(cleared).length;
-  function setValue(name, v) {
-    const f = field(name); if (!f) return;
-    delete cleared[name];
-    if (v === orig(f)) delete draft[name]; else draft[name] = v;
-    data.nodes.forEach((n) => { if (n.fields.some((x) => x.name === name)) delete tests[n.id]; });   // a test result is about the saved values
-  }
-  const provider = (n) => { const p = n.fields.find((f) => f.options && /_PROVIDER$/.test(f.name)); return p ? cur(p.name) : null; };
-  const shown = (n, f) => !f.provider || f.provider === provider(n);
-  const hasKey = (f) => !cleared[f.name] && !!(draft[f.name] || f.set);
-  function nodeState(n) {
-    const test = tests[n.id]; if (test) return test.state;
-    const missing = (opts.health && opts.health() && opts.health().missing) || [];
-    const live = n.fields.filter((f) => shown(n, f));
-    if (live.some((f) => (f.secret ? !hasKey(f) : cur(f.name) === '' && missing.includes(f.name)))) return 'missing';
-    return live.some((f) => f.name in draft || cleared[f.name]) ? 'unsaved' : 'set';
-  }
-
-  // ---------- drawing ----------
-  function render() {
-    const body = $('settingsBody'), key = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, top = body.scrollTop;
-    body.textContent = ''; refs = {};
-    if (!data) { body.appendChild(el('p', 'set-note', t('loading'))); meta(); return; }
-    if (!writable()) body.appendChild(el('p', 'set-note', t(sample ? 'note_sample' : 'note_readonly')));
-    const names = Object.keys(data.templates || {});
-    if (names.length && writable()) {
-      const row = el('div', 'tpl-row'); row.setAttribute('role', 'group'); row.setAttribute('aria-label', t('quick'));
-      row.appendChild(el('span', 'tpl-label', t('quick')));
-      names.forEach((id) => {
-        const tpl = data.templates[id] || {}, known = Object.keys(tpl).filter((k) => field(k) && !field(k).secret);
-        const b = el('button', 'tpl'); b.type = 'button'; b.dataset.key = 'tpl:' + id;
-        b.setAttribute('aria-pressed', String(known.length > 0 && known.every((k) => cur(k) === String(tpl[k]))));
-        b.append(el('b', '', S.en['tpl_' + id] ? t('tpl_' + id) : id), el('span', '', S.en['tpl_' + id] ? t('tpl_' + id + '_sub') : ''));
-        b.onclick = () => { known.forEach((k) => setValue(k, String(tpl[k]))); render(); };          // secrets are never touched
-        row.appendChild(b);
-      });
-      body.appendChild(row);
-    }
-    data.nodes.forEach((n) => body.appendChild(drawNode(n)));
-    body.scrollTop = top; meta();
-    if (key) { const again = body.querySelector(`[data-key="${CSS.escape(key)}"]`); if (again) again.focus(); }
-  }
-
-  function drawNode(n) {
-    const card = el('section', 'node'), head = el('header', 'node-head'), r = refs[n.id] = { node: n };
-    r.card = card; r.dot = el('span', 'node-dot'); r.status = el('span', 'node-status'); r.error = el('p', 'node-error'); r.error.setAttribute('role', 'alert');
-    const title = el('h3', '', loc(n, 'title') || n.id);
-    head.append(r.dot, title, r.status);
-    if (TESTABLE[n.id] && !sample) {
-      r.test = el('button', 'ghost small'); r.test.type = 'button'; r.test.dataset.key = 'test:' + n.id; r.test.onclick = () => test(n.id);
-      head.appendChild(r.test);
-    }
-    const grid = el('div', 'fields');
-    n.fields.filter((f) => shown(n, f)).forEach((f) => grid.appendChild(drawField(n, f)));
-    card.append(head, r.error, grid);
-    return card;
-  }
-
-  function drawField(n, f) {
-    const id = `set-${n.id}-${f.name}`, wrap = el('div', 'field' + (f.secret ? ' wide' : '')), label = el('label', '', loc(f, 'label') || f.name);
-    label.htmlFor = id; label.appendChild(el('code', '', f.name));
-    let input;
-    if (f.options) {
-      input = el('select');
-      const list = f.options.includes(cur(f.name)) ? f.options : f.options.concat(cur(f.name));
-      list.forEach((o) => { const op = el('option', '', o); op.value = o; input.appendChild(op); });
-      input.value = cur(f.name);
-      input.onchange = () => { setValue(f.name, input.value); render(); };                           // other fields depend on the provider
-    } else {
-      input = el('input'); input.type = f.secret ? 'password' : 'text'; input.spellcheck = false; input.autocomplete = f.secret ? 'new-password' : 'off';
-      input.setAttribute('autocapitalize', 'off');
-      if (f.secret) { input.value = draft[f.name] || ''; input.placeholder = cleared[f.name] ? t('will_clear') : f.set ? '•••••••• ' + t('saved_ph') : t('paste'); }
-      else input.value = cur(f.name);
-      input.oninput = () => {
-        setValue(f.name, input.value);
-        document.querySelectorAll('#settingsBody [data-name]').forEach((o) => { if (o !== input && o.dataset.name === f.name) o.value = input.value; });   // one env var, two cards
-        if (f.secret && !cleared[f.name]) document.querySelectorAll('#settingsBody input[data-name]').forEach((o) => { if (o.dataset.name === f.name && f.set) o.placeholder = '•••••••• ' + t('saved_ph'); });
-        meta();
-      };
-    }
-    input.id = id; input.dataset.name = f.name; input.dataset.key = `f:${n.id}:${f.name}`; input.disabled = !writable();
-    const hint = loc(f, 'hint'); if (hint) input.setAttribute('aria-describedby', id + '-hint');
-    const box = el('div', 'input' + (f.options ? ' select' : '')); box.appendChild(input);
-    if (f.secret && writable()) {
-      const eye = el('button', 'in-btn'); eye.type = 'button'; eye.innerHTML = EYE; eye.dataset.key = `eye:${n.id}:${f.name}`;
-      eye.setAttribute('aria-label', t('show')); eye.title = t('show'); eye.setAttribute('aria-pressed', 'false');
-      eye.onclick = () => { const on = input.type === 'password'; input.type = on ? 'text' : 'password'; eye.setAttribute('aria-pressed', String(on)); eye.setAttribute('aria-label', t(on ? 'hide' : 'show')); eye.title = t(on ? 'hide' : 'show'); };
-      box.appendChild(eye);
-      if (f.set) {
-        const clr = el('button', 'in-btn text', t(cleared[f.name] ? 'undo' : 'clear')); clr.type = 'button'; clr.dataset.key = `clr:${n.id}:${f.name}`;
-        clr.onclick = () => { const was = cleared[f.name]; setValue(f.name, ''); if (!was) cleared[f.name] = true; render(); };
-        box.appendChild(clr);
-      }
-    }
-    wrap.append(label, box);
-    if (hint) { const h = el('p', 'hint', hint); h.id = id + '-hint'; wrap.appendChild(h); }
-    return wrap;
-  }
-
-  // statuses, buttons and the footer follow the draft without redrawing the inputs
-  function meta() {
-    const n = dirty(), can = writable();
-    Object.values(refs).forEach((r) => {
-      const state = nodeState(r.node), test = tests[r.node.id] || {};
-      r.card.dataset.state = state;
-      r.status.textContent = t('st_' + state) + (state === 'ok' && test.ms != null ? ` · ${Math.round(test.ms)} ms` : '');
-      r.error.textContent = state === 'error' ? test.error || '' : ''; r.error.hidden = state !== 'error';
-      if (r.test) { r.test.textContent = t(n ? 'save_test' : 'test'); r.test.disabled = !can || busy || state === 'testing'; }
+  function h(tag, props, ...kids) {
+    const el = document.createElement(tag);
+    Object.entries(props || {}).forEach(([k, v]) => {
+      if (v == null || v === false) return;
+      if (k === 'class') el.className = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k === 'html') el.innerHTML = v;                 // only for the constant icons above
+      else if (k === 'data') Object.assign(el.dataset, v);
+      else if (k.slice(0, 2) === 'on') el[k] = v;
+      else if (k !== 'list' && k !== 'spellcheck' && k in el) el[k] = v;
+      else el.setAttribute(k, v === true ? '' : v);
     });
-    const save = $('settingsSave'), reset = $('settingsReset');
-    save.textContent = t(busy ? 'saving' : 'save'); save.disabled = !can || !n || busy; save.parentElement.hidden = !can;
-    reset.textContent = t('reset'); reset.hidden = !can || !n; reset.disabled = busy;
-    $('settingsEnv').textContent = !data || sample ? '' : n ? `${n} ${t('changes')}` : can ? `${t('saved_to')} ${data.env_file || '.env'}` : '';
+    kids.flat(Infinity).forEach((c) => { if (c != null && c !== false) el.append(c); });
+    return el;
+  }
+  async function api(path, body) {
+    const r = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) { const e = new Error(String(r.status)); e.status = r.status; try { e.detail = (await r.json()).detail; } catch (x) { /* no body */ } throw e; }
+    return r.json();
+  }
+  function toast(text, err) {
+    const el = $('toast'); clearTimeout(timers.toast);
+    el.textContent = text; el.className = 'toast' + (err ? ' err' : ''); el.hidden = false;
+    timers.toast = setTimeout(() => { el.hidden = true; }, err ? 5000 : 1800);
   }
 
-  function toast(text, err) {
-    const box = $('toast'); box.textContent = text; box.className = 'toast' + (err ? ' err' : ''); box.hidden = false;
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => { box.hidden = true; }, err ? 4200 : 2200);
+  // ---------- what the form holds ----------
+  const steps = () => (data ? data.steps : []);
+  const step = (id) => steps().find((s) => s.id === id);
+  const order = () => steps().map((s) => s.id).concat('done');
+  const chosen = (st) => (st.selector ? (draft[st.selector] !== undefined ? draft[st.selector] : st.selected) : st.selected) || null;
+  const prov = (st) => st.providers.find((p) => p.name === chosen(st)) || null;
+  const fields = (st) => (prov(st) ? prov(st).fields : []);
+  const secretOf = (st) => fields(st).find((f) => f.secret) || null;
+  const val = (f) => (draft[f.name] !== undefined ? draft[f.name] : f.value || '');
+  const field = (st, name) => st.providers[0].fields.find((f) => f.name === name);
+  const isLocal = (url) => /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:|\/|$)/.test(url || '');
+
+  function llmBase() { const st = step('llm'); return st ? val(field(st, BASE)) : ''; }
+  function vendor() {                                         // the chosen vendor card, 'custom', or null (nothing chosen)
+    const st = step('llm'), base = llmBase();
+    if (clicked.llm === 'custom') return 'custom';
+    return (st.vendors || []).find((v) => v.base_url === base) || (base ? 'custom' : null);
+  }
+  function isSet(st, f) {                                     // a saved key counts only for the endpoint it was saved for
+    if (!f.set) return false;
+    return !(st.id === 'llm' && f.name === LLM_KEY && llmBase() !== (field(st, BASE).value || ''));
+  }
+  function required(st, f) {
+    if (st.id === 'llm' && f.name === LLM_KEY) return !isLocal(llmBase());
+    if (st.id === 'llm' && (f.name === BASE || f.name === LLM_MODEL)) return true;
+    return !!f.required;
+  }
+  function needs(st) {
+    if (st.selector && !chosen(st)) return [st.selector];
+    return fields(st).filter((f) => required(st, f) && !(f.secret ? isSet(st, f) || draft[f.name] : val(f))).map((f) => f.name);
+  }
+  function dirty(st) {
+    const out = [];
+    if (st.selector && draft[st.selector] !== undefined && draft[st.selector] !== (st.selected || '')) out.push(st.selector);
+    fields(st).forEach((f) => {
+      if (draft[f.name] === undefined) return;
+      if (f.secret ? draft[f.name] !== '' : draft[f.name] !== (f.value || '') && !(draft[f.name] === f.default && !f.value)) out.push(f.name);   // the default, spelled out, is no change
+    });
+    return out;
+  }
+  const ready = (st) => !needs(st).length && !dirty(st).length && st.ready;
+  function stateOf(st) {
+    const r = tests[st.id];
+    if (r && r.testing) return 'testing';
+    if (dirty(st).length) return 'unsaved';
+    if (r && r.ok === false) return 'error';
+    return st.ready ? 'ready' : 'todo';
+  }
+  const firstTodo = () => { const st = steps().find((s) => !s.ready); return st ? st.id : 'done'; };
+  function publish() {
+    if (opts.onStatus) opts.onStatus(data ? { ready: data.ready, done: steps().filter((s) => s.ready).length, total: steps().length } : null);
   }
 
   // ---------- server ----------
-  async function call(path, body) {
-    const r = await fetch(path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { cache: 'no-store' });
-    let json = null; try { json = await r.json(); } catch (e) { /* not JSON */ }
-    return { ok: r.ok, status: r.status, body: json };
-  }
-  const reason = (r) => { const d = r.body && (r.body.error || r.body.detail); return d ? (typeof d === 'string' ? d : JSON.stringify(d)) : 'HTTP ' + r.status; };
-  const valid = (d) => d && Array.isArray(d.nodes) && d.nodes.every((n) => n && n.id && Array.isArray(n.fields));
-
   async function load() {
-    let next = null;
-    if (location.protocol !== 'file:') { try { const r = await call('api/settings'); if (r.ok && valid(r.body)) next = r.body; } catch (e) { /* no server */ } }
-    if (dirty()) return;                                                                             // typed while it loaded: keep what is on screen
-    sample = !next; data = next || JSON.parse(JSON.stringify(SAMPLE)); tests = {};
-    if (isOpen()) render();
+    if (location.protocol === 'file:') { data = null; offline = true; publish(); return; }
+    try { data = await api('api/settings'); offline = false; } catch (e) { data = null; offline = true; }
+    publish();
   }
-
-  async function save(quiet) {
-    const values = Object.assign({}, draft); Object.keys(cleared).forEach((k) => { values[k] = ''; });
-    if (!Object.keys(values).length) return true;
-    if (!writable() || busy) return false;
-    busy = true; meta();
-    let ok = false;
+  async function runTest(id) {
+    tests[id] = { testing: true }; chrome();
+    try { tests[id] = await api('api/settings/test', { node: id }); } catch (e) { tests[id] = { ok: false, error: e.detail || t('unreachable') }; }
+    if ($('settings').hidden) return;
+    if (cur === id || cur === 'done') render(); else chrome();
+  }
+  async function save(values) {
     try {
-      const r = await call('api/settings', { values });
-      if (r.ok && r.body && r.body.ok !== false) {
-        ok = true;
-        data.nodes.forEach((n) => n.fields.forEach((f) => { if (f.name in values) { if (f.secret) f.set = values[f.name] !== ''; else f.value = values[f.name]; } }));
-        draft = {}; cleared = {}; tests = {};
-        let health = r.body.health;
-        if (!health) { try { const h = await call('api/health'); if (h.ok) health = h.body; } catch (e) { /* keeps the old one */ } }
-        if (health && opts.onHealth) opts.onHealth(health);
-        try { const fresh = await call('api/settings'); if (fresh.ok && valid(fresh.body)) data = fresh.body; } catch (e) { /* the local copy is already right */ }
-        if (!quiet) toast(t('saved_toast'));
-      } else {
-        if (r.status === 403) data.writable = false;
-        toast(`${t('save_failed')} ${reason(r)}`, true);
-      }
-    } catch (e) { toast(t('unreachable'), true); }
-    busy = false; render();
-    return ok;
+      const res = await api('api/settings', { values });
+      Object.keys(values).forEach((k) => { delete draft[k]; });
+      if (res.health && opts.onHealth) opts.onHealth(res.health);
+      await load();
+      return true;
+    } catch (e) { toast(e.detail || t(e.status ? 'save_failed' : 'unreachable'), true); return false; }
+  }
+  async function saveAndTest() {
+    const st = step(cur); if (!st || busy) return;
+    const values = {}; dirty(st).forEach((k) => { values[k] = draft[k]; });
+    if (draft.JEV_PRESET !== undefined) values.JEV_PRESET = draft.JEV_PRESET;      // copied with a reference setup
+    busy = 'saving'; chrome();
+    const ok = await save(values);
+    busy = '';
+    if (!ok || !data) { render(); return; }
+    delete typed[st.id]; delete suggest[st.id]; delete tests[st.id];
+    render();
+    if (step(cur).ready) await runTest(cur);
+  }
+  function detect(st) {
+    clearTimeout(timers.detect);
+    timers.detect = setTimeout(async () => {
+      const key = typed[st.id] || '';
+      let ids = [];
+      if (key.length >= 8) { try { ids = (await api('api/settings/detect', { node: st.id, key })).candidates.map((c) => c.id); } catch (e) { ids = []; } }
+      if ((typed[st.id] || '') !== key) return;
+      suggest[st.id] = ids;
+      if (ids.length === 1 && !clicked[st.id]) { if (st.id === 'llm') pickVendor(ids[0], true); else pickProvider(st, ids[0], true); }
+      else render();
+    }, 220);
+  }
+  function loadModels(force) {
+    const st = step('llm'), base = llmBase(), key = draft[LLM_KEY] || '';
+    if (!st || !base || vendor() === null) return;
+    const sig = base + '|' + key;
+    if (!force && sig === mdl.sig) return;
+    const can = key || isLocal(base) || isSet(st, field(st, LLM_KEY));
+    mdl = { sig, list: [], error: '', loading: !!can }; paintModels();
+    if (!can) return;
+    api('api/settings/models', key ? { base_url: base, key } : { base_url: base })
+      .then((r) => r, (e) => ({ ok: false, error: e.detail || t('unreachable') }))
+      .then((r) => { if (mdl.sig !== sig) return; mdl = { sig, list: r.ok ? r.models : [], error: r.ok ? '' : r.error || t('failed'), loading: false }; paintModels(); });
+  }
+  function paintModels() {
+    const list = $('setupModels'), note = $('setupModelsNote'); if (!list || !note) return;
+    list.textContent = ''; mdl.list.forEach((id) => list.appendChild(h('option', { value: id })));
+    note.textContent = mdl.loading ? t('loading') : mdl.error ? mdl.error : mdl.list.length ? t('models_n').replace('{n}', mdl.list.length) : '';
+    note.className = 'field-note' + (mdl.error ? ' err' : ''); note.title = mdl.error || '';
   }
 
-  async function test(id) {
-    if (busy || !writable()) return;
-    if (dirty() && !(await save(true))) return;                                                      // the test runs on saved values
-    tests[id] = { state: 'testing' }; meta();
-    try {
-      const r = await call('api/settings/test', { node: id });
-      tests[id] = r.ok && r.body && r.body.ok ? { state: 'ok', ms: r.body.ms } : { state: 'error', error: reason(r) };
-    } catch (e) { tests[id] = { state: 'error', error: t('unreachable') }; }
-    meta();
+  // ---------- choices ----------
+  function pickProvider(st, name, auto) {
+    const before = secretOf(st);
+    if (!auto) clicked[st.id] = name;
+    if (before && typed[st.id] && draft[before.name] === typed[st.id]) delete draft[before.name];
+    draft[st.selector] = name;
+    const sec = secretOf(st);
+    if (sec && typed[st.id]) draft[sec.name] = typed[st.id];
+    delete tests[st.id];
+    render(auto ? undefined : 'key');
+  }
+  function pickVendor(id, auto) {
+    const st = step('llm'), was = llmBase();
+    if (!auto) clicked.llm = id;
+    if (id === 'custom') { if ((st.vendors || []).some((v) => v.base_url === was)) draft[BASE] = ''; }
+    else draft[BASE] = st.vendors.find((v) => v.id === id).base_url;
+    if (llmBase() !== was && val(field(st, LLM_MODEL))) draft[LLM_MODEL] = '';     // a model belongs to its endpoint
+    delete tests.llm;
+    render(auto ? undefined : id === 'custom' ? BASE : 'key');
+    loadModels();
+  }
+  function copyReference(ref) {
+    Object.entries(ref.values).forEach(([k, v]) => { draft[k] = v; });
+    if (data.timing && data.timing.fields.some((f) => f.name === 'JEV_PRESET' && f.value === draft.JEV_PRESET)) delete draft.JEV_PRESET;
+    clicked = {}; suggest = {};
+    steps().forEach((st) => { const sec = secretOf(st); if (st.selector && sec && typed[st.id]) draft[sec.name] = typed[st.id]; });
+    refMenu(false); toast(t('ref_done')); render(); loadModels();
   }
 
-  // ---------- opening and closing ----------
-  function open() {
-    if (isOpen()) return;
-    opener = document.activeElement;
-    $('settings').hidden = false; document.body.classList.add('settings-open'); $('settingsToggle').setAttribute('aria-expanded', 'true');
-    render(); $('settingsClose').focus();
-    if (!dirty()) load();
+  // ---------- pieces ----------
+  const link = (host) => h('a', { class: 'doc', href: 'https://' + host, target: '_blank', rel: 'noopener', text: host.replace(/\/.*$/, '') + ' ↗' });
+  function keyInput(st, f) {                                  // f is null on asr / tts until a provider is chosen
+    const set = f && isSet(st, f);
+    const input = h('input', { type: shown[st.id] ? 'text' : 'password', autocomplete: 'off', spellcheck: 'false', data: { name: 'key' },
+      placeholder: set ? '•••••••• ' + t('saved') : t('paste'), value: (f ? draft[f.name] : typed[st.id]) || '',
+      'aria-label': f ? loc(f, 'label') : t('key'),
+      oninput: () => {
+        const v = input.value.trim(); typed[st.id] = v;
+        const sec = secretOf(st); if (sec) { if (v) draft[sec.name] = v; else delete draft[sec.name]; }
+        delete tests[st.id]; chrome();
+        if (st.id !== 'judge') detect(st);
+        if (st.id === 'llm') { clearTimeout(timers.models); timers.models = setTimeout(loadModels, 700); }
+      } });
+    const eye = h('button', { type: 'button', class: 'in-btn', html: EYE, 'aria-label': t(shown[st.id] ? 'hide' : 'show'), 'aria-pressed': String(!!shown[st.id]),
+      onclick: () => { shown[st.id] = !shown[st.id]; input.type = shown[st.id] ? 'text' : 'password'; eye.setAttribute('aria-pressed', String(shown[st.id])); } });
+    const docs = st.id === 'llm' ? (vendor() && vendor() !== 'custom' ? vendor().docs : '') : (prov(st) || {}).docs;
+    return h('div', { class: 'field wide' },
+      h('label', null, h('span', { text: f ? loc(f, 'label') : t('key') }), docs ? link(docs) : null),
+      h('div', { class: 'input' + (set && !(f && draft[f.name]) ? ' set' : '') }, input, eye));
+  }
+  function textInput(st, f, extra) {
+    const input = h('input', Object.assign({ type: 'text', autocomplete: 'off', spellcheck: 'false', data: { name: f.name }, value: val(f), placeholder: f.default || '',
+      oninput: () => { draft[f.name] = input.value.trim(); delete tests[st.id]; chrome(); if (f.name === BASE) { clearTimeout(timers.models); timers.models = setTimeout(loadModels, 700); } } }, extra || {}));
+    return input;
+  }
+  function plainField(st, f, wide, more) {
+    return h('div', { class: 'field' + (wide ? ' wide' : '') },
+      h('label', null, h('span', { text: loc(f, 'label') }), f.hint ? link(f.hint) : null),
+      h('div', { class: 'input' }, textInput(st, f)), more || null);
+  }
+  function advanced(st, list) {
+    if (!list.length) return null;
+    const open = !!adv[st.id];
+    return h('div', { class: 'adv' },
+      h('button', { type: 'button', class: 'adv-toggle', 'aria-expanded': String(open), text: t('advanced'), onclick: () => { adv[st.id] = !open; render(); } }),
+      open ? h('div', { class: 'fields' }, list.map((f) => plainField(st, f))) : null);
+  }
+  function choice(label, on, onclick, bits) {
+    return h('button', Object.assign({ type: 'button', class: 'pick' + (bits && bits.maybe ? ' maybe' : ''), 'aria-pressed': String(!!on), onclick }, bits && bits.title ? { title: bits.title } : {}),
+      h('span', { class: 'pick-name', text: label }), (bits && bits.tags || []).map((x) => h('span', { class: 'tag' + (x.tone ? ' ' + x.tone : ''), text: x.text })));
+  }
+  function result(st) {
+    const r = tests[st.id];
+    return r && r.ok === false ? h('p', { class: 'step-error', role: 'alert', text: r.error || t('failed') }) : null;
+  }
+
+  // ---------- step bodies ----------
+  function bodyJudge(st) {
+    const fs = fields(st), key = fs.find((f) => f.secret);
+    return [h('div', { class: 'fields' }, keyInput(st, key), fs.filter((f) => !f.secret && required(st, f)).map((f) => plainField(st, f, true))),
+      advanced(st, fs.filter((f) => !f.secret && !required(st, f))), result(st)];
+  }
+  function bodyLlm(st) {
+    const v = vendor(), hits = suggest.llm || [];
+    const vs = (st.vendors || []).slice().sort((a, b) => (hits.indexOf(b.id) >= 0) - (hits.indexOf(a.id) >= 0) || hits.indexOf(a.id) - hits.indexOf(b.id));
+    const picks = h('div', { class: 'picks', role: 'group', 'aria-label': t('provider') },
+      vs.map((x) => choice(x.label, v === x, () => pickVendor(x.id), { maybe: hits.indexOf(x.id) >= 0 && v !== x, title: x.base_url })),
+      choice(t('custom'), v === 'custom', () => pickVendor('custom')));
+    const out = [picks];
+    const grid = h('div', { class: 'fields' });
+    if (v === 'custom') grid.appendChild(plainField(st, field(st, BASE), true));
+    grid.appendChild(keyInput(st, field(st, LLM_KEY)));
+    if (v) {
+      const m = field(st, LLM_MODEL);
+      const refm = v !== 'custom' && v.reference_model;
+      grid.appendChild(h('div', { class: 'field wide' },
+        h('label', null, h('span', { text: loc(m, 'label') }),
+          h('span', { class: 'field-side' }, h('span', { class: 'field-note', id: 'setupModelsNote' }),
+            h('button', { type: 'button', class: 'mini', text: t('reload'), onclick: () => loadModels(true) }))),
+        h('div', { class: 'input' }, textInput(st, m, { list: 'setupModels' })), h('datalist', { id: 'setupModels' }),
+        refm ? h('button', { type: 'button', class: 'mini refm', onclick: () => { draft[LLM_MODEL] = refm; delete tests.llm; render(LLM_MODEL); } },
+          h('span', { text: t('we_run') + ' ' }), h('code', { text: refm })) : null));
+    }
+    out.push(grid);
+    if (v) out.push(advanced(st, fields(st).filter((f) => [BASE, LLM_KEY, LLM_MODEL].indexOf(f.name) < 0)));
+    out.push(result(st));
+    return out;
+  }
+  function bodySpeech(st) {
+    const p = prov(st), hits = suggest[st.id] || [];
+    const picks = h('div', { class: 'picks wide', role: 'group', 'aria-label': t('provider') }, st.providers.map((x) => {
+      const tags = [];
+      if (x.speech) tags.push({ text: S.en[x.speech] ? t(x.speech) : x.speech });
+      const sec = x.fields.find((f) => f.secret); if (sec && sec.set) tags.push({ text: t('key_saved'), tone: 'go' });
+      return choice(x.label, p === x, () => pickProvider(st, x.name), { maybe: hits.indexOf(x.name) >= 0 && p !== x, tags });
+    }));
+    const fs = fields(st);
+    return [picks,
+      h('div', { class: 'fields' }, keyInput(st, secretOf(st)), fs.filter((f) => !f.secret && required(st, f)).map((f) => plainField(st, f, true))),
+      p ? advanced(st, fs.filter((f) => !f.secret && !required(st, f))) : null, result(st)];
+  }
+  function bodyReadonly(st) {
+    const p = prov(st), rows = [];
+    if (st.selector) rows.push([t('provider'), p ? p.label : '', !!p]);
+    fields(st).forEach((f) => rows.push([loc(f, 'label'), f.secret ? '' : f.value || f.default || '', f.secret ? f.set : !!(f.value || f.default)]));
+    return [h('dl', { class: 'ro' }, rows.map(([k, v, ok]) => [h('dt', { text: k }), h('dd', null, v ? h('code', { text: v }) : h('span', { class: 'tag ' + (ok ? 'go' : 'hold'), text: t(ok ? 'set' : 'not_set') }))]))];
+  }
+  function summary(st) {
+    if (st.id === 'llm') { const f = (n) => field(st, n).value || ''; return f(LLM_MODEL) ? f(LLM_MODEL) + ' · ' + f(BASE).replace(/^https?:\/\//, '').replace(/\/.*$/, '') : ''; }
+    const p = st.providers.find((x) => x.name === st.selected); if (!p) return '';
+    if (st.id === 'judge') { const m = p.fields.find((f) => !f.secret); return m ? m.value || m.default || p.label : p.label; }
+    return p.label;
+  }
+  function bodyDone() {
+    const rows = steps().map((st) => {
+      const r = tests[st.id] || {}, p = st.providers.find((x) => x.name === st.selected);
+      return h('button', { type: 'button', class: 'sum', data: { state: stateOf(st) }, onclick: () => go(st.id) },
+        h('span', { class: 'sum-dot', 'aria-hidden': 'true' }), h('span', { class: 'sum-name', text: loc(st, 'title') }),
+        h('span', { class: 'sum-what', text: summary(st) }),
+        st.id === 'tts' && p && p.speech ? h('span', { class: 'tag', text: S.en[p.speech] ? t(p.speech) : p.speech }) : null,
+        h('span', { class: 'sum-test', text: r.testing ? t('testing') : r.ok ? `${t('ok')} · ${r.ms} ms` : r.ok === false ? t('failed') : st.ready ? '' : t('not_set') }));
+    });
+    const out = [h('div', { class: 'sums' }, rows)];
+    steps().forEach((st) => { const r = tests[st.id]; if (r && r.ok === false) out.push(h('p', { class: 'step-error', text: `${loc(st, 'title')}: ${r.error || t('failed')}` })); });
+    const tf = data.timing && data.timing.fields[0];
+    if (tf && data.writable) {
+      const sel = h('select', { data: { name: tf.name }, onchange: async () => { if (await save({ [tf.name]: sel.value })) render(); } },
+        tf.options.map((o) => h('option', { value: o, text: o, selected: o === (draft[tf.name] || tf.value) })));
+      out.push(h('div', { class: 'fields' }, h('div', { class: 'field' }, h('label', null, h('span', { text: loc(data.timing, 'title') })), h('div', { class: 'input select' }, sel))));
+    }
+    return out;
+  }
+
+  // ---------- rendering ----------
+  function go(id) { cur = id; refMenu(false); render('key'); if (id === 'llm') loadModels(); }
+  function rail() {
+    const box = $('setupRail'); box.textContent = '';
+    order().forEach((id, i) => {
+      const st = step(id), state = st ? stateOf(st) : data.ready ? 'ready' : 'todo';
+      box.appendChild(h('li', null, h('button', { type: 'button', class: 'rail-step', data: { state }, 'aria-current': id === cur ? 'step' : null, onclick: () => go(id) },
+        h('span', { class: 'rail-dot', text: state === 'ready' ? '' : String(i + 1) }), h('span', { class: 'rail-name', text: !st ? t('done') : S.en['r_' + id] ? t('r_' + id) : loc(st, 'title') }))));
+    });
+  }
+  function foot() {
+    const box = $('setupFoot'); box.textContent = '';
+    if (!data) { box.appendChild(h('button', { type: 'button', class: 'primary', text: t('demo'), onclick: () => { close(); if (opts.demo) opts.demo(); } })); return; }
+    const ids = order(), i = ids.indexOf(cur), st = step(cur), r = st ? tests[st.id] : null;
+    const status = h('span', { class: 'foot-status', data: { state: busy ? 'testing' : st ? stateOf(st) : '' },
+      text: busy ? t(busy) : r && r.testing ? t('testing') : r && r.ok ? `${t('ok')} · ${r.ms} ms` : r && r.ok === false ? t('failed') : st && dirty(st).length ? t('unsaved') : '' });
+    box.appendChild(status);
+    if (i > 0) box.appendChild(h('button', { type: 'button', class: 'ghost', text: t('back'), onclick: () => go(ids[i - 1]) }));
+    const next = () => go(ids[i + 1]);
+    if (!st) {
+      const any = steps().some((s) => s.ready), testing = steps().some((s) => tests[s.id] && tests[s.id].testing);
+      if (data.writable) box.appendChild(h('button', { type: 'button', class: 'ghost', text: t('test_all'), disabled: !any || testing, onclick: () => steps().filter((s) => s.ready).forEach((s) => runTest(s.id)) }));
+      box.appendChild(h('button', { type: 'button', class: 'primary', id: 'setupPrimary', text: t('call'), disabled: !data.ready, onclick: () => { close(); if (opts.call) opts.call(); } }));
+      return;
+    }
+    if (!data.writable) { box.appendChild(h('button', { type: 'button', class: 'primary', id: 'setupPrimary', text: t('next'), onclick: next })); return; }
+    const changed = dirty(st).length > 0, testing = !!(r && r.testing) || !!busy;
+    if (!changed && st.ready) {
+      box.appendChild(h('button', { type: 'button', class: 'ghost', text: t('test'), disabled: testing, onclick: () => runTest(st.id) }));
+      box.appendChild(h('button', { type: 'button', class: 'primary', id: 'setupPrimary', text: t('next'), onclick: next }));
+    } else {
+      box.appendChild(h('button', { type: 'button', class: 'ghost', text: t('skip'), onclick: next }));
+      box.appendChild(h('button', { type: 'button', class: 'primary', id: 'setupPrimary', text: t('save_test'), disabled: testing || !changed || needs(st).length > 0, onclick: saveAndTest }));
+    }
+  }
+  function refs() {
+    const on = !!(data && data.writable && data.references && data.references.length);
+    $('setupRef').hidden = !on; if (!on) return;
+    $('setupRefToggle').textContent = t('ref');
+    const menu = $('setupRefMenu'); menu.textContent = '';
+    data.references.forEach((ref) => {
+      const bits = Object.entries(ref.values).filter(([k]) => /_MODEL$/.test(k) && k !== 'JEV_MODEL').map(([, v]) => v);
+      menu.appendChild(h('button', { type: 'button', class: 'ref-item', title: loc(ref, 'note'), onclick: () => copyReference(ref) },
+        h('b', { text: loc(ref, 'title') }), h('span', { text: bits.join(' · ') })));
+    });
+  }
+  function refMenu(open) { $('setupRefMenu').hidden = !open; $('setupRefToggle').setAttribute('aria-expanded', String(open)); }
+  function chrome() { if (data) rail(); foot(); }
+  function render(focus) {
+    if ($('settings').hidden) return;
+    const body = $('settingsBody'), active = document.activeElement, keep = focus || (body.contains(active) && active.dataset.name), at = active && active.selectionStart;
+    $('settingsTitle').textContent = t('title');
+    const tag = $('setupTag'); tag.hidden = !(offline || (data && !data.writable)); tag.textContent = offline ? t('offline') : t('readonly');
+    body.textContent = ''; $('setupRail').hidden = !data;
+    refs();
+    if (!data) { if (!offline) body.appendChild(h('p', { class: 'step-empty', text: t('loading') })); foot(); return; }
+    const st = step(cur);
+    const kids = !st ? bodyDone() : !data.writable ? bodyReadonly(st) : st.id === 'judge' ? bodyJudge(st) : st.id === 'llm' ? bodyLlm(st) : bodySpeech(st);
+    body.dataset.step = cur;
+    if (st) body.appendChild(h('h3', { class: 'step-title' }, loc(st, 'title'), !st.selector && st.id !== 'llm' && prov(st) ? h('span', { class: 'tag', text: prov(st).label }) : null));
+    kids.flat(Infinity).forEach((k) => { if (k) body.appendChild(k); });
+    chrome();
+    if (st && st.id === 'llm') paintModels();
+    if (keep) {
+      const el = body.querySelector(`[data-name="${keep}"]`);
+      if (el) { el.focus({ preventScroll: true }); if (!focus && typeof at === 'number' && el.setSelectionRange && el.type !== 'password') { try { el.setSelectionRange(at, at); } catch (e) { /* not a text field */ } } }
+    }
+  }
+
+  // ---------- open / close ----------
+  async function open(target) {
+    const wrap = $('settings');
+    if (wrap.hidden) opener = document.activeElement;
+    wrap.hidden = false; document.body.classList.add('settings-open'); $('settingsToggle').setAttribute('aria-expanded', 'true');
+    render();
+    await load();
+    cur = target && order().indexOf(target) >= 0 ? target : data ? firstTodo() : cur;
+    render('key');
+    if (cur === 'llm') loadModels();
+    if (!$('settingsBody').contains(document.activeElement)) { const b = $('setupPrimary'); (b && !b.disabled ? b : $('settingsClose')).focus(); }
   }
   function close() {
-    if (!isOpen()) return;
-    $('settings').hidden = true; document.body.classList.remove('settings-open'); $('settingsToggle').setAttribute('aria-expanded', 'false');
-    if (opener && opener.isConnected && opener.focus) opener.focus(); else $('settingsToggle').focus();
-  }
-  function init(o) {
-    opts = o || {};
-    $('settingsToggle').onclick = open; $('settingsClose').onclick = close; $('settingsBackdrop').onclick = close;
-    $('settingsSave').onclick = () => save(false);
-    $('settingsReset').onclick = () => { draft = {}; cleared = {}; render(); };
-    document.addEventListener('keydown', (e) => {                                                    // while open, keys belong to the sheet (no Space-to-call, no H)
-      if (!isOpen()) return;
-      e.stopPropagation();
-      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
-      if (e.key !== 'Tab') return;
-      const all = Array.from($('settings').querySelectorAll('button, input, select, a[href]')).filter((x) => !x.disabled && x.offsetParent !== null);
-      if (!all.length) return;
-      const first = all[0], last = all[all.length - 1], inside = $('settings').contains(document.activeElement);
-      if (e.shiftKey ? document.activeElement === first || !inside : document.activeElement === last || !inside) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
-    }, true);
+    if ($('settings').hidden) return;
+    $('settings').hidden = true; refMenu(false); document.body.classList.remove('settings-open'); $('settingsToggle').setAttribute('aria-expanded', 'false');
+    if (opener && opener.focus) opener.focus();
   }
 
-  window.JevSettings = { init, open, close, relabel() { if (isOpen()) render(); } };
+  window.JevSettings = {
+    init(o) {
+      opts = o || {};
+      $('settingsToggle').onclick = () => open();
+      $('settingsClose').onclick = close; $('settingsBackdrop').onclick = close;
+      $('setupRefToggle').onclick = () => refMenu($('setupRefMenu').hidden);
+      document.addEventListener('keydown', (e) => {
+        if ($('settings').hidden) return;
+        if (e.key === 'Escape') { if (!$('setupRefMenu').hidden) refMenu(false); else close(); }
+        else if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !e.target.list) { const b = $('setupPrimary'); if (b && !b.disabled) b.click(); }
+      });
+      document.addEventListener('click', (e) => { if (!$('setupRefMenu').hidden && !$('setupRef').contains(e.target)) refMenu(false); });
+      load();
+    },
+    open, close,
+    relabel() { render(); },
+    isOpen: () => !$('settings').hidden,
+  };
 })();
