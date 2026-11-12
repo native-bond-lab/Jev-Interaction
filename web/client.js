@@ -25,7 +25,7 @@
       k_end_of_turn: 'end of turn', k_floor: 'floor', k_quiet: 'silence', k_not_for_me: 'addressee', k_pace: 'pace', k_listen: 'listening', k_hold: 'overlap',
       p_normal: 'normal', p_patient: 'patient', p_narrate: 'narrate', p_eager: 'eager',
       why_far: 'far from the microphone', why_jev: 'meant for someone else', quiet_for: 'quiet for',
-      setup_1: 'Almost ready. Run ./scripts/setup.sh (or --china), or add ', setup_2: ' to ', setup_3: ' in the project folder (', setup_4: ' is the template), then restart the server. The simulated call works without any keys.',
+      settings: 'Settings', setup: 'Almost ready. Add {keys} in {settings}, or run {cmd}. The simulated call works without any keys.',
       err_file: 'Opened as a file, so there is no server to call. Playing the simulated call instead.',
       err_mic_insecure: 'The microphone needs https or localhost. Open this page at http://localhost:8080.',
       err_mic_denied: 'The microphone is blocked. Allow it from the address bar, then call again.',
@@ -49,7 +49,7 @@
       k_end_of_turn: '话轮结束', k_floor: '话轮归属', k_quiet: '沉默', k_not_for_me: '说话对象', k_pace: '节奏', k_listen: '倾听', k_hold: '重叠',
       p_normal: '正常', p_patient: '耐心', p_narrate: '讲述', p_eager: '积极',
       why_far: '声音离麦克风较远', why_jev: '在和别人说话', quiet_for: '已安静',
-      setup_1: '就差一步：运行 ./scripts/setup.sh（中国大陆加 --china），或者把 ', setup_2: ' 填进项目目录下的 ', setup_3: '（模板是 ', setup_4: '），然后重启服务。模拟通话不需要任何密钥。',
+      settings: '设置', setup: '就差一步：在{settings}里填好 {keys}，或者运行 {cmd}（中国大陆加 --china）。模拟通话不需要任何密钥。',
       err_file: '当前是直接打开的本地文件，没有通话服务，先为你播放模拟通话。',
       err_mic_insecure: '麦克风只能在 https 或 localhost 下使用，请通过 http://localhost:8080 打开本页。',
       err_mic_denied: '麦克风被拦截了。请在地址栏允许使用麦克风，然后再拨一次。',
@@ -344,9 +344,18 @@
     const n = $('notice'); n.textContent = ''; n.className = 'notice chrome'; n.hidden = false;
     const code = (s) => { const c = document.createElement('code'); c.textContent = s; return c; };
     if (nudge) { const b = document.createElement('b'); b.textContent = t('err_setup') + ' '; n.appendChild(b); }
-    n.append(t('setup_1'));
-    (health.missing && health.missing.length ? health.missing : ['API keys']).forEach((k, i) => { if (i) n.append(' '); n.appendChild(code(k)); });
-    n.append(t('setup_2'), code('.env'), t('setup_3'), code('.env.example'), t('setup_4'));
+    t('setup').split(/(\{\w+\})/).forEach((part) => {
+      if (part === '{keys}') (health.missing && health.missing.length ? health.missing : ['API keys']).forEach((k, i) => { if (i) n.append(' '); n.appendChild(code(k)); });
+      else if (part === '{cmd}') n.appendChild(code('./scripts/setup.sh'));
+      else if (part === '{settings}') { const b = document.createElement('button'); b.type = 'button'; b.className = 'link'; b.textContent = t('settings'); b.onclick = () => window.JevSettings.open(); n.appendChild(b); }
+      else if (part) n.append(part);
+    });
+  }
+  function applyHealth(h) {                                    // on load, and again whenever settings are saved
+    health = h;
+    const pr = h.providers || {}; $('providers').textContent = ['llm', 'asr', 'tts'].filter((k) => pr[k]).map((k) => `${k} ${pr[k]}`).join(' · ');
+    if (h.ready === false) { if (phase !== 'call') showSetup(false); }
+    else if (!$('notice').classList.contains('err')) $('notice').hidden = true;
   }
 
   // ---------- personas, language ----------
@@ -385,7 +394,7 @@
     document.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === l)));
     $('callLabel').textContent = t(phase === 'call' ? 'hang_up' : 'call'); $('call').title = $('callLabel').textContent;
     $('statusText').textContent = t('st_' + (shownState || 'idle'));
-    renderCards();
+    renderCards(); window.JevSettings.relabel();
     if (!$('notice').hidden && !$('notice').classList.contains('err') && health && health.ready === false) showSetup(false);
   }
 
@@ -404,17 +413,14 @@
     else if (e.key === 'Escape') { drawer(false); document.body.classList.remove('clean'); }
   });
 
+  window.JevSettings.init({ lang: () => lang, health: () => health, onHealth: applyHealth });
   setLang(lang);
   if (location.protocol !== 'file:') {
     fetch('api/profiles').then((r) => (r.ok ? r.json() : Promise.reject())).then((list) => {
       if (Array.isArray(list)) list = list.filter((p) => p && p.path); else list = (list && list.profiles) || [];
       if (list.length) { profiles = list.map((p) => Object.assign({ id: p.path }, p)); renderCards(); }
     }).catch(() => {});
-    fetch('api/health').then((r) => (r.ok ? r.json() : Promise.reject())).then((h) => {
-      health = h;
-      const pr = h.providers || {}; $('providers').textContent = ['llm', 'asr', 'tts'].filter((k) => pr[k]).map((k) => `${k} ${pr[k]}`).join(' · ');
-      if (h.ready === false && phase !== 'call') showSetup(false);
-    }).catch(() => {});
+    fetch('api/health').then((r) => (r.ok ? r.json() : Promise.reject())).then(applyHealth).catch(() => {});
   }
   window.JevPage = { island, startDemo, startCall, endCall };   // for the console and for recordings
   if (params.has('clean')) document.body.classList.add('clean');
