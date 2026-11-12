@@ -4,7 +4,13 @@
 
 **由“系统一”掌控的全双工语音交互。**<br>轮次交互是写出来的决策，而不是训练出来的模型。
 
-[![在线体验](https://img.shields.io/badge/%E2%96%B6-%E5%9C%A8%E7%BA%BF%E4%BD%93%E9%AA%8C-0f766e?style=for-the-badge)](https://pupunpu-jev-interaction.hf.space/)
+<br>
+<a href="https://pupunpu-jev-interaction.hf.space/">
+  <img src="docs/try-conversation.zh-CN.svg" alt="立即体验语音对话 →" width="420">
+</a>
+<br>
+在浏览器中体验 AI 如何倾听、接话与回应打断。
+<br><br>
 
 [English](README.md) · [任务配置](jev_interaction/profiles) · [决策题目](jev_interaction/judge/questions.py)
 
@@ -19,6 +25,10 @@
 <a href="https://pupunpu-jev-interaction.hf.space/">
   <img src="docs/cover.png" alt="Jev-Interaction — 全双工语音，可控的轮次交互" width="100%">
 </a>
+
+<p align="center">
+  <a href="https://pupunpu-jev-interaction.hf.space/"><strong>开始语音对话 →</strong></a>
+</p>
 
 > **基于 [Jev](https://typesafe.ai)。** 这里每一个轮次决策，都是 Jev 在几十毫秒内回答的一道题。没有 Jev，就没有这个项目。
 
