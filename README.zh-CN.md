@@ -4,6 +4,8 @@
 
 **由“系统一”掌控的全双工语音交互。**<br>轮次交互是写出来的决策，而不是训练出来的模型。
 
+[![在线体验](https://img.shields.io/badge/%E2%96%B6-%E5%9C%A8%E7%BA%BF%E4%BD%93%E9%AA%8C-0f766e?style=for-the-badge)](https://pupunpu-jev-interaction.hf.space/)
+
 [English](README.md) · [任务配置](jev_interaction/profiles) · [决策题目](jev_interaction/judge/questions.py)
 
 [![tests](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml/badge.svg)](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml) ![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![license](https://img.shields.io/badge/license-Apache--2.0-blue) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
@@ -14,7 +16,9 @@
 
 </div>
 
-<img src="docs/cover.png" alt="Jev-Interaction — 全双工语音，可控的轮次交互" width="100%">
+<a href="https://pupunpu-jev-interaction.hf.space/">
+  <img src="docs/cover.png" alt="Jev-Interaction — 全双工语音，可控的轮次交互" width="100%">
+</a>
 
 > **基于 [Jev](https://typesafe.ai)。** 这里每一个轮次决策，都是 Jev 在几十毫秒内回答的一道题。没有 Jev，就没有这个项目。
 
