@@ -4,6 +4,8 @@
 
 **System-One-controlled full-duplex voice interaction.**<br>Turn-taking as decisions you write — not a model you train.
 
+[![Try the Live Demo](https://img.shields.io/badge/%E2%96%B6-Try_the_Live_Demo-0f766e?style=for-the-badge)](https://pupunpu-jev-interaction.hf.space/)
+
 [中文](README.zh-CN.md) · [Profiles](jev_interaction/profiles) · [Decisions](jev_interaction/judge/questions.py)
 
 [![tests](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml/badge.svg)](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml) ![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![license](https://img.shields.io/badge/license-Apache--2.0-blue) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
@@ -14,7 +16,9 @@
 
 </div>
 
-<img src="docs/cover.png" alt="Jev-Interaction — full-duplex voice, turn-taking you control" width="100%">
+<a href="https://pupunpu-jev-interaction.hf.space/">
+  <img src="docs/cover.png" alt="Jev-Interaction — full-duplex voice, turn-taking you control" width="100%">
+</a>
 
 > **Built on [Jev](https://typesafe.ai).** Every turn-taking decision here is a question Jev answers in tens of
 > milliseconds. Without it, none of this would work.
