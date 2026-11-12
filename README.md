@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="docs/cover.png" alt="Jev-Interaction — full-duplex voice, turn-taking you control" width="100%">
-
 # Jev-Interaction
 
 **System-One-controlled full-duplex voice interaction.**<br>Turn-taking as decisions you write — not a model you train.
@@ -15,6 +13,8 @@
 
 
 </div>
+
+<img src="docs/cover.png" alt="Jev-Interaction — full-duplex voice, turn-taking you control" width="100%">
 
 > **Built on [Jev](https://typesafe.ai).** Every turn-taking decision here is a question Jev answers in tens of
 > milliseconds. Without it, none of this would work.
