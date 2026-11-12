@@ -137,37 +137,39 @@ policies:
 
 ## 快速开始
 
-一条命令装好依赖、问一次密钥、启动服务并打开页面：
+一条命令装好依赖、启动服务并打开页面，页面会一步一步带你选服务商、填密钥：
 
 ```bash
 git clone https://github.com/native-bond-lab/Jev-Interaction && cd Jev-Interaction
-./scripts/setup.sh            # 海外：xAI grok + ElevenLabs（我们生产环境在用的组合）
-./scripts/setup.sh --china    # 中国大陆：阿里云百炼（通义千问 + Paraformer + CosyVoice），并使用国内 PyPI 镜像
+./scripts/setup.sh            # 加 --china 走国内 PyPI 镜像
 ```
 
 或者当作 Python 包装，在任意目录：
 
 ```bash
 pip install "jev-interaction[server] @ git+https://github.com/native-bond-lab/Jev-Interaction"
-jev-interaction serve         # 打开 http://localhost:8080，在页面的「设置」里填密钥
+jev-interaction serve         # 打开 http://localhost:8080
 ```
 
 或者用 Docker（任何系统）：
 
 ```bash
-cp .env.example .env          # 中国大陆用 .env.china.example；填好密钥
+cp .env.example .env          # 手动填，或者留空，用页面上的设置步骤
 docker compose up             # 打开 http://localhost:8080
 ```
 
-打开 <http://localhost:8080>，选一个角色，点 **通话**。密钥也可以在页面里填：**设置** 列出每个节点（法官、大模型、识别、合成），逐个测试，保存到启动目录下的 `.env`。自己的角色放在 `./profiles/*.yaml`，和内置角色同名就替换它。还没有密钥？页面自带模拟通话（`?demo=1`）。自带的是简单的能量 VAD，建议戴耳机。
+打开 <http://localhost:8080>。设置一次一个节点：法官（Jev）、大模型、语音识别、音色。粘贴密钥，页面会认出是哪家的；大模型从该服务自己的模型列表里选；每一步测试通过再往下走。设置保存在启动目录下的 `.env`。然后选一个角色，点 **通话**。还没有密钥？`?demo=1` 是模拟通话。自带的是简单的能量 VAD，建议戴耳机。
 
-| | 海外（我们生产环境在用的配置） | 中国大陆 |
+**每个节点都由你选。** 大模型是任意兼容 OpenAI 接口的服务（xAI、OpenAI、DeepSeek、通义千问、豆包、智谱 GLM、Kimi、OpenRouter、Groq、本地 Ollama 或 vLLM）；识别和音色来自服务商注册表，第三方包也能注册自己的（[docs/adapters.md](docs/adapters.md)）。大模型会按你选的音色调整写法：能演绎音频标签的音色（ElevenLabs v3/v4）用带 `[laughs]`、`[whispers]` 的写法，其他音色只写说出口的话（`jev_interaction/prompts/speech/`）。
+
+**参考配置**，在设置页面和 `.env.example` 末尾提供，只有你选了才会用：
+
+| | 我们生产环境在用的 | 中国大陆可用的 |
 |---|---|---|
-| 配置模板 | `.env.example` | `.env.china.example` |
 | 法官 | Jev | Jev（如果访问 `api.typesafe.ai` 慢，给这个进程设 `HTTPS_PROXY`） |
-| 大模型 | grok-4.3，关闭思考，温度 0.7（任意兼容 OpenAI 接口的服务） | 通过百炼调用 qwen-plus；也可用 DeepSeek、豆包 |
+| 大模型 | grok-4.3，关闭思考，温度 0.7 | 通过百炼调用 qwen-plus |
 | 语音识别 | ElevenLabs Scribe v2 realtime turbo | Paraformer realtime v2 |
-| 语音合成 | ElevenLabs eleven_v4_turbo | CosyVoice v2（每个角色可配音色） |
+| 音色 | ElevenLabs eleven_v4_turbo（音频标签） | CosyVoice v2，每个角色可配音色（纯文字） |
 | 需要的密钥 | Jev、xAI、ElevenLabs | Jev、一个百炼（DashScope）密钥 |
 
 **预设。** `JEV_PRESET=production`（默认）是生产引擎现在的时间参数；`tested` 在此基础上打开下文测过的旋钮；`default` 是库的默认值。代码里用 `jev_interaction.preset("production", language="zh")`。
@@ -455,13 +457,13 @@ jev_interaction/
   ledger.py           通话记录
   recorder.py         每个事件一行 JSON，供重放
   adapters/           VAD · 识别 · 大模型 · 合成；registry.py 是每个节点的服务商表
-  prompts/system.md   大模型默认系统提示
+  prompts/            大模型的系统提示；speech/ 里每类音色一种写法
   profiles/           内置角色
   server/             通话服务（WebSocket、音频、角色、健康检查、设置）和网页（web/）
   replay.py           重问录下来的题目，原样或改写后
   testing.py          假的法官、识别、大模型、VAD 和合成：不要密钥也能跑一通电话
   cli.py              `jev-interaction serve` / `init` / `replay`
-scripts/setup.sh      一键本地部署（--china 使用中国大陆服务）
+scripts/setup.sh      一键本地部署（--china 走国内 PyPI 镜像）
 deploy/huggingface/   Hugging Face Space 说明；scripts/push_hf_space.sh 负责发布
 docs/                 架构图和基准图表
 ```

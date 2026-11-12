@@ -172,40 +172,46 @@ policies:
 
 ## Quickstart
 
-One command sets everything up, asks for your keys once, starts the server and opens the page:
+One command installs everything, starts the server and opens the page; the page walks you through each provider and key:
 
 ```bash
 git clone https://github.com/native-bond-lab/Jev-Interaction && cd Jev-Interaction
-./scripts/setup.sh            # global: xAI grok + ElevenLabs (the setup we run in production)
-./scripts/setup.sh --china    # mainland China: Alibaba Cloud Bailian (Qwen + Paraformer + CosyVoice), domestic PyPI mirror
+./scripts/setup.sh            # --china installs through a domestic PyPI mirror
 ```
 
 Or as a package, in any folder:
 
 ```bash
 pip install "jev-interaction[server] @ git+https://github.com/native-bond-lab/Jev-Interaction"
-jev-interaction serve         # http://localhost:8080; fill in the keys under Settings on the page
+jev-interaction serve         # http://localhost:8080
 ```
 
 Or with Docker (any OS):
 
 ```bash
-cp .env.example .env          # or .env.china.example; fill in the keys
+cp .env.example .env          # fill it in, or leave it empty and use the setup steps on the page
 docker compose up             # http://localhost:8080
 ```
 
-Open <http://localhost:8080>, pick a persona and press **Call**. Keys can also be filled in from the page: **Settings**
-lists every node (judge, language model, recognition, synthesis), tests each one, and saves to `.env` in the folder you
-started from. Your own personas go in `./profiles/*.yaml`; one with the same name as a built-in replaces it. No keys yet? The page has a built-in simulated call
-(`?demo=1`). The built-in VAD is a simple energy detector, so use headphones.
+Open <http://localhost:8080>. Setup goes one node at a time: the judge (Jev), a language model, speech recognition, a
+voice. Paste a key and the page recognises whose it is; pick the language model from the endpoint's own model list; test
+each step before moving on. Settings are saved to `.env` in the folder you started from. Then pick a persona and press
+**Call**. No keys yet? `?demo=1` is a simulated call. The built-in VAD is a simple energy detector, so use headphones.
 
-| | global (what our production runs) | mainland China |
+**Every node is your choice.** The language model is any OpenAI-compatible endpoint (xAI, OpenAI, DeepSeek, Qwen,
+Doubao, GLM, Kimi, OpenRouter, Groq, a local Ollama or vLLM server); recognition and voice come from the provider
+registry, and a third-party package can add its own ([docs/adapters.md](docs/adapters.md)). The language model is told
+how to write for the voice you pick: voices that perform audio tags (ElevenLabs v3/v4) get a style that uses
+`[laughs]`, `[whispers]`; others get plain spoken words (`jev_interaction/prompts/speech/`).
+
+**Reference setups**, offered on the setup page and at the bottom of `.env.example`, never applied unless you choose them:
+
+| | what we run in production | a mainland China setup |
 |---|---|---|
-| template | `.env.example` | `.env.china.example` |
 | judge | Jev | Jev (set `HTTPS_PROXY` if `api.typesafe.ai` is slow from your network) |
-| language model | grok-4.3, reasoning off, temperature 0.7 (any OpenAI-compatible endpoint) | qwen-plus via DashScope; or DeepSeek, Doubao |
+| language model | grok-4.3, reasoning off, temperature 0.7 | qwen-plus via DashScope |
 | recognition | ElevenLabs Scribe v2 realtime turbo | Paraformer realtime v2 |
-| synthesis | ElevenLabs eleven_v4_turbo | CosyVoice v2 (per-persona voices) |
+| voice | ElevenLabs eleven_v4_turbo (audio tags) | CosyVoice v2, per-persona voices (plain words) |
 | keys | Jev, xAI, ElevenLabs | Jev, one DashScope key |
 
 **Presets.** `JEV_PRESET=production` (default) is the timing the production engine runs today; `tested` adds the knobs
@@ -537,13 +543,13 @@ jev_interaction/
   ledger.py           the call's history, for both readers
   recorder.py         one JSON line per event, for replay
   adapters/           VAD · recognizer · responder · synthesizer; registry.py lists the providers per node
-  prompts/system.md   the responder's default system prompt
+  prompts/            the responder's system prompt; speech/ holds one writing style per kind of voice
   profiles/           the built-in personas
   server/             call server (WebSocket, line audio, profiles, health, settings) and its page (web/)
   replay.py           re-ask the recorded questions, as asked or reworded
   testing.py          fake judge, recognizer, responder, VAD and synthesizer: a call with no keys
   cli.py              `jev-interaction serve` / `init` / `replay`
-scripts/setup.sh      one-click local setup (--china for mainland providers)
+scripts/setup.sh      one-click local setup (--china: domestic PyPI mirror)
 deploy/huggingface/   Hugging Face Space card; scripts/push_hf_space.sh publishes it
 docs/                 architecture diagram and benchmark charts
 ```

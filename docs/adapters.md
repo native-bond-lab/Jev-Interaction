@@ -28,10 +28,22 @@ def make_my_asr(language="en", **_):
 
 registry.register("asr", "my-asr", make_my_asr, [
     registry.Setting("MY_ASR_KEY", "My ASR key", secret=True, required=True),
-])
+], label="My ASR", docs="my-asr.example.com/keys", key_pattern=r"^myasr_")
 ```
 
-Then `ASR_PROVIDER=my-asr`. From a separate package, expose a function through the entry-point group
+Then `ASR_PROVIDER=my-asr`. `docs` is where the setup page sends people for a key; `key_pattern` lets it recognise a
+pasted key.
+
+A synthesizer also says how the language model should write for its voices, with `speech`: `"plain"` (spoken words
+only), `"audio_tags"` (inline tags such as `[laughs]`, as ElevenLabs v3/v4 perform them), or a style of its own:
+
+```python
+registry.register_style("my_ssml", "Wrap emphasis in <emphasis> tags; write nothing else that is not spoken.")
+registry.register("tts", "my-tts", make_my_tts, [...], speech=lambda: "my_ssml")
+```
+
+The style can depend on settings (ElevenLabs returns `audio_tags` only for v3/v4 models). The session puts the
+paragraph into the responder's system prompt (`{speech}` in `prompts/system.md`). From a separate package, expose a function through the entry-point group
 `jev_interaction.adapters` and it is registered on first use:
 
 ```toml
@@ -41,5 +53,5 @@ my_asr = "my_package.jev:register"   # def register(registry): registry.register
 
 ## Test it
 
-Use the fakes the core tests use as a model: a recognizer whose `segments()` yields from a queue, a judge that
-returns fixed probabilities. Pure message builders (as in `dashscope_asr.py`) can be tested without a network.
+`jev_interaction.testing` has a fake of every node (judge, recognizer, responder, VAD, synthesizer) and
+`scripted_session()`; swap one fake for yours and drive the call. Pure message builders (as in `dashscope_asr.py`) can be tested without a network.

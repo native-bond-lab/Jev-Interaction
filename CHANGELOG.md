@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Vendor-neutral setup. No recognition or voice provider is chosen for you; the language model needs an endpoint and a
+  model you pick. What we run in production is a reference setup you can copy from, not the default. A pasted key is
+  recognised by its shape; the endpoint's own model list is offered. `.env.china.example` is folded into `.env.example`
+  as a commented reference.
+- The language model is told how to write for the chosen voice (`prompts/speech/`: audio tags for ElevenLabs v3/v4,
+  plain words otherwise); synthesizer plugins can register their own style.
+- Personas are grouped into tasks and fun characters.
 - `pip install "jev-interaction[server]"` then `jev-interaction serve` (and `init`): the server, its page and the
   built-in personas ship in the package. `.env`, `runs/` and your own `profiles/` live in the folder you start from
   (`JEV_HOME`); a persona of yours replaces a built-in one with the same name. `Profile.load("support")` loads a built-in.

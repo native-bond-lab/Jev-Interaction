@@ -24,7 +24,7 @@ def _serve(a: argparse.Namespace) -> int:
         os.environ["JEV_PRESET"] = a.preset
     from jev_interaction.server import paths
     if not paths.env_file().exists():
-        print(f"No .env in {paths.home()}: open the page and fill in the keys (Settings), or run `jev-interaction init`.")
+        print(f"No .env in {paths.home()} yet: the page walks you through the providers and keys.")
     print(f"Jev-Interaction on http://{'localhost' if a.host in ('127.0.0.1', '0.0.0.0') else a.host}:{a.port}")
     uvicorn.run("jev_interaction.server.app:app", host=a.host, port=a.port, log_level="warning" if a.quiet else "info")
     return 0
