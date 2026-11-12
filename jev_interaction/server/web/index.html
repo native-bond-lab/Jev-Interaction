@@ -40,14 +40,16 @@
 <main class="main">
   <section class="hero chrome" aria-labelledby="tagline">
     <h1 id="tagline" data-i18n="tagline">End-to-end interactive instinct, from a cascade you can read.</h1>
-    <p class="sub" data-i18n="sub">Full-duplex voice where every interaction moment is a decision you can see.</p>
   </section>
 
   <div class="notice chrome" id="notice" role="status" hidden></div>
 
   <section class="stage" aria-label="Call">
     <div class="chips" id="chips" aria-live="polite" aria-relevant="additions"></div>
-    <canvas id="island" aria-hidden="true"></canvas>
+    <div class="island-wrap">
+      <canvas id="island" aria-hidden="true"></canvas>
+      <button type="button" class="orb" id="call" aria-pressed="false"><span class="sr-only" id="callLabel">Call</span></button>
+    </div>
     <div class="status" id="status" role="status" aria-live="polite">
       <span class="status-dot" aria-hidden="true"></span>
       <span id="statusText">Ready</span>
@@ -66,16 +68,7 @@
   </section>
 
   <section class="controls">
-    <button type="button" class="call" id="call" aria-pressed="false">
-      <svg class="ic-call" viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.58 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.58 3.6a1 1 0 0 1-.25 1z"/></svg>
-      <svg class="ic-end" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M12 9c-1.9 0-3.7.3-5.4.86v2.9a1 1 0 0 1-.56.9 11.6 11.6 0 0 0-2.67 1.85 1 1 0 0 1-1.4-.02L.3 13.8a1 1 0 0 1 0-1.4A16.9 16.9 0 0 1 12 7.7c4.5 0 8.6 1.8 11.7 4.7a1 1 0 0 1 0 1.4l-1.67 1.7a1 1 0 0 1-1.4.02 11.6 11.6 0 0 0-2.67-1.85 1 1 0 0 1-.56-.9v-2.9A17.4 17.4 0 0 0 12 9z"/></svg>
-      <span class="sr-only" id="callLabel">Call</span>
-    </button>
     <div class="under chrome">
-      <button type="button" class="ghost" id="demo">
-        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>
-        <span id="demoLabel" data-i18n="demo_button">Simulated call</span>
-      </button>
       <p class="keys" aria-hidden="true"><kbd>Space</kbd><span data-i18n="key_space">call / hang up</span><kbd>H</kbd><span data-i18n="key_h">clean view</span></p>
     </div>
   </section>

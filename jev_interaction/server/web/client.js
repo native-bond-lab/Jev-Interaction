@@ -17,13 +17,15 @@
       log_button: 'Decisions', log_title: 'Decision log', log_empty: 'Each moment Jev decides something, it lands here with its probabilities.',
       demo_button: 'Simulated call', key_space: 'call / hang up', key_h: 'clean view', built_on: 'Built on Jev',
       call: 'Call', hang_up: 'Hang up', you: 'You', demo_tag: 'simulated',
-      st_idle: 'Ready', st_connecting: 'Connecting', st_listening: 'Listening', st_talking: 'Hearing you', st_thinking: 'Thinking',
+      st_idle: 'Tap to call', st_connecting: 'Connecting', st_listening: 'Listening', st_talking: 'Hearing you', st_thinking: 'Thinking',
       st_speaking: 'Speaking', st_held: 'Holding', st_yielded: 'Yielded', st_ended: 'Call ended',
       d_go: 'answer now', d_wait: 'wait, still talking', d_carry_on: 'carry on', d_yield: 'yield', d_finish_first: 'finish the sentence',
       d_overrule: 'take the floor back', d_jump_in: 'jump in', d_aside: 'quick aside', d_go_on: 'fill the silence', d_quiet_wait: 'let it be quiet',
       d_check: 'check in', d_hang_up: 'hang up', d_not_for_me: 'not said to me', d_hold: 'hold', d_pace: 'pace', d_listen: 'listening sound',
       k_end_of_turn: 'end of turn', k_floor: 'floor', k_quiet: 'silence', k_not_for_me: 'addressee', k_pace: 'pace', k_listen: 'listening', k_hold: 'overlap',
       p_normal: 'normal', p_patient: 'patient', p_narrate: 'narrate', p_eager: 'eager',
+      o_finished: 'finished', o_continuing: 'still talking', o_wait: 'wait', o_normal: 'normal', o_patient: 'patient', o_narrate: 'narrate', o_eager: 'eager',
+      l_continuer: 'go on', l_feeling: 'reaction', l_echo: 'echo',
       why_far: 'far from the microphone', why_jev: 'meant for someone else', quiet_for: 'quiet for',
       setup_chip: 'Set up', ready_chip: 'Ready', fun: 'Fun',
       err_file: 'Opened as a file, so there is no server to call. Playing the simulated call instead.',
@@ -40,13 +42,15 @@
       log_button: '决策', log_title: '决策记录', log_empty: 'Jev 每做一次判断，都会连同概率记在这里。',
       demo_button: '模拟通话', key_space: '拨打 / 挂断', key_h: '纯净画面', built_on: '基于 Jev 构建',
       call: '拨打', hang_up: '挂断', you: '你', demo_tag: '模拟',
-      st_idle: '就绪', st_connecting: '接通中', st_listening: '在听', st_talking: '你在说', st_thinking: '思考中',
+      st_idle: '点击通话', st_connecting: '接通中', st_listening: '在听', st_talking: '你在说', st_thinking: '思考中',
       st_speaking: '在说', st_held: '停顿', st_yielded: '让出话轮', st_ended: '通话结束',
       d_go: '现在回答', d_wait: '再等等，还没说完', d_carry_on: '继续说', d_yield: '让出话轮', d_finish_first: '说完这句',
       d_overrule: '拿回话轮', d_jump_in: '抢着接话', d_aside: '插一句', d_go_on: '打破沉默', d_quiet_wait: '保持安静',
       d_check: '问一声', d_hang_up: '挂断', d_not_for_me: '不是对我说的', d_hold: '先停一下', d_pace: '节奏', d_listen: '附和',
       k_end_of_turn: '话轮结束', k_floor: '话轮归属', k_quiet: '沉默', k_not_for_me: '说话对象', k_pace: '节奏', k_listen: '倾听', k_hold: '重叠',
       p_normal: '正常', p_patient: '耐心', p_narrate: '讲述', p_eager: '积极',
+      o_finished: '说完了', o_continuing: '还在说', o_wait: '等', o_normal: '正常', o_patient: '耐心', o_narrate: '讲述', o_eager: '积极',
+      l_continuer: '嗯一声', l_feeling: '情绪回应', l_echo: '重复关键词',
       why_far: '声音离麦克风较远', why_jev: '在和别人说话', quiet_for: '已安静',
       setup_chip: '配置', ready_chip: '已就绪', fun: '趣味角色',
       err_file: '当前是直接打开的本地文件，没有通话服务，先为你播放模拟通话。',
@@ -60,6 +64,8 @@
   let lang = params.get('lang') || store.get('jev.lang') || 'en';      // English unless the visitor picked 中文 (or ?lang=zh)
   if (!I18N[lang]) lang = 'en';
   const t = (k) => I18N[lang][k] || I18N.en[k] || k;
+  const has = (k) => !!(I18N[lang][k] || I18N.en[k]);
+  const option = (name) => (has('o_' + name) ? t('o_' + name) : has('d_' + name) ? t('d_' + name) : name.replace(/_/g, ' '));   // a choice's name on a probability bar
 
   // ---------- personas ----------
   const FALLBACK_PROFILES = [
@@ -126,7 +132,7 @@
       case 'listen':
         if (listening) listening.pause();
         if (m.audio && !demo) { listening = makeAudio(m); Promise.resolve(listening.play()).catch(() => {}); }
-        note({ tone: 'info', kind: 'listen', label: m.text ? `“${m.text}”` : t('d_listen'), detail: m.kind });
+        note({ tone: 'info', kind: 'listen', label: m.text ? `“${m.text}”` : t('d_listen'), detail: m.kind && has('l_' + m.kind) ? t('l_' + m.kind) : m.kind });
         break;
       case 'user':
         setCaption('capUser', m.text, m.partial);
@@ -206,7 +212,7 @@
     if (d.probs && Object.keys(d.probs).length) {
       const bars = document.createElement('div'); bars.className = 'bars';
       Object.entries(d.probs).sort((a, b2) => b2[1] - a[1]).forEach(([name, v]) => {
-        const n = document.createElement('span'); n.textContent = name.replace(/_/g, ' '); if (name === d.chosen) n.className = 'on';
+        const n = document.createElement('span'); n.textContent = option(name); if (name === d.chosen) n.className = 'on';
         const bar = document.createElement('span'); bar.className = 'bar'; const i = document.createElement('i'); i.style.width = Math.round(Math.max(0, Math.min(1, v)) * 100) + '%'; bar.appendChild(i);
         const num = document.createElement('span'); num.textContent = fmt(v);
         bars.append(n, bar, num);
@@ -366,7 +372,9 @@
     document.documentElement.style.setProperty('--accent', accent); island.setAccent(accent);
     document.querySelectorAll('.card[data-id]').forEach((c) => { const on = c.dataset.id === p.id; c.setAttribute('aria-checked', String(on)); c.tabIndex = on ? 0 : -1; });
   }
-  const visible = () => profiles.filter((p) => p.group !== 'fun' || funOpen);
+  // the page's language picks the cast: English personas on the English page, Chinese ones on the Chinese page
+  const cast = () => { const own = profiles.filter((p) => (p.language || 'en') === lang); return own.length ? own : profiles; };
+  const visible = () => cast().filter((p) => p.group !== 'fun' || funOpen);
   function cardFor(p, box) {
     const card = document.createElement('button'); card.type = 'button'; card.className = 'card'; card.dataset.id = p.id; card.setAttribute('role', 'radio');
     if (/^#[0-9a-f]{6}$/i.test(p.accent || '')) card.style.setProperty('--c', p.accent);
@@ -386,11 +394,11 @@
     box.appendChild(card);
   }
   function renderCards() {                                     // the main tasks, then one entry that opens the fun characters
-    const box = $('cards'), funBox = $('funCards'), fun = profiles.filter((p) => p.group === 'fun');
+    const list = cast(), box = $('cards'), funBox = $('funCards'), fun = list.filter((p) => p.group === 'fun');
     box.textContent = ''; funBox.textContent = '';
-    const want = profiles.find((p) => selected && p.id === selected.id) || profiles.find((p) => p.id === store.get('jev.profile')) || profiles.find((p) => p.group !== 'fun') || profiles[0];
+    const want = list.find((p) => selected && p.id === selected.id) || list.find((p) => p.id === store.get('jev.profile')) || list.find((p) => p.group !== 'fun') || list[0];
     if (want && want.group === 'fun' && phase !== 'call') funOpen = true;
-    profiles.filter((p) => p.group !== 'fun').forEach((p) => cardFor(p, box));
+    list.filter((p) => p.group !== 'fun').forEach((p) => cardFor(p, box));
     if (fun.length) {
       const more = document.createElement('button'); more.type = 'button'; more.className = 'card more'; more.id = 'funToggle';
       more.setAttribute('aria-expanded', String(funOpen)); more.setAttribute('aria-controls', 'funCards');
@@ -404,7 +412,7 @@
       more.append(top, dots);
       more.onclick = () => {
         funOpen = !funOpen;
-        if (!funOpen && selected && selected.group === 'fun') select(profiles.find((p) => p.group !== 'fun') || profiles[0]);
+        if (!funOpen && selected && selected.group === 'fun') select(list.find((p) => p.group !== 'fun') || list[0]);
         renderCards(); $('funToggle').focus();
       };
       box.appendChild(more);
@@ -425,7 +433,7 @@
 
   // ---------- wiring ----------
   $('call').onclick = () => (phase === 'call' ? endCall() : params.has('demo') ? startDemo() : startCall());
-  $('demo').onclick = startDemo;
+  $('call').onmouseenter = () => { island.hot = true; }; $('call').onmouseleave = () => { island.hot = false; };
   document.querySelectorAll('.seg-btn').forEach((b) => { b.onclick = () => { store.set('jev.lang', b.dataset.lang); setLang(b.dataset.lang); }; });
   const drawer = (open) => { document.body.classList.toggle('drawer-open', open); $('drawer').hidden = !open; $('logToggle').setAttribute('aria-expanded', String(open)); };
   $('logToggle').onclick = () => drawer($('drawer').hidden);

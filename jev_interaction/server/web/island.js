@@ -1,21 +1,21 @@
-// The island: one glass pill that is the agent's presence. A single fragment shader draws the pill, the light band
+// The island: one glass orb that is the agent's presence, and the button that starts and ends the call. A single fragment shader draws the pill, the light band
 // inside it (four coloured lobes added like light, then tone-mapped with 1 - exp(-x)), the glow it throws outside,
 // the thinking dots and the connecting shimmer. The shape is two springs (half-width, half-height); everything else
 // eases. Falls back to Canvas2D without WebGL2, and slows to near-still under prefers-reduced-motion.
 (function () {
   'use strict';
 
-  // half-width / half-height in CSS px, and how the light behaves, per state
+  // radius in CSS px, and how the light behaves, per state; the orb beats with whoever is speaking
   const STATES = {
-    idle:       { w: 84,  h: 21, energy: .42, base: .10, speed: .35, src: null,    pal: 'warm' },
-    connecting: { w: 58,  h: 20, energy: .10, base: .04, speed: .5,  src: null,    pal: 'cool', shimmer: 1 },
-    listening:  { w: 122, h: 27, energy: .80, base: .07, speed: .75, src: 'mic',   pal: 'cool' },
-    talking:    { w: 146, h: 33, energy: 1.0, base: .12, speed: 1.2, src: 'mic',   pal: 'cool' },
-    thinking:   { w: 62,  h: 23, energy: 0,   base: 0,   speed: .6,  src: null,    pal: 'warm', dots: 1 },
-    speaking:   { w: 166, h: 39, energy: 1.0, base: .12, speed: 1.1, src: 'agent', pal: 'warm' },
-    held:       { w: 150, h: 34, energy: .85, base: .22, speed: .03, src: 'hold',  pal: 'warm', dim: 1 },
-    yielded:    { w: 92,  h: 23, energy: .45, base: .05, speed: .6,  src: 'mic',   pal: 'cool' },
-    ended:      { w: 34,  h: 17, energy: 0,   base: 0,   speed: .3,  src: null,    pal: 'warm' },
+    idle:       { w: 40, energy: .42, base: .10, speed: .35, src: null,    pal: 'warm' },
+    connecting: { w: 34, energy: .10, base: .04, speed: .5,  src: null,    pal: 'cool', shimmer: 1 },
+    listening:  { w: 50, energy: .80, base: .07, speed: .75, src: 'mic',   pal: 'cool' },
+    talking:    { w: 58, energy: 1.0, base: .12, speed: 1.2, src: 'mic',   pal: 'cool' },
+    thinking:   { w: 40, energy: 0,   base: 0,   speed: .6,  src: null,    pal: 'warm', dots: 1 },
+    speaking:   { w: 62, energy: 1.0, base: .12, speed: 1.1, src: 'agent', pal: 'warm' },
+    held:       { w: 58, energy: .85, base: .22, speed: .03, src: 'hold',  pal: 'warm', dim: 1 },
+    yielded:    { w: 46, energy: .45, base: .05, speed: .6,  src: 'mic',   pal: 'cool' },
+    ended:      { w: 22, energy: 0,   base: 0,   speed: .3,  src: null,    pal: 'warm' },
   };
   const COOL = [[.20, .78, 1.0], [.28, .42, 1.0], [.25, .95, .80], [.62, .45, 1.0]];
 
@@ -105,7 +105,7 @@ void main(){
       this.state = 'idle';
       this.levels = { mic: 0, agent: 0 };                     // set from outside every frame, 0..1
       this.reduced = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-      this.v = { w: 84, h: 21, vw: 0, vh: 0, level: 0, energy: 0, dots: 0, shimmer: 0, dim: 0, t: 0, tt: 0 };
+      this.v = { w: 40, h: 40, vw: 0, vh: 0, level: 0, energy: 0, dots: 0, shimmer: 0, dim: 0, t: 0, tt: 0 };
       this.warm = this._warm('#8ab4ff');
       this.colors = this.warm.map((c) => c.slice());
       this.last = performance.now();
@@ -153,9 +153,10 @@ void main(){
       const dt = Math.min(.05, (now - this.last) / 1000); this.last = now;
       if (this.onframe) this.onframe(now, dt);
       const s = STATES[this.state], v = this.v;
-      const fit = Math.min(1, (this.cw - 40) / 380, (this.ch - 30) / 120);                   // shrink on narrow screens
-      const breathe = this.state === 'idle' && !this.reduced ? 1 + .02 * Math.sin(now / 1000 * 1.3) : 1;
-      const tw = s.w * fit * breathe, th = s.h * fit;
+      const fit = Math.min(1, (this.cw - 40) / 180, (this.ch - 30) / 120);                   // shrink on narrow screens
+      const breathe = this.state === 'idle' && !this.reduced ? (this.hot ? 1.1 : 1) + .04 * Math.sin(now / 1000 * 1.6) : 1;
+      const beat = this.reduced ? 1 : 1 + .2 * v.level;                                      // the pulse: louder is larger
+      const tw = s.w * fit * breathe * beat, th = tw;
       if (this.reduced) { v.w += (tw - v.w) * Math.min(1, dt * 14); v.h += (th - v.h) * Math.min(1, dt * 14); }
       else {                                                                                 // a slightly springy shape
         const K = 150, D = 17;
