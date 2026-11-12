@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- `pip install "jev-interaction[server]"` then `jev-interaction serve` (and `init`): the server, its page and the
+  built-in personas ship in the package. `.env`, `runs/` and your own `profiles/` live in the folder you start from
+  (`JEV_HOME`); a persona of yours replaces a built-in one with the same name. `Profile.load("support")` loads a built-in.
+- One provider registry per node (`jev_interaction.adapters.registry`), with an entry-point group for third parties.
+- Settings panel on the page: every node's provider and key, quick-fill templates for global and mainland China, a
+  test per node; writes only from this machine.
+- Mainland China providers: DashScope Paraformer and CosyVoice. Presets: production, tested, default.
+- A call without its keys says which ones are missing; system SOCKS proxies work (python-socks).
+- Hardening: settings writes need loopback, same origin and JSON; WebSocket origin check; a failed or slow judge falls
+  back instead of freezing the call; call slots and line audio are bounded.
+
 ## 0.1.0 — first public release
 
 **Jev-Interaction: System-One-controlled full-duplex voice interaction.** Turn-taking written as plain-language

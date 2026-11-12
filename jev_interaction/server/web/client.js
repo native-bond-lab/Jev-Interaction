@@ -158,6 +158,11 @@
         note({ tone: 'pace', kind: 'pace', label: `${t('d_pace')} → ${t('p_' + m.pace)}`, probs: m.probs, chosen: m.pace, value: m.probs && m.probs[m.pace] });
         break;
       case 'hangup': endCall(); break;
+      case 'busy': showNotice(m.text, true); break;
+      case 'error':
+        if (m.what === 'settings') { showNotice(m.text, true); if (window.JevSettings) window.JevSettings.open(); }
+        else if (m.what === 'start') showNotice(m.text, true);
+        break;
     }
   }
 

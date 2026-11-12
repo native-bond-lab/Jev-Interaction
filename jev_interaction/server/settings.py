@@ -14,8 +14,25 @@ import os
 import pathlib
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-ENV_FILE = ROOT / ".env"
+from jev_interaction.server import paths
+
+ENV_FILE: pathlib.Path | None = None     # tests point this at a temporary file; otherwise the working folder's .env
+
+
+def env_path() -> pathlib.Path:
+    return ENV_FILE or paths.env_file()
+
+
+# The two quick-fill templates (non-secret values). The commented .env.example / .env.china.example at the repo root
+# say the same; a test keeps them in step.
+TEMPLATES = {
+    "global": {"JEV_MODEL": "jev-latest", "LLM_BASE_URL": "https://api.x.ai/v1", "LLM_MODEL": "grok-4.3", "LLM_TEMPERATURE": "0.7",
+               "ASR_PROVIDER": "elevenlabs", "TTS_PROVIDER": "elevenlabs", "ELEVENLABS_ASR_MODEL": "scribe_v2_realtime_turbo",
+               "ELEVENLABS_TTS_MODEL": "eleven_v4_turbo", "JEV_PRESET": "production"},
+    "china": {"JEV_MODEL": "jev-latest", "LLM_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1", "LLM_MODEL": "qwen-plus",
+              "ASR_PROVIDER": "dashscope", "TTS_PROVIDER": "dashscope", "DASHSCOPE_ASR_MODEL": "paraformer-realtime-v2",
+              "DASHSCOPE_TTS_MODEL": "cosyvoice-v2", "DASHSCOPE_TTS_VOICE": "longxiaochun_v2", "JEV_PRESET": "production"},
+}
 
 from jev_interaction.adapters import registry as R  # noqa: E402
 
@@ -57,9 +74,8 @@ def parse_env(path: pathlib.Path) -> dict[str, str]:
 
 
 def templates() -> dict[str, dict[str, str]]:
-    """The non-secret values of the two shipped templates, for the page's quick-fill buttons."""
-    pick = lambda d: {k: v for k, v in d.items() if k in NAMES and k not in SECRETS and v}  # noqa: E731
-    return {"global": pick(parse_env(ROOT / ".env.example")), "china": pick(parse_env(ROOT / ".env.china.example"))}
+    """The non-secret values of the two templates, for the page's quick-fill buttons."""
+    return {name: {k: v for k, v in t.items() if k in NAMES} for name, t in TEMPLATES.items()}
 
 
 LOOPBACK = ("127.0.0.1", "::1", "localhost")
@@ -101,7 +117,7 @@ def read(client_host: str | None, host_header: str = "", origin: str = "") -> di
                 out["value"] = current or f.get("default", "")
             fields.append(out)
         nodes.append({**node, "fields": fields})
-    return {"writable": is_writable(client_host, host_header, origin), "env_file": ENV_FILE.name, "nodes": nodes, "templates": templates()}
+    return {"writable": is_writable(client_host, host_header, origin), "env_file": str(env_path()), "nodes": nodes, "templates": templates()}
 
 
 def write(values: dict[str, str]) -> None:
@@ -110,7 +126,8 @@ def write(values: dict[str, str]) -> None:
     if unknown:
         raise KeyError(f"unknown settings: {', '.join(unknown)}")
     clean = {k: str(v).strip().replace("\n", "") for k, v in values.items()}
-    lines = ENV_FILE.read_text(encoding="utf-8").splitlines() if ENV_FILE.exists() else []
+    f = env_path()
+    lines = f.read_text(encoding="utf-8").splitlines() if f.exists() else []
     done = set()
     for i, line in enumerate(lines):
         if "=" in line and not line.lstrip().startswith("#"):
@@ -119,9 +136,9 @@ def write(values: dict[str, str]) -> None:
                 lines[i] = f"{k}={clean[k]}"
                 done.add(k)
     lines += [f"{k}={v}" for k, v in clean.items() if k not in done]
-    ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
     try:
-        ENV_FILE.chmod(0o600)
+        f.chmod(0o600)
     except OSError:
         pass
     for k, v in clean.items():

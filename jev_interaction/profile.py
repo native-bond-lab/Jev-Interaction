@@ -17,6 +17,7 @@ import yaml
 
 from .policy import ArgmaxPolicy, Policy, SamplePolicy, ThresholdPolicy
 
+BUILTIN = pathlib.Path(__file__).resolve().parent / "profiles"     # the shipped personas
 POLICY_NAMES = {"sample": SamplePolicy, "argmax": ArgmaxPolicy, "threshold": ThresholdPolicy}
 
 
@@ -41,7 +42,11 @@ class Profile:
 
     @classmethod
     def load(cls, path: str | pathlib.Path) -> "Profile":
-        d = yaml.safe_load(pathlib.Path(path).read_text(encoding="utf-8"))
+        """A profile from a YAML file, or a built-in one by name ("support", "vera", ...)."""
+        p = pathlib.Path(path)
+        if not p.exists() and p.suffix == "" and len(p.parts) == 1:
+            p = BUILTIN / f"{p.name}.yaml"
+        d = yaml.safe_load(p.read_text(encoding="utf-8"))
         policies = {}
         for decision, spec in (d.get("policies") or {}).items():
             spec = {"type": spec} if isinstance(spec, str) else dict(spec)

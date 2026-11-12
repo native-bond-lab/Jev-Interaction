@@ -74,6 +74,6 @@ if [ "$START" = 1 ]; then
   URL="http://localhost:$PORT"
   say "Starting on $URL  (Ctrl+C to stop; use headphones, the built-in VAD is simple)"
   ( sleep 2; command -v open >/dev/null && open "$URL" || { command -v xdg-open >/dev/null && xdg-open "$URL"; } || true ) >/dev/null 2>&1 &
-  exec .venv/bin/uvicorn server.app:app --host 0.0.0.0 --port "$PORT"
+  exec .venv/bin/jev-interaction serve --host 127.0.0.1 --port "$PORT"
 fi
-say "Done. Start with: .venv/bin/uvicorn server.app:app --port $PORT"
+say "Done. Start with: .venv/bin/jev-interaction serve --port $PORT"

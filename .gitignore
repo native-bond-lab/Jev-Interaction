@@ -5,3 +5,7 @@ runs/
 .venv/
 *.egg-info/
 uv.lock
+.claude/
+/profiles/
+build/
+dist/

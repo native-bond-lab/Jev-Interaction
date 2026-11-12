@@ -9,11 +9,14 @@ description = "A full-duplex voice framework whose turn-taking is a set of plain
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.24", "httpx>=0.27", "websockets>=12", "pyyaml>=6"]
+dependencies = ["numpy>=1.24", "httpx>=0.27", "websockets>=12", "python-socks[asyncio]>=2.4", "pyyaml>=6"]   # python-socks: system SOCKS proxies (Clash, V2ray)
 
 [project.optional-dependencies]
 server = ["fastapi>=0.110", "uvicorn>=0.29"]
 dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+jev-interaction = "jev_interaction.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/native-bond-lab/Jev-Interaction"
@@ -22,7 +25,7 @@ Homepage = "https://github.com/native-bond-lab/Jev-Interaction"
 include = ["jev_interaction*"]
 
 [tool.setuptools.package-data]
-jev_interaction = ["prompts/*.md"]
+jev_interaction = ["prompts/*.md", "profiles/*.yaml", "server/web/*", "py.typed"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

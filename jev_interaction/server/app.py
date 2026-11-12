@@ -1,10 +1,10 @@
 """A runnable call server: one WebSocket per call, one HTTP route for line audio, a few JSON routes for the page.
 
-    ./scripts/setup.sh            (or: pip install -e ".[server]"; cp .env.example .env; fill in the keys)
-    uvicorn server.app:app --port 8080     then open http://localhost:8080
+    pip install "jev-interaction[server]"; jev-interaction serve      then open http://localhost:8080
+    (from a clone: ./scripts/setup.sh)
 
-WebSocket /ws: first message {"type": "start", "profile": "examples/profiles/companion.yaml", "language": "en"}, then binary
-200 ms PCM16 16 kHz frames and JSON client messages; events come back as JSON.
+WebSocket /ws: first message {"type": "start", "profile": "companion", "language": "en"}, then binary 200 ms PCM16
+16 kHz frames and JSON client messages; events come back as JSON. The protocol is in docs/protocol.md.
 
 Providers come from the environment: ASR_PROVIDER / TTS_PROVIDER = elevenlabs (default) or dashscope (mainland China),
 any OpenAI-compatible LLM (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL), and JEV_PRESET = production (default) | tested | default.
@@ -13,28 +13,24 @@ from __future__ import annotations
 
 import json
 import os
-from collections import OrderedDict
-import pathlib
 import time
+from collections import OrderedDict
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
-for line in (ROOT / ".env").read_text(encoding="utf-8").splitlines() if (ROOT / ".env").exists() else []:
-    if "=" in line and not line.lstrip().startswith("#"):
-        k, v = line.split("=", 1)
-        os.environ.setdefault(k.strip(), v.strip())
+from jev_interaction.server import paths
+
+paths.load_env()
 
 from jev_interaction import Profile  # noqa: E402  (after .env, so adapters read the keys)
 from jev_interaction.adapters import EnergyVAD, registry  # noqa: E402
 from jev_interaction.presets import config as preset_config  # noqa: E402
 from jev_interaction.recorder import Recorder  # noqa: E402
 from jev_interaction.session import Session  # noqa: E402
-from server import settings as S  # noqa: E402
+from jev_interaction.server import settings as S  # noqa: E402
 
-WEB = ROOT / "web"
-PROFILES = ROOT / "examples" / "profiles"
+WEB = paths.WEB
 app = FastAPI(title="Jev-Interaction")
 LINES: "OrderedDict[str, tuple[str, object]]" = OrderedDict()   # line id -> (text, synthesizer); the newest MAX_LINES
 MAX_LINES = 2000
@@ -52,10 +48,10 @@ def make_synthesizer(profile: Profile):
     return registry.create("tts", voice=voices.get(registry.selected("tts")))
 
 
-def profile_card(path: pathlib.Path) -> dict:
+def profile_card(pid: str, path) -> dict:
     p = Profile.load(path)
     d = p.extra.get("display") or {}
-    return {"id": path.stem, "path": str(path.relative_to(ROOT)), "name": p.name, "title": d.get("title", p.name),
+    return {"id": pid, "path": pid, "name": p.name, "title": d.get("title", p.name),
             "title_zh": d.get("title_zh", d.get("title", p.name)), "tagline": d.get("tagline", p.task),
             "tagline_zh": d.get("tagline_zh", d.get("tagline", p.task)), "language": d.get("language", "en"),
             "accent": d.get("accent", "#3ee0c8"), "order": d.get("order", 100)}
@@ -63,7 +59,7 @@ def profile_card(path: pathlib.Path) -> dict:
 
 @app.get("/api/profiles")
 def profiles():
-    cards = [profile_card(f) for f in sorted(PROFILES.glob("*.yaml"))]
+    cards = [profile_card(pid, f) for pid, f in paths.profiles().items()]
     return sorted(cards, key=lambda c: (c["order"], c["id"]))
 
 
@@ -138,9 +134,16 @@ async def call(ws: WebSocket):
         await ws.close(code=4429)
         return
     start = json.loads(await ws.receive_text())
-    path = (ROOT / start.get("profile", "examples/profiles/companion.yaml")).resolve()
-    if PROFILES.resolve() not in path.parents or not path.exists():
+    pid = str(start.get("profile") or "companion").rsplit("/", 1)[-1].removesuffix(".yaml")   # an id, or an old-style path
+    path = paths.profiles().get(pid)
+    if path is None:
         await ws.close(code=4404)
+        return
+    missing = registry.missing_settings()
+    if missing:
+        await ws.send_text(json.dumps({"type": "error", "what": "settings", "missing": missing,
+                                       "text": "Missing settings: " + ", ".join(missing) + " (open Settings on the page)"}))
+        await ws.close(code=4412)
         return
     profile = Profile.load(path)
     language = start.get("language") or (profile.extra.get("display") or {}).get("language", "en")
@@ -157,7 +160,7 @@ async def call(ws: WebSocket):
     judge = registry.create("judge")
     session = Session(profile, send=send, judge=judge, recognizer=make_recognizer(language),
                       responder=registry.create("llm"), vad=EnergyVAD(), config=cfg,
-                      recorder=Recorder(ROOT / "runs" / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"))
+                      recorder=Recorder(paths.runs_dir() / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"))
     ACTIVE["calls"] += 1
     started = time.monotonic()
     try:

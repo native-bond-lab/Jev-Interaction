@@ -4,7 +4,7 @@
 
 **System-One-controlled full-duplex voice interaction.**<br>Turn-taking as decisions you write — not a model you train.
 
-[中文](README.zh-CN.md) · [Profiles](examples/profiles) · [Decisions](jev_interaction/judge/questions.py)
+[中文](README.zh-CN.md) · [Profiles](jev_interaction/profiles) · [Decisions](jev_interaction/judge/questions.py)
 
 [![tests](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml/badge.svg)](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml) ![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![license](https://img.shields.io/badge/license-Apache--2.0-blue) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
 <br>
@@ -149,14 +149,14 @@ read.
 
 | profile | listening sounds | mid-sentence pauses | talked over | silence | policies |
 |---|---|---|---|---|---|
-| [companion](examples/profiles/companion.yaml) | often, varied | quick to react | stops, delighted | fills it | sample |
-| [support](examples/profiles/support.yaml) | a short "okay" | waits (numbers being read) | stops at once | waits, then one check | thresholds |
-| [tutor](examples/profiles/tutor.yaml) | encouraging | very patient | finishes the explanation | offers a prompt | sample |
-| [interviewer](examples/profiles/interviewer.yaml) | none | lets thinking run | cuts in on rambling | waits for the answer | mixed |
-| [Vera · speaking coach](examples/profiles/vera.yaml) | almost none | lets silence work | finishes her sentence | gives the next exercise | thresholds |
-| [话唠阿乐 · chatterbox](examples/profiles/chatterbox_zh.yaml) | constant | jumps in | finishes his sentence | can't bear one | sample |
-| [小奶狗小言 · sweet puppy](examples/profiles/puppy_zh.yaml) | soft "mm, and then?" | waits | stops the moment you speak | asks if you're okay | sample |
-| [电商客服小安 · support (Chinese)](examples/profiles/support_zh.yaml) | a rare "好的" | never cuts in on an order number | stops at once | one check | thresholds |
+| [companion](jev_interaction/profiles/companion.yaml) | often, varied | quick to react | stops, delighted | fills it | sample |
+| [support](jev_interaction/profiles/support.yaml) | a short "okay" | waits (numbers being read) | stops at once | waits, then one check | thresholds |
+| [tutor](jev_interaction/profiles/tutor.yaml) | encouraging | very patient | finishes the explanation | offers a prompt | sample |
+| [interviewer](jev_interaction/profiles/interviewer.yaml) | none | lets thinking run | cuts in on rambling | waits for the answer | mixed |
+| [Vera · speaking coach](jev_interaction/profiles/vera.yaml) | almost none | lets silence work | finishes her sentence | gives the next exercise | thresholds |
+| [话唠阿乐 · chatterbox](jev_interaction/profiles/chatterbox_zh.yaml) | constant | jumps in | finishes his sentence | can't bear one | sample |
+| [小奶狗小言 · sweet puppy](jev_interaction/profiles/puppy_zh.yaml) | soft "mm, and then?" | waits | stops the moment you speak | asks if you're okay | sample |
+| [电商客服小安 · support (Chinese)](jev_interaction/profiles/support_zh.yaml) | a rare "好的" | never cuts in on an order number | stops at once | one check | thresholds |
 
 ```yaml
 name: Sam
@@ -180,6 +180,13 @@ git clone https://github.com/native-bond-lab/Jev-Interaction && cd Jev-Interacti
 ./scripts/setup.sh --china    # mainland China: Alibaba Cloud Bailian (Qwen + Paraformer + CosyVoice), domestic PyPI mirror
 ```
 
+Or as a package, in any folder:
+
+```bash
+pip install "jev-interaction[server] @ git+https://github.com/native-bond-lab/Jev-Interaction"
+jev-interaction serve         # http://localhost:8080; fill in the keys under Settings on the page
+```
+
 Or with Docker (any OS):
 
 ```bash
@@ -187,7 +194,9 @@ cp .env.example .env          # or .env.china.example; fill in the keys
 docker compose up             # http://localhost:8080
 ```
 
-Open <http://localhost:8080>, pick a persona and press **Call**. No keys yet? The page has a built-in simulated call
+Open <http://localhost:8080>, pick a persona and press **Call**. Keys can also be filled in from the page: **Settings**
+lists every node (judge, language model, recognition, synthesis), tests each one, and saves to `.env` in the folder you
+started from. Your own personas go in `./profiles/*.yaml`; one with the same name as a built-in replaces it. No keys yet? The page has a built-in simulated call
 (`?demo=1`). The built-in VAD is a simple energy detector, so use headphones.
 
 | | global (what our production runs) | mainland China |
@@ -217,7 +226,7 @@ from jev_interaction.judge import JevClient
 from jev_interaction.session import Session
 
 session = Session(
-    Profile.load("examples/profiles/support.yaml"),
+    Profile.load("support")          # a built-in persona, or a path to your own YAML,
     send=my_send,                       # async: deliver events to your client
     judge=JevClient(),
     recognizer=ScribeRealtime(language="en"),
@@ -489,12 +498,13 @@ jev_interaction/
   presets.py          production · tested · default
   ledger.py           the call's history, for both readers
   recorder.py         one JSON line per event, for replay
-  adapters/           VAD · recognizer · responder · synthesizer
+  adapters/           VAD · recognizer · responder · synthesizer; registry.py lists the providers per node
   prompts/system.md   the responder's default system prompt
-server/app.py         WebSocket call server, line audio, /api/profiles and /api/health
+  profiles/           the built-in personas
+  server/             call server (WebSocket, line audio, profiles, health, settings) and its page (web/)
+  cli.py              `jev-interaction serve` / `init`
 scripts/setup.sh      one-click local setup (--china for mainland providers)
 deploy/huggingface/   Hugging Face Space card; scripts/push_hf_space.sh publishes it
-web/                  minimal browser client
 tools/replay.py       re-ask recorded decisions with changed questions
 docs/                 architecture diagram and benchmark charts
 ```

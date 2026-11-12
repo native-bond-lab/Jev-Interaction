@@ -1,4 +1,5 @@
 import asyncio
+import pathlib
 import time
 
 import pytest
@@ -190,7 +191,7 @@ def test_presets_carry_production_and_tested_settings():
 
 def test_every_example_profile_loads_with_a_card():
     import pathlib
-    for f in sorted((pathlib.Path(__file__).resolve().parents[1] / "examples" / "profiles").glob("*.yaml")):
+    for f in sorted((pathlib.Path(__file__).resolve().parents[1] / "jev_interaction" / "profiles").glob("*.yaml")):
         p = Profile.load(f)
         d = p.extra.get("display") or {}
         assert p.name and p.manner and d.get("title") and d.get("title_zh") and d.get("language") in ("en", "zh"), f.name
@@ -236,7 +237,7 @@ async def test_a_failing_judge_never_leaves_the_line_held():
 
 
 def test_settings_are_written_only_from_this_servers_own_page(monkeypatch):
-    from server import settings as S
+    from jev_interaction.server import settings as S
     monkeypatch.delenv("SETTINGS_WRITABLE", raising=False)
     assert S.is_writable("127.0.0.1", "localhost:8080", "http://localhost:8080")
     assert S.is_writable("::1", "[::1]:8080", "")
@@ -246,7 +247,7 @@ def test_settings_are_written_only_from_this_servers_own_page(monkeypatch):
 
 
 def test_settings_write_keeps_other_lines_and_rejects_unknown_names(tmp_path, monkeypatch):
-    from server import settings as S
+    from jev_interaction.server import settings as S
     env = tmp_path / ".env"
     env.write_text("# keys\nJEV_API_KEY=old\nOTHER=1\n")
     monkeypatch.setattr(S, "ENV_FILE", env)
@@ -269,7 +270,29 @@ def test_provider_registry_drives_factories_health_and_settings(monkeypatch):
     R.register("asr", "toy", lambda language="en", **_: ("toy-asr", language), [R.Setting("TOY_KEY", "Toy key", secret=True, required=True)])
     monkeypatch.setenv("ASR_PROVIDER", "toy")
     assert R.create("asr", language="zh") == ("toy-asr", "zh") and "TOY_KEY" in R.missing_settings()
-    from server import settings as S
+    from jev_interaction.server import settings as S
     asr = next(n for n in S.build_nodes() if n["id"] == "asr")
     assert "toy" in asr["fields"][0]["options"] and any(f["name"] == "TOY_KEY" and f["provider"] == "toy" for f in asr["fields"])
     R._PROVIDERS.pop(("asr", "toy"))
+
+
+def test_settings_templates_match_env_examples():
+    from jev_interaction.server import settings as S
+    root = pathlib.Path(__file__).resolve().parents[1]
+    for name, file in (("global", ".env.example"), ("china", ".env.china.example")):
+        shipped = S.parse_env(root / file)
+        for k, v in S.TEMPLATES[name].items():
+            assert shipped.get(k) == v, (file, k, shipped.get(k), v)
+
+
+def test_profiles_by_id_and_user_override(tmp_path, monkeypatch):
+    from jev_interaction.server import paths
+    monkeypatch.setenv("JEV_HOME", str(tmp_path))
+    found = paths.profiles()
+    assert {"companion", "support", "vera", "puppy_zh"} <= set(found)
+    (tmp_path / "profiles").mkdir()
+    mine = tmp_path / "profiles" / "support.yaml"
+    mine.write_text("name: Mine\n", encoding="utf-8")
+    assert paths.profiles()["support"] == mine
+    assert paths.env_file() == tmp_path / ".env"
+    assert Profile.load("support").name and Profile.load(mine).name == "Mine"

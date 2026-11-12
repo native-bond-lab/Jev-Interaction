@@ -22,7 +22,7 @@ The tests use a fake judge and fake adapters, so they need no API keys. A real c
 | change what Jev reads | `jev_interaction/judge/state.py` | replay: the state is the only input besides the question |
 | a new VAD, recognizer, responder or synthesizer | `jev_interaction/adapters/` | implement the protocol in the README table "Swappable pieces"; add a fake-driven test |
 | a policy | `jev_interaction/policy.py` | a unit test; policies are pure functions of probabilities |
-| a task profile | `examples/profiles/*.yaml` | load it in the browser client and call it; describe what changed |
+| a task profile | `jev_interaction/profiles/*.yaml` | load it in the browser client and call it; describe what changed |
 
 ## Benchmark results
 

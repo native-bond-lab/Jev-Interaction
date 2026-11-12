@@ -7,8 +7,6 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY jev_interaction ./jev_interaction
 RUN pip install ".[server]"
-COPY server ./server
-COPY web ./web
-COPY examples ./examples
 EXPOSE 8080
-CMD ["sh", "-c", "uvicorn server.app:app --host 0.0.0.0 --port ${PORT}"]
+# /app is the working folder: .env, runs/ and your own profiles/ are read from here (see docker-compose.yml)
+CMD ["sh", "-c", "jev-interaction serve --host 0.0.0.0 --port ${PORT}"]

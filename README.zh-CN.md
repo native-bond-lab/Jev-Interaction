@@ -4,7 +4,7 @@
 
 **由“系统一”掌控的全双工语音交互。**<br>轮次交互是写出来的决策，而不是训练出来的模型。
 
-[English](README.md) · [任务配置](examples/profiles) · [决策题目](jev_interaction/judge/questions.py)
+[English](README.md) · [任务配置](jev_interaction/profiles) · [决策题目](jev_interaction/judge/questions.py)
 
 [![tests](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml/badge.svg)](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml) ![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![license](https://img.shields.io/badge/license-Apache--2.0-blue) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
 <br>
@@ -114,14 +114,14 @@ Jev    feeling 0.46 · quiet 0.27 · continuer 0.22 · answer_due 0.05
 
 | 配置 | 应声 | 说到一半停顿 | 被打断 | 冷场 | 策略 |
 |---|---|---|---|---|---|
-| [陪伴](examples/profiles/companion.yaml) | 常有，花样多 | 很快接话 | 立刻停，很高兴 | 主动填上 | 抽签 |
-| [客服](examples/profiles/support.yaml) | 简短一声"好" | 等着（对方可能在念号码） | 立刻停 | 等着，久了问一次 | 阈值 |
-| [家教](examples/profiles/tutor.yaml) | 鼓励的声音 | 非常耐心 | 先讲完这句 | 给个提示 | 抽签 |
-| [面试官](examples/profiles/interviewer.yaml) | 不出声 | 让对方想 | 跑题就打断 | 等回答 | 混合 |
-| [Vera · 演讲教练](examples/profiles/vera.yaml) | 几乎不出声 | 让沉默替她说话 | 先说完这句 | 直接给下一个练习 | 阈值 |
-| [话唠阿乐](examples/profiles/chatterbox_zh.yaml) | 不停应声 | 抢着接话 | 先说完这句 | 一秒都忍不了 | 抽签 |
-| [小奶狗小言](examples/profiles/puppy_zh.yaml) | 轻轻"嗯，然后呢" | 耐心等 | 你一开口就停 | 问你怎么啦 | 抽签 |
-| [电商客服小安](examples/profiles/support_zh.yaml) | 偶尔一句"好的" | 报订单号时绝不打断 | 立刻停 | 只问一次 | 阈值 |
+| [陪伴](jev_interaction/profiles/companion.yaml) | 常有，花样多 | 很快接话 | 立刻停，很高兴 | 主动填上 | 抽签 |
+| [客服](jev_interaction/profiles/support.yaml) | 简短一声"好" | 等着（对方可能在念号码） | 立刻停 | 等着，久了问一次 | 阈值 |
+| [家教](jev_interaction/profiles/tutor.yaml) | 鼓励的声音 | 非常耐心 | 先讲完这句 | 给个提示 | 抽签 |
+| [面试官](jev_interaction/profiles/interviewer.yaml) | 不出声 | 让对方想 | 跑题就打断 | 等回答 | 混合 |
+| [Vera · 演讲教练](jev_interaction/profiles/vera.yaml) | 几乎不出声 | 让沉默替她说话 | 先说完这句 | 直接给下一个练习 | 阈值 |
+| [话唠阿乐](jev_interaction/profiles/chatterbox_zh.yaml) | 不停应声 | 抢着接话 | 先说完这句 | 一秒都忍不了 | 抽签 |
+| [小奶狗小言](jev_interaction/profiles/puppy_zh.yaml) | 轻轻"嗯，然后呢" | 耐心等 | 你一开口就停 | 问你怎么啦 | 抽签 |
+| [电商客服小安](jev_interaction/profiles/support_zh.yaml) | 偶尔一句"好的" | 报订单号时绝不打断 | 立刻停 | 只问一次 | 阈值 |
 
 ```yaml
 name: Sam
@@ -145,6 +145,13 @@ git clone https://github.com/native-bond-lab/Jev-Interaction && cd Jev-Interacti
 ./scripts/setup.sh --china    # 中国大陆：阿里云百炼（通义千问 + Paraformer + CosyVoice），并使用国内 PyPI 镜像
 ```
 
+或者当作 Python 包装，在任意目录：
+
+```bash
+pip install "jev-interaction[server] @ git+https://github.com/native-bond-lab/Jev-Interaction"
+jev-interaction serve         # 打开 http://localhost:8080，在页面的「设置」里填密钥
+```
+
 或者用 Docker（任何系统）：
 
 ```bash
@@ -152,7 +159,7 @@ cp .env.example .env          # 中国大陆用 .env.china.example；填好密�
 docker compose up             # 打开 http://localhost:8080
 ```
 
-打开 <http://localhost:8080>，选一个角色，点 **通话**。还没有密钥？页面自带模拟通话（`?demo=1`）。自带的是简单的能量 VAD，建议戴耳机。
+打开 <http://localhost:8080>，选一个角色，点 **通话**。密钥也可以在页面里填：**设置** 列出每个节点（法官、大模型、识别、合成），逐个测试，保存到启动目录下的 `.env`。自己的角色放在 `./profiles/*.yaml`，和内置角色同名就替换它。还没有密钥？页面自带模拟通话（`?demo=1`）。自带的是简单的能量 VAD，建议戴耳机。
 
 | | 海外（我们生产环境在用的配置） | 中国大陆 |
 |---|---|---|
@@ -178,7 +185,7 @@ from jev_interaction.judge import JevClient
 from jev_interaction.session import Session
 
 session = Session(
-    Profile.load("examples/profiles/support.yaml"),
+    Profile.load("support")          # a built-in persona, or a path to your own YAML,
     send=my_send,                       # 异步函数：把事件发给你的客户端
     judge=JevClient(),
     recognizer=ScribeRealtime(language="en"),
@@ -411,12 +418,13 @@ jev_interaction/
   presets.py          production · tested · default 预设
   ledger.py           通话记录
   recorder.py         每个事件一行 JSON，供重放
-  adapters/           VAD · 识别 · 大模型 · 合成
+  adapters/           VAD · 识别 · 大模型 · 合成；registry.py 是每个节点的服务商表
   prompts/system.md   大模型默认系统提示
-server/app.py         WebSocket 通话服务、音频路由、/api/profiles 和 /api/health
+  profiles/           内置角色
+  server/             通话服务（WebSocket、音频、角色、健康检查、设置）和网页（web/）
+  cli.py              `jev-interaction serve` / `init`
 scripts/setup.sh      一键本地部署（--china 使用中国大陆服务）
 deploy/huggingface/   Hugging Face Space 说明；scripts/push_hf_space.sh 负责发布
-web/                  最简网页客户端
 tools/replay.py       用改过的题重问录下来的决策
 docs/                 架构图和基准图表
 ```

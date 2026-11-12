@@ -7,7 +7,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 
 | message | when |
 |---|---|
-| `{"type": "start", "profile": "examples/profiles/companion.yaml", "language": "en"}` | first message of the call; `language` defaults to the profile's |
+| `{"type": "start", "profile": "companion", "language": "en"}` | first message of the call; `profile` is an id from `/api/profiles`; `language` defaults to the profile's |
 | binary frame | 200 ms of 16 kHz mono PCM16 (3200 samples, 6400 bytes), continuously, including while the agent talks |
 | `{"type": "playback", "state": "playing" \| "idle"}` | the agent's audio started / the queue ran empty |
 | `{"type": "heard", "text": "..."}` | after `stop`: the part of the line that was actually played |
@@ -25,7 +25,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `finish_line` | `gen` | drop queued lines, let the current one finish |
 | `decision` | `what, action?, go?, probs?, why?, ...` | a turn-taking decision Jev just made (`end_of_turn`, `floor`, `quiet`, `not_for_me`), for display and logs |
 | `pace` | `pace, probs` | the call's pace changed (normal, patient, narrate, eager) |
-| `error` | `what, text` | a provider failed (`judge`, `start`); the call falls back and goes on where it can |
+| `error` | `what, text, missing?` | `settings`: required keys are empty (`missing` lists them; the socket closes with 4412); `start`: a provider refused; `judge`: a decision failed, the call falls back and goes on |
 | `busy` | `text` | the server's concurrent-call limit is reached; the socket closes |
 | `hangup` | `why?` | the agent ended the call (or the time limit did) |
 
