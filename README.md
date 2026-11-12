@@ -244,6 +244,8 @@ Events to the client: `line`, `listen`, `hold`, `unhold`, `stop`, `finish_line`,
 
 ### Add a decision
 
+A decision is one module: when it is asked, what Jev is asked, and what the answer does. Write the question:
+
 ```python
 # jev_interaction/judge/questions.py
 def laugh(name: str) -> dict:
@@ -251,8 +253,41 @@ def laugh(name: str) -> dict:
             "criteria": {"laugh": f"{name} finds it funny and laughs", "smile": "a warm word, no laugh", "none": "let it pass"}}
 ```
 
-Ask it from the session where it belongs, give it a policy in `Config.policies`, and replay recorded calls with
-`tools/replay.py` to see where its answers land.
+then the decision, and register it with a policy:
+
+```python
+# jev_interaction/decisions/laugh.py
+from .. import speaking
+from ..judge import questions as Q
+from .base import Decision
+
+speaking.event("laugh", "they made a joke; you laugh, in a few words", answers_user=True, max_tokens=60)
+
+
+class Laugh(Decision):
+    name = policy = "laugh"
+
+    def on_words(self, s):                        # when: new words while the agent is quiet
+        if not s.speaking and not s.generating:
+            s._spawn(self.ask(s))
+
+    def questions(self, s, ctx):                  # what Jev is asked, about the call so far
+        return {"laugh": Q.laugh(s.p.short)}
+
+    async def apply(self, s, answers, ctx):       # what the policy's choice does
+        if self.choose(s, answers, "laugh", ctx) == "laugh":
+            await s.respond("laugh")
+```
+
+```python
+register(Laugh())                                 # jev_interaction.decisions; or add it to DECISIONS there
+config = Config(policies={**Config().policies, "laugh": SamplePolicy()})
+```
+
+Nothing else changes: the session offers every registered decision each new segment of words (`on_words`) and each
+100 ms tick (`on_tick`), and logs the state, the questions and the answers. `allowed` narrows the choices to what
+applies now and `state` adds to what Jev reads; the five built-in decisions in `jev_interaction/decisions/` are the
+examples. Replay recorded calls with `python tools/replay.py runs/*.jsonl --purpose laugh` to see where its answers land.
 
 ### Tested knobs
 
@@ -490,8 +525,11 @@ logged with the state Jev read and the probabilities it returned. What the trace
 
 ```
 jev_interaction/
-  session.py          one call: inputs, decisions, speaking
+  session.py          one call: its state and its loop (audio in, lines out)
+  decisions/          one module per decision: turn · listen · floor · cut_in · quiet
   judge/              Jev client · the question set · the state text
+  utterance.py        what the user is saying now: words, length, loudness
+  speaking.py         what the responder is told before each kind of line
   policy.py           sample · threshold · argmax
   profile.py          task profiles
   config.py           paces, timings, default policies
@@ -505,7 +543,7 @@ jev_interaction/
   cli.py              `jev-interaction serve` / `init`
 scripts/setup.sh      one-click local setup (--china for mainland providers)
 deploy/huggingface/   Hugging Face Space card; scripts/push_hf_space.sh publishes it
-tools/replay.py       re-ask recorded decisions with changed questions
+tools/replay.py       re-ask the recorded questions, as asked or reworded
 docs/                 architecture diagram and benchmark charts
 ```
 
