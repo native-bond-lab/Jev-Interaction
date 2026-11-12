@@ -1,10 +1,12 @@
-"""Re-ask Jev the decisions recorded in call logs, with today's questions or a candidate wording, and show what changes.
+"""Re-ask Jev the decisions recorded in call logs, as they were asked or with a candidate wording, and show what changes.
 
     python tools/replay.py runs/*.jsonl --purpose floor            # same questions: how stable are the answers?
     python tools/replay.py runs/*.jsonl --purpose turn --edit my_questions.py
 
-`--edit` names a Python file defining `edit(purpose, questions) -> questions`; it receives the recorded question set
-rebuilt from judge/questions.py and returns the candidate. Without labels this shows flips, not accuracy: read them.
+Every "judge" entry in a log holds the state Jev read and the questions it was asked, so a replay sends exactly those.
+`--edit` names a Python file defining `edit(purpose, questions) -> questions`; it receives the recorded questions and
+returns the candidate. `--purpose` is a decision's name (jev_interaction/decisions). Without labels this shows flips,
+not accuracy: read them.
 """
 from __future__ import annotations
 
@@ -14,14 +16,20 @@ import importlib.util
 import json
 import pathlib
 import sys
+from typing import Callable, Iterable
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from jev_interaction.judge import JevClient  # noqa: E402
 from jev_interaction.judge import questions as Q  # noqa: E402
 
+Edit = Callable[[str, dict], dict]
 
-def rebuild(purpose: str, answers: dict, name: str, pace: str) -> dict:
-    """The question set behind a recorded judgement, from the choices it was answered with."""
+
+def rebuild(purpose: str, answers: dict, state: str) -> dict:
+    """For logs written before the questions were recorded: today's wording of the built-in questions, guessed from the
+    choices that were answered and from the name and pace in the state text."""
+    name = state.split("between the user and ", 1)[1].split(".", 1)[0]
+    pace = state.split("Current pace of the call: ", 1)[1].split(".", 1)[0]
     out = {}
     for key, probs in answers.items():
         if key == "floor":
@@ -39,40 +47,50 @@ def rebuild(purpose: str, answers: dict, name: str, pace: str) -> dict:
     return out
 
 
+def records(paths: Iterable[str | pathlib.Path], purpose: str) -> Iterable[dict]:
+    """The recorded judgements of one decision, in the order they happened."""
+    for path in paths:
+        for line in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
+            r = json.loads(line)
+            if r.get("event") == "judge" and r.get("purpose") == purpose:
+                yield r
+
+
+async def replay(judge, entries: Iterable[dict], edit: Edit | None = None, out: Callable[[str], None] = print) -> tuple[int, int]:
+    """Re-ask each recorded judgement; (answers compared, answers whose top choice changed)."""
+    flips = n = 0
+    for r in entries:
+        state, purpose = r["state"], r["purpose"]
+        qs = r.get("questions") or rebuild(purpose, r["answers"], state)
+        if edit:
+            qs = edit(purpose, qs)
+        new = await judge.ask(qs, state)
+        for key, old in r["answers"].items():
+            if key not in new or not old:
+                continue
+            o, w = max(old, key=old.get), new[key]["choice"]
+            n += 1
+            if o != w:
+                flips += 1
+                out(f"FLIP {key}: {o} -> {w} | {state.splitlines()[-1][:120]}")
+    return n, flips
+
+
+def load_edit(path: str) -> Edit:
+    spec = importlib.util.spec_from_file_location("edit", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.edit
+
+
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("logs", nargs="+")
     ap.add_argument("--purpose", default="floor")
     ap.add_argument("--edit", default="")
     a = ap.parse_args()
-    edit = None
-    if a.edit:
-        spec = importlib.util.spec_from_file_location("edit", a.edit)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        edit = mod.edit
     judge = JevClient()
-    flips = n = 0
-    for path in a.logs:
-        for line in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
-            r = json.loads(line)
-            if r.get("event") != "judge" or r.get("purpose") != a.purpose:
-                continue
-            state = r["state"]
-            name = state.split("between the user and ", 1)[1].split(".", 1)[0]
-            pace = state.split("Current pace of the call: ", 1)[1].split(".", 1)[0]
-            qs = rebuild(a.purpose, r["answers"], name, pace)
-            if edit:
-                qs = edit(a.purpose, qs)
-            new = await judge.ask(qs, state)
-            for key, old in r["answers"].items():
-                if key not in new or not old:
-                    continue
-                o, w = max(old, key=old.get), new[key]["choice"]
-                n += 1
-                if o != w:
-                    flips += 1
-                    print(f"FLIP {key}: {o} -> {w} | {state.splitlines()[-1][:120]}")
+    n, flips = await replay(judge, records(a.logs, a.purpose), load_edit(a.edit) if a.edit else None)
     print(f"{n} answers, {flips} flips")
     await judge.aclose()
 
