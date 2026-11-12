@@ -160,7 +160,7 @@ cp .env.example .env          # 手动填，或者留空，用页面上的设置
 docker compose up             # 打开 http://localhost:8080
 ```
 
-打开 <http://localhost:8080>。设置一次一个节点：法官（Jev）、大模型、语音识别、音色。粘贴密钥，页面会认出是哪家的；大模型从该服务自己的模型列表里选；每一步测试通过再往下走。设置保存在启动目录下的 `.env`。然后选一个角色，点中间的圆开始通话（再点一次挂断）。还没有密钥？`?demo=1` 是模拟通话。自带的是简单的能量 VAD，建议戴耳机。
+打开 <http://localhost:8080>。设置一次一个节点：法官（Jev）、大模型、语音识别、音色。粘贴密钥，页面会认出是哪家的；大模型从该服务自己的模型列表里选；每一步测试通过再往下走。设置保存在启动目录下的 `.env`。然后选一个角色，点中间的圆开始通话（再点一次挂断）。自带的是简单的能量 VAD，建议戴耳机。
 
 **每个节点都由你选。** 大模型是任意兼容 OpenAI 接口的服务（xAI、OpenAI、DeepSeek、通义千问、豆包、智谱 GLM、Kimi、OpenRouter、Groq、本地 Ollama 或 vLLM）；识别和音色来自服务商注册表，第三方包也能注册自己的（[docs/adapters.md](docs/adapters.md)）。大模型会按你选的音色调整写法：能演绎音频标签的音色（ElevenLabs v3/v4）用带 `[laughs]`、`[whispers]` 的写法，其他音色只写说出口的话（`jev_interaction/prompts/speech/`）。
 

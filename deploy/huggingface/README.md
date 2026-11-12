@@ -15,7 +15,7 @@ short_description: Full-duplex voice, turn-taking judged by Jev
 End-to-end interactive instinct, from a cascade you can read.
 Source: https://github.com/native-bond-lab/Jev-Interaction
 
-Without keys the page runs its built-in simulated call (demo mode). To make real calls, add these as Space secrets (`push_hf_space.sh` sets the limits below as variables on the first push):
+Calls need keys: add these as Space secrets (`push_hf_space.sh` sets the limits below as variables on the first push):
 
 | secret | value |
 |---|---|

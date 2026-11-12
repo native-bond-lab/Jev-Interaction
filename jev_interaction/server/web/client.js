@@ -1,7 +1,6 @@
 // The call page. Microphone -> 200 ms PCM16 16 kHz frames over a WebSocket; lines played in a queue; the server's
 // hold / unhold / stop / finish_line pause, resume and drop audio; playback state goes back to the server.
-// Around that protocol: the island (island.js) shows who holds the floor, chips show each decision Jev makes, and a
-// simulated call (demo.js) drives the same event handler with no server at all.
+// Around that protocol: the island (island.js) shows who holds the floor, and chips show each decision Jev makes.
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
@@ -15,8 +14,8 @@
       sub: 'Full-duplex voice where every interaction moment is a decision you can see.',
       picker_label: 'Who do you want to call?', lang_label: 'Language', close: 'Close',
       log_button: 'Decisions', log_title: 'Decision log', log_empty: 'Each moment Jev decides something, it lands here with its probabilities.',
-      demo_button: 'Simulated call', key_space: 'call / hang up', key_h: 'clean view', built_on: 'Built on Jev',
-      call: 'Call', hang_up: 'Hang up', you: 'You', demo_tag: 'simulated',
+      key_space: 'call / hang up', key_h: 'clean view', built_on: 'Built on Jev',
+      call: 'Call', hang_up: 'Hang up', you: 'You',
       st_idle: 'Tap to call', st_connecting: 'Connecting', st_listening: 'Listening', st_talking: 'Hearing you', st_thinking: 'Thinking',
       st_speaking: 'Speaking', st_held: 'Holding', st_yielded: 'Yielded', st_ended: 'Call ended',
       d_go: 'answer now', d_wait: 'wait, still talking', d_carry_on: 'carry on', d_yield: 'yield', d_finish_first: 'finish the sentence',
@@ -28,7 +27,7 @@
       l_continuer: 'go on', l_feeling: 'reaction', l_echo: 'echo',
       why_far: 'far from the microphone', why_jev: 'meant for someone else', quiet_for: 'quiet for',
       setup_chip: 'Set up', ready_chip: 'Ready', fun: 'Fun',
-      err_file: 'Opened as a file, so there is no server to call. Playing the simulated call instead.',
+      err_file: 'Opened as a file, so there is no server to call. Run jev-interaction serve and open http://localhost:8080.',
       err_mic_insecure: 'The microphone needs https or localhost. Open this page at http://localhost:8080.',
       err_mic_denied: 'The microphone is blocked. Allow it from the address bar, then call again.',
       err_mic_missing: 'No microphone found. Plug one in, then call again.',
@@ -40,8 +39,8 @@
       sub: '全双工语音：每一个交互瞬间，都是一次看得见的决策。',
       picker_label: '想和谁通话？', lang_label: '语言', close: '关闭',
       log_button: '决策', log_title: '决策记录', log_empty: 'Jev 每做一次判断，都会连同概率记在这里。',
-      demo_button: '模拟通话', key_space: '拨打 / 挂断', key_h: '纯净画面', built_on: '基于 Jev 构建',
-      call: '拨打', hang_up: '挂断', you: '你', demo_tag: '模拟',
+      key_space: '拨打 / 挂断', key_h: '纯净画面', built_on: '基于 Jev 构建',
+      call: '拨打', hang_up: '挂断', you: '你',
       st_idle: '点击通话', st_connecting: '接通中', st_listening: '在听', st_talking: '你在说', st_thinking: '思考中',
       st_speaking: '在说', st_held: '停顿', st_yielded: '让出话轮', st_ended: '通话结束',
       d_go: '现在回答', d_wait: '再等等，还没说完', d_carry_on: '继续说', d_yield: '让出话轮', d_finish_first: '说完这句',
@@ -53,7 +52,7 @@
       l_continuer: '嗯一声', l_feeling: '情绪回应', l_echo: '重复关键词',
       why_far: '声音离麦克风较远', why_jev: '在和别人说话', quiet_for: '已安静',
       setup_chip: '配置', ready_chip: '已就绪', fun: '趣味角色',
-      err_file: '当前是直接打开的本地文件，没有通话服务，先为你播放模拟通话。',
+      err_file: '当前是直接打开的本地文件，没有通话服务。请运行 jev-interaction serve，然后打开 http://localhost:8080。',
       err_mic_insecure: '麦克风只能在 https 或 localhost 下使用，请通过 http://localhost:8080 打开本页。',
       err_mic_denied: '麦克风被拦截了。请在地址栏允许使用麦克风，然后再拨一次。',
       err_mic_missing: '没有找到麦克风，接上之后再拨一次。',
@@ -78,24 +77,22 @@
     { id: 'companion', name: 'Mara', title: 'Companion', title_zh: '陪伴', accent: '#ff9a6b', language: 'en', group: 'fun',
       tagline: 'A late-night radio host who listens out loud', tagline_zh: '深夜电台主持人，边听边应' },
   ];
-  let profiles = FALLBACK_PROFILES, selected = null, health = null, funOpen = false, beforeDemo = null;
+  let profiles = FALLBACK_PROFILES, selected = null, health = null, funOpen = false;
 
   // ---------- call state ----------
   const island = new window.JevIsland($('island'));
   let ws = null, ctx = null, proc = null, stream = null, analyser = null, analyserBuf = null;
   let queue = [], current = null, held = false, listening = null;
-  let phase = 'idle', connecting = false, demo = null, callStart = 0, pace = null;
+  let phase = 'idle', connecting = false, callStart = 0, pace = null;
   let micLevel = 0, lastPartialAt = 0, thinkingUntil = 0, yieldedUntil = 0, endedUntil = 0, shownState = '';
   let capTimers = {};
 
   function send(o) {
-    if (demo) demo.onClientMessage(o);
-    else if (ws && ws.readyState === 1) ws.send(JSON.stringify(o));
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(o));
   }
 
   // ---------- playback (the queue the server steers) ----------
   function makeAudio(m) {
-    if (demo) return new window.JevDemo.FakeAudio(m.dur || 2);
     const el = new Audio(m.audio);
     try {                                                      // route through an analyser so the island follows the agent's voice
       if (ctx && analyser) ctx.createMediaElementSource(el).connect(analyser);
@@ -131,7 +128,7 @@
       case 'line': queue.push({ el: makeAudio(m), text: m.text || '' }); playNext(); break;
       case 'listen':
         if (listening) listening.pause();
-        if (m.audio && !demo) { listening = makeAudio(m); Promise.resolve(listening.play()).catch(() => {}); }
+        if (m.audio) { listening = makeAudio(m); Promise.resolve(listening.play()).catch(() => {}); }
         note({ tone: 'info', kind: 'listen', label: m.text ? `“${m.text}”` : t('d_listen'), detail: m.kind && has('l_' + m.kind) ? t('l_' + m.kind) : m.kind });
         break;
       case 'user':
@@ -237,7 +234,6 @@
   // ---------- the island follows the call ----------
   function agentLevel() {
     if (!current || !current.started || current.el.paused) return 0;
-    if (current.el.level) return current.el.level();
     if (analyser) {
       analyser.getByteTimeDomainData(analyserBuf);
       let sum = 0; for (let i = 0; i < analyserBuf.length; i++) { const x = (analyserBuf[i] - 128) / 128; sum += x * x; }
@@ -258,7 +254,6 @@
     return 'listening';
   }
   island.onframe = (now) => {
-    if (demo) micLevel = demo.micLevel();
     island.levels.mic = micLevel; island.levels.agent = agentLevel();
     const s = deriveState(now);
     island.setState(s);
@@ -266,7 +261,7 @@
   };
   setInterval(() => {
     if (phase !== 'call' || connecting) { $('statusMeta').textContent = ''; return; }
-    $('statusMeta').textContent = [clock(), demo ? t('demo_tag') : '', pace && pace !== 'normal' ? t('p_' + pace) : ''].filter(Boolean).join(' · ');
+    $('statusMeta').textContent = [clock(), pace && pace !== 'normal' ? t('p_' + pace) : ''].filter(Boolean).join(' · ');
   }, 500);
 
   // ---------- starting and ending ----------
@@ -284,7 +279,7 @@
 
   async function startCall() {
     if (phase === 'call') return;
-    if (location.protocol === 'file:') { startDemo(); showNotice(t('err_file'), true); return; }
+    if (location.protocol === 'file:') { showNotice(t('err_file'), true); return; }
     if (health && health.ready === false) { window.JevSettings.open(); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { showNotice(t('err_mic_insecure'), true); return; }
     resetCall(); setPhase('call'); connecting = true; callStart = 0;
@@ -322,26 +317,15 @@
     sock.onclose = () => { if (ws !== sock) return; endCall(); if (!opened) showNotice(t('err_server'), true); };
   }
 
-  function startDemo() {
-    if (phase === 'call') endCall();
-    resetCall(); setPhase('call'); connecting = true; callStart = 0;
-    const mara = profiles.find((p) => p.id === 'companion'); if (mara) { beforeDemo = beforeDemo || selected; select(mara, true); }
-    demo = window.JevDemo.start({ language: lang, event(m) { if (connecting) { connecting = false; callStart = performance.now(); } onEvent(m); } });
-  }
-
   function endCall() {
     if (phase !== 'call') return;
-    const wasDemo = !!demo;
     stopAll(); if (listening) listening.pause();
-    if (demo) { demo.stop(); demo = null; }
     const sock = ws; ws = null; if (sock) { try { sock.close(); } catch (e) { /* already closed */ } }
     if (proc) { proc.onaudioprocess = null; proc.disconnect(); proc = null; }
     if (stream) { stream.getTracks().forEach((tr) => tr.stop()); stream = null; }
     if (ctx) { ctx.close().catch(() => {}); ctx = null; analyser = null; }
     connecting = false; micLevel = 0; held = false; endedUntil = performance.now() + 900;
     setPhase('idle'); fadeCaption('capAgent', 0); fadeCaption('capUser', 0);
-    if (wasDemo && beforeDemo && !params.get('loop')) { select(beforeDemo, true); beforeDemo = null; }
-    if (wasDemo && params.get('loop')) setTimeout(() => { if (phase !== 'call') startDemo(); }, 1800);
   }
 
   // ---------- notices ----------
@@ -432,7 +416,7 @@
   }
 
   // ---------- wiring ----------
-  $('call').onclick = () => (phase === 'call' ? endCall() : params.has('demo') ? startDemo() : startCall());
+  $('call').onclick = () => (phase === 'call' ? endCall() : startCall());
   $('call').onmouseenter = () => { island.hot = true; }; $('call').onmouseleave = () => { island.hot = false; };
   document.querySelectorAll('.seg-btn').forEach((b) => { b.onclick = () => { store.set('jev.lang', b.dataset.lang); setLang(b.dataset.lang); }; });
   const drawer = (open) => { document.body.classList.toggle('drawer-open', open); $('drawer').hidden = !open; $('logToggle').setAttribute('aria-expanded', String(open)); };
@@ -447,7 +431,7 @@
     else if (e.key === 'Escape') { drawer(false); document.body.classList.remove('clean'); }
   });
 
-  window.JevSettings.init({ lang: () => lang, onHealth: applyHealth, onStatus: (s) => { setup = s; paintSetup(); }, call: () => startCall(), demo: () => startDemo() });
+  window.JevSettings.init({ lang: () => lang, onHealth: applyHealth, onStatus: (s) => { setup = s; paintSetup(); }, call: () => startCall() });
   setLang(lang);
   if (location.protocol !== 'file:') {
     fetch('api/profiles').then((r) => (r.ok ? r.json() : Promise.reject())).then((list) => {
@@ -456,7 +440,6 @@
     }).catch(() => {});
     fetch('api/health').then((r) => (r.ok ? r.json() : Promise.reject())).then(applyHealth).catch(() => {});
   }
-  window.JevPage = { island, startDemo, startCall, endCall };   // for the console and for recordings
+  window.JevPage = { island, startCall, endCall };   // for the console and for recordings
   if (params.has('clean')) document.body.classList.add('clean');
-  if (params.has('demo')) setTimeout(startDemo, 600);
 })();

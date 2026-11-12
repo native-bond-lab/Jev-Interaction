@@ -13,7 +13,7 @@
       custom: 'Custom endpoint', endpoint: 'Endpoint', model: 'Model', models_n: '{n} models', reload: 'Reload', we_run: 'We run',
       advanced: 'Advanced', back: 'Back', next: 'Next', skip: 'Skip', test: 'Test', test_all: 'Test all', save_test: 'Save & test',
       saving: 'Saving…', testing: 'Testing…', ok: 'OK', failed: 'Failed', unsaved: 'Unsaved', set: 'Set', not_set: 'Not set',
-      call: 'Call', demo: 'Simulated call', audio_tags: 'audio tags', plain: 'plain text', preset: 'Timing preset',
+      call: 'Call', audio_tags: 'audio tags', plain: 'plain text', preset: 'Timing preset',
       save_failed: 'Could not save', unreachable: 'Server unreachable', key_saved: 'key saved', provider: 'Provider',
       r_judge: 'Judge', r_llm: 'Language model', r_asr: 'Recognition', r_tts: 'Voice',
     },
@@ -23,7 +23,7 @@
       custom: '自定义接口', endpoint: '接口地址', model: '模型', models_n: '{n} 个模型', reload: '刷新', we_run: '我们在用',
       advanced: '高级', back: '上一步', next: '下一步', skip: '跳过', test: '测试', test_all: '全部测试', save_test: '保存并测试',
       saving: '保存中…', testing: '测试中…', ok: '正常', failed: '失败', unsaved: '未保存', set: '已填', not_set: '未填',
-      call: '拨打', demo: '模拟通话', audio_tags: '音频标签', plain: '纯文本', preset: '时间参数预设',
+      call: '拨打', audio_tags: '音频标签', plain: '纯文本', preset: '时间参数预设',
       save_failed: '保存失败', unreachable: '连不上服务', key_saved: '密钥已保存', provider: '服务商',
       r_judge: '法官', r_llm: '大模型', r_asr: '识别', r_tts: '合成',
     },
@@ -356,7 +356,7 @@
   }
   function foot() {
     const box = $('setupFoot'); box.textContent = '';
-    if (!data) { box.appendChild(h('button', { type: 'button', class: 'primary', text: t('demo'), onclick: () => { close(); if (opts.demo) opts.demo(); } })); return; }
+    if (!data) return;
     const ids = order(), i = ids.indexOf(cur), st = step(cur), r = st ? tests[st.id] : null;
     const status = h('span', { class: 'foot-status', data: { state: busy ? 'testing' : st ? stateOf(st) : '' },
       text: busy ? t(busy) : r && r.testing ? t('testing') : r && r.ok ? `${t('ok')} · ${r.ms} ms` : r && r.ok === false ? t('failed') : st && dirty(st).length ? t('unsaved') : '' });

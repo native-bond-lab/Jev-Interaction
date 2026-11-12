@@ -3,7 +3,7 @@
 ## Unreleased
 
 - The page: the orb in the middle is the call button (click to call, click to hang up) and beats with whoever is
-  speaking; personas follow the page language; the simulated call is reached with `?demo=1` only.
+  speaking; personas follow the page language; the simulated call is gone.
 - Personas `kai` and `kai_zh`: the companion call this framework was extracted from, moving through all four paces with
   every decision open.
 - Vendor-neutral setup. No recognition or voice provider is chosen for you; the language model needs an endpoint and a

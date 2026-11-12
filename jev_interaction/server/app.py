@@ -166,7 +166,7 @@ async def call(ws: WebSocket):
         await ws.close(code=4429)
         return
     if DAY_BUDGET_S and spent_today() >= DAY_BUDGET_S:
-        await ws.send_text(json.dumps({"type": "busy", "text": "Today's call minutes are used up. Try the simulated call, or run it yourself."}))
+        await ws.send_text(json.dumps({"type": "busy", "text": "Today's call minutes are used up. Come back tomorrow, or run it yourself."}))
         await ws.close(code=4429)
         return
     start = json.loads(await ws.receive_text())
