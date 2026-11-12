@@ -1,7 +1,5 @@
 <div align="center">
 
-<img src="docs/cover.png" alt="Jev-Interaction — 全双工语音，可控的轮次交互" width="100%">
-
 # Jev-Interaction
 
 **由“系统一”掌控的全双工语音交互。**<br>轮次交互是写出来的决策，而不是训练出来的模型。
@@ -15,6 +13,8 @@
 
 
 </div>
+
+<img src="docs/cover.png" alt="Jev-Interaction — 全双工语音，可控的轮次交互" width="100%">
 
 > **基于 [Jev](https://typesafe.ai)。** 这里每一个轮次决策，都是 Jev 在几十毫秒内回答的一道题。没有 Jev，就没有这个项目。
 
