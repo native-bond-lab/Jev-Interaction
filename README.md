@@ -4,13 +4,7 @@
 
 **System-One-controlled full-duplex voice interaction.**<br>Turn-taking as decisions you write — not a model you train.
 
-<br>
-<a href="https://pupunpu-jev-interaction.hf.space/">
-  <img src="docs/try-conversation.svg" alt="Try a live conversation →" width="420">
-</a>
-<br>
-Experience full-duplex voice interaction in your browser.
-<br><br>
+Experience full-duplex voice interaction in your browser. Try it here: [Try it now](https://pupunpu-jev-interaction.hf.space/).
 
 [中文](README.zh-CN.md) · [Profiles](jev_interaction/profiles) · [Decisions](jev_interaction/judge/questions.py)
 
@@ -22,13 +16,7 @@ Experience full-duplex voice interaction in your browser.
 
 </div>
 
-<a href="https://pupunpu-jev-interaction.hf.space/">
-  <img src="docs/cover.png" alt="Jev-Interaction — full-duplex voice, turn-taking you control" width="100%">
-</a>
-
-<p align="center">
-  <a href="https://pupunpu-jev-interaction.hf.space/"><strong>Start a conversation →</strong></a>
-</p>
+<img src="docs/cover.png" alt="Jev-Interaction — full-duplex voice, turn-taking you control" width="100%">
 
 > **Built on [Jev](https://typesafe.ai).** Every turn-taking decision here is a question Jev answers in tens of
 > milliseconds. Without it, none of this would work.
