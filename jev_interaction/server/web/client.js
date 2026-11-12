@@ -93,7 +93,7 @@
 
   // ---------- playback (the queue the server steers) ----------
   function makeAudio(m) {
-    const el = new Audio(m.audio);
+    const el = new Audio(m.audio); el.preload = 'auto';         // fetched while the line before it plays: one reply sounds like one
     try {                                                      // route through an analyser so the island follows the agent's voice
       if (ctx && analyser) ctx.createMediaElementSource(el).connect(analyser);
     } catch (e) { /* plays directly; the island falls back to a synthetic level */ }
@@ -103,7 +103,9 @@
     if (current || !queue.length) { if (!current) { send({ type: 'playback', state: 'idle' }); fadeCaption('capAgent', 4000); } return; }
     current = queue.shift();
     current.el.onended = () => { current = null; playNext(); };
-    setCaption('capAgent', current.text);
+    if (current.gen !== capGen) { capGen = current.gen; capSaid = ''; $('capAgent').scrollTop = 0; }   // one reply is one caption, however many lines it came in
+    current.before = capSaid; capSaid = joinLines(capSaid, current.text);
+    agentCaption(capSaid);
     if (!held) startCurrent();
   }
   function startCurrent() {
@@ -125,7 +127,7 @@
 
   function onEvent(m) {
     switch (m.type) {
-      case 'line': queue.push({ el: makeAudio(m), text: m.text || '' }); playNext(); break;
+      case 'line': queue.push({ el: makeAudio(m), text: m.text || '', gen: m.gen }); playNext(); break;
       case 'listen':
         if (listening) listening.pause();
         if (m.audio) { listening = makeAudio(m); Promise.resolve(listening.play()).catch(() => {}); }
@@ -145,10 +147,11 @@
         if (current) startCurrent();
         break;
       case 'stop': {
+        const before = current ? current.before : '';
         const heard = stopAll();
         send({ type: 'heard', text: heard }); held = false;
         $('capAgent').classList.remove('dim');
-        if (heard) setCaption('capAgent', heard + ' —'); fadeCaption('capAgent', 1800);
+        if (heard) agentCaption(joinLines(before, heard) + ' —'); fadeCaption('capAgent', 1800); capGen = null;
         yieldedUntil = performance.now() + 900; thinkingUntil = 0;
         break;
       }
@@ -229,6 +232,14 @@
     el.textContent = text || ''; el.classList.remove('fade'); el.classList.toggle('partial', !!partial);
     if (id === 'capUser') el.dataset.who = t('you');
   }
+  // The agent's caption shows a few lines; a longer reply (a story) rolls upward, its older lines fading out behind the top edge.
+  let capGen = null, capSaid = '';
+  const joinLines = (a, b) => (!a ? b : a + (/[\u3000-\u9fff\uff00-\uffef]$/.test(a) ? '' : ' ') + b);
+  function agentCaption(text) {
+    setCaption('capAgent', text);
+    const el = $('capAgent'); el.classList.toggle('long', el.scrollHeight > el.clientHeight + 2);
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }
   function fadeCaption(id, after) { clearTimeout(capTimers[id]); capTimers[id] = setTimeout(() => $(id).classList.add('fade'), after); }
 
   // ---------- the island follows the call ----------
@@ -270,7 +281,7 @@
     $('call').setAttribute('aria-pressed', String(p === 'call')); $('callLabel').textContent = t(p === 'call' ? 'hang_up' : 'call');
   }
   function resetCall() {
-    queue = []; current = null; held = false; listening = null; pace = null; logN = 0;
+    queue = []; current = null; held = false; listening = null; pace = null; logN = 0; capGen = null; capSaid = '';
     micLevel = 0; lastPartialAt = 0; thinkingUntil = 0; yieldedUntil = 0;
     $('log').textContent = ''; $('logEmpty').hidden = false; $('logCount').hidden = true; $('chips').textContent = '';
     setCaption('capAgent', ''); setCaption('capUser', ''); $('capAgent').classList.remove('dim');

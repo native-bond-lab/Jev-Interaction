@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The page shows one reply as one caption, however many lines it was written in, and fetches the next line while the
+  one before it plays; a long reply rolls upward, its older lines fading out behind the top edge.
 - A hold is measured on voice over the line only (an earlier cough gave it a head start), lets go when no new words
   follow, and words said over a line that carries on go into the call's record at once, for the responder and for Jev.
 - The page lists four personas per language: the companion (Kai / 江屿) and three working ones (support, tutor,
