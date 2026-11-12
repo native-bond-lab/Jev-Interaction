@@ -53,6 +53,8 @@ class Floor(Decision):
             await s._not_for_me("far" if s._far() else "jev")
             return
         action = self.choose(s, answers, "floor", ctx) or "carry_on"
+        if action == "elsewhere":                           # drawn but not the likeliest: not enough to treat as an aside
+            action = "carry_on"
         await s.send(type="decision", what="floor", action=action, probs=probs)
         if action == "carry_on":
             s.held = False
