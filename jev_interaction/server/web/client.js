@@ -103,14 +103,19 @@
     if (current || !queue.length) { if (!current) { send({ type: 'playback', state: 'idle' }); fadeCaption('capAgent', 4000); } return; }
     current = queue.shift();
     current.el.onended = () => { current = null; playNext(); };
-    if (current.gen !== capGen) { capGen = current.gen; capSaid = ''; $('capAgent').scrollTop = 0; }   // one reply is one caption, however many lines it came in
-    current.before = capSaid; capSaid = joinLines(capSaid, current.text);
-    agentCaption(capSaid);
     if (!held) startCurrent();
   }
   function startCurrent() {
     const line = current;
-    Promise.resolve(line.el.play()).then(() => { line.started = true; thinkingUntil = 0; send({ type: 'playback', state: 'playing' }); })
+    Promise.resolve(line.el.play()).then(() => {
+      if (current !== line) return;                            // dropped while play() was pending
+      if (!line.started) {                                     // only caption a line once it starts, not again on resume
+        if (line.gen !== capGen) { capGen = line.gen; capSaid = ''; $('capAgent').scrollTop = 0; }
+        line.before = capSaid; capSaid = joinLines(capSaid, line.text);
+        agentCaption(capSaid);
+      }
+      line.started = true; thinkingUntil = 0; send({ type: 'playback', state: 'playing' });
+    })
       .catch(() => { if (current === line) { current = null; playNext(); } });   // a line that cannot play must not jam the queue
   }
   function heardSoFar(line) {
