@@ -25,14 +25,13 @@
       k_end_of_turn: 'end of turn', k_floor: 'floor', k_quiet: 'silence', k_not_for_me: 'addressee', k_pace: 'pace', k_listen: 'listening', k_hold: 'overlap',
       p_normal: 'normal', p_patient: 'patient', p_narrate: 'narrate', p_eager: 'eager',
       why_far: 'far from the microphone', why_jev: 'meant for someone else', quiet_for: 'quiet for',
-      settings: 'Settings', setup: 'Almost ready. Add {keys} in {settings}, or run {cmd}. The simulated call works without any keys.',
+      setup_chip: 'Set up', ready_chip: 'Ready', fun: 'Fun',
       err_file: 'Opened as a file, so there is no server to call. Playing the simulated call instead.',
       err_mic_insecure: 'The microphone needs https or localhost. Open this page at http://localhost:8080.',
       err_mic_denied: 'The microphone is blocked. Allow it from the address bar, then call again.',
       err_mic_missing: 'No microphone found. Plug one in, then call again.',
       err_mic: 'Could not open the microphone.',
       err_server: 'Could not reach the call server. Check that it is still running, then call again.',
-      err_setup: 'The server is missing keys, so a real call cannot start yet.',
     },
     zh: {
       tagline: '端到端的交互直觉，来自一条读得懂的级联。',
@@ -49,32 +48,31 @@
       k_end_of_turn: '话轮结束', k_floor: '话轮归属', k_quiet: '沉默', k_not_for_me: '说话对象', k_pace: '节奏', k_listen: '倾听', k_hold: '重叠',
       p_normal: '正常', p_patient: '耐心', p_narrate: '讲述', p_eager: '积极',
       why_far: '声音离麦克风较远', why_jev: '在和别人说话', quiet_for: '已安静',
-      settings: '设置', setup: '就差一步：在{settings}里填好 {keys}，或者运行 {cmd}（中国大陆加 --china）。模拟通话不需要任何密钥。',
+      setup_chip: '配置', ready_chip: '已就绪', fun: '趣味角色',
       err_file: '当前是直接打开的本地文件，没有通话服务，先为你播放模拟通话。',
       err_mic_insecure: '麦克风只能在 https 或 localhost 下使用，请通过 http://localhost:8080 打开本页。',
       err_mic_denied: '麦克风被拦截了。请在地址栏允许使用麦克风，然后再拨一次。',
       err_mic_missing: '没有找到麦克风，接上之后再拨一次。',
       err_mic: '无法打开麦克风。',
       err_server: '连不上通话服务。请确认服务仍在运行，然后再拨一次。',
-      err_setup: '服务端还缺少密钥，暂时无法发起真实通话。',
     },
   };
-  let lang = params.get('lang') || store.get('jev.lang') || ((navigator.language || '').toLowerCase().startsWith('zh') ? 'zh' : 'en');
+  let lang = params.get('lang') || store.get('jev.lang') || 'en';      // English unless the visitor picked 中文 (or ?lang=zh)
   if (!I18N[lang]) lang = 'en';
   const t = (k) => I18N[lang][k] || I18N.en[k] || k;
 
   // ---------- personas ----------
   const FALLBACK_PROFILES = [
-    { id: 'companion', path: 'examples/profiles/companion.yaml', name: 'Mara', title: 'Companion', title_zh: '陪伴', accent: '#ff9a6b',
-      tagline: 'A late-night radio host who listens out loud and reacts fast.', tagline_zh: '深夜电台主持人，边听边应，反应很快。' },
-    { id: 'support', path: 'examples/profiles/support.yaml', name: 'Sam', title: 'Support line', title_zh: '客服', accent: '#5cc8ff',
-      tagline: 'Predictable over lively. Acts only when it is sure.', tagline_zh: '稳定优先，只在有把握时行动。' },
-    { id: 'tutor', path: 'examples/profiles/tutor.yaml', name: 'Lin', title: 'Language tutor', title_zh: '口语老师', accent: '#7be0b0',
-      tagline: 'Lets you struggle a little, then helps.', tagline_zh: '先让你自己想一想，再帮你一把。' },
-    { id: 'interviewer', path: 'examples/profiles/interviewer.yaml', name: 'Alex', title: 'Interviewer', title_zh: '面试官', accent: '#b9a2ff',
-      tagline: 'Keeps to time, lets answers run, moves on firmly.', tagline_zh: '把控时间，让你把话说完，再果断往下走。' },
+    { id: 'support', name: 'Sam', title: 'Support line', title_zh: '客服', accent: '#5cc8ff', language: 'en', group: 'task',
+      tagline: 'Brief, predictable, waits while you read a number', tagline_zh: '简洁可靠，你念号码时耐心等' },
+    { id: 'tutor', name: 'Lin', title: 'Language tutor', title_zh: '口语老师', accent: '#7be0b0', language: 'en', group: 'task',
+      tagline: 'Lets you search for the word, then helps', tagline_zh: '让你自己想词，再轻轻帮一把' },
+    { id: 'interviewer', name: 'Alex', title: 'Interviewer', title_zh: '面试官', accent: '#b9a2ff', language: 'en', group: 'task',
+      tagline: 'Keeps to time, lets answers run, moves on firmly', tagline_zh: '把控时间，让你把话说完，再果断往下走' },
+    { id: 'companion', name: 'Mara', title: 'Companion', title_zh: '陪伴', accent: '#ff9a6b', language: 'en', group: 'fun',
+      tagline: 'A late-night radio host who listens out loud', tagline_zh: '深夜电台主持人，边听边应' },
   ];
-  let profiles = FALLBACK_PROFILES, selected = null, health = null;
+  let profiles = FALLBACK_PROFILES, selected = null, health = null, funOpen = false, beforeDemo = null;
 
   // ---------- call state ----------
   const island = new window.JevIsland($('island'));
@@ -160,7 +158,7 @@
       case 'hangup': endCall(); break;
       case 'busy': showNotice(m.text, true); break;
       case 'error':
-        if (m.what === 'settings') { showNotice(m.text, true); if (window.JevSettings) window.JevSettings.open(); }
+        if (m.what === 'settings') window.JevSettings.open();          // at the first step that is not ready
         else if (m.what === 'start') showNotice(m.text, true);
         break;
     }
@@ -281,7 +279,7 @@
   async function startCall() {
     if (phase === 'call') return;
     if (location.protocol === 'file:') { startDemo(); showNotice(t('err_file'), true); return; }
-    if (health && health.ready === false) { showSetup(true); return; }
+    if (health && health.ready === false) { window.JevSettings.open(); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { showNotice(t('err_mic_insecure'), true); return; }
     resetCall(); setPhase('call'); connecting = true; callStart = 0;
     try {
@@ -312,7 +310,7 @@
     let opened = false;
     sock.onopen = () => {
       opened = true; connecting = false; callStart = performance.now();
-      sock.send(JSON.stringify({ type: 'start', profile: selected.path, language: selected.language || lang }));   // the persona speaks its own language; the toggle is for the page
+      sock.send(JSON.stringify({ type: 'start', profile: selected.id, language: selected.language || 'en' }));   // the persona speaks its own language; the toggle is for the page
     };
     sock.onmessage = (e) => { if (typeof e.data === 'string' && ws === sock) onEvent(JSON.parse(e.data)); };
     sock.onclose = () => { if (ws !== sock) return; endCall(); if (!opened) showNotice(t('err_server'), true); };
@@ -321,7 +319,7 @@
   function startDemo() {
     if (phase === 'call') endCall();
     resetCall(); setPhase('call'); connecting = true; callStart = 0;
-    const mara = profiles.find((p) => p.id === 'companion'); if (mara) select(mara, true);
+    const mara = profiles.find((p) => p.id === 'companion'); if (mara) { beforeDemo = beforeDemo || selected; select(mara, true); }
     demo = window.JevDemo.start({ language: lang, event(m) { if (connecting) { connecting = false; callStart = performance.now(); } onEvent(m); } });
   }
 
@@ -336,31 +334,29 @@
     if (ctx) { ctx.close().catch(() => {}); ctx = null; analyser = null; }
     connecting = false; micLevel = 0; held = false; endedUntil = performance.now() + 900;
     setPhase('idle'); fadeCaption('capAgent', 0); fadeCaption('capUser', 0);
+    if (wasDemo && beforeDemo && !params.get('loop')) { select(beforeDemo, true); beforeDemo = null; }
     if (wasDemo && params.get('loop')) setTimeout(() => { if (phase !== 'call') startDemo(); }, 1800);
   }
 
   // ---------- notices ----------
   function showNotice(text, err) {
     const n = $('notice');
-    if (!text) { if (health && health.ready === false) showSetup(false); else n.hidden = true; return; }
+    if (!text) { n.hidden = true; return; }
     n.textContent = text; n.className = 'notice chrome' + (err ? ' err' : ''); n.hidden = false;
   }
-  function showSetup(nudge) {
-    const n = $('notice'); n.textContent = ''; n.className = 'notice chrome'; n.hidden = false;
-    const code = (s) => { const c = document.createElement('code'); c.textContent = s; return c; };
-    if (nudge) { const b = document.createElement('b'); b.textContent = t('err_setup') + ' '; n.appendChild(b); }
-    t('setup').split(/(\{\w+\})/).forEach((part) => {
-      if (part === '{keys}') (health.missing && health.missing.length ? health.missing : ['API keys']).forEach((k, i) => { if (i) n.append(' '); n.appendChild(code(k)); });
-      else if (part === '{cmd}') n.appendChild(code('./scripts/setup.sh'));
-      else if (part === '{settings}') { const b = document.createElement('button'); b.type = 'button'; b.className = 'link'; b.textContent = t('settings'); b.onclick = () => window.JevSettings.open(); n.appendChild(b); }
-      else if (part) n.append(part);
-    });
+  // ---------- setup status: the chip in the top bar ----------
+  let setup = null;                                           // {ready, done, total} from api/settings, when it answers
+  function paintSetup() {
+    const chip = $('settingsToggle'), ready = setup ? setup.ready : health ? health.ready !== false : null;
+    chip.hidden = location.protocol === 'file:';
+    chip.dataset.state = ready == null ? 'unknown' : ready ? 'ready' : 'todo';
+    $('setupChipText').textContent = t(ready ? 'ready_chip' : 'setup_chip');
+    const count = $('setupCount'); count.hidden = !setup || setup.ready; if (setup) count.textContent = `${setup.done}/${setup.total}`;
   }
   function applyHealth(h) {                                    // on load, and again whenever settings are saved
     health = h;
     const pr = h.providers || {}; $('providers').textContent = ['llm', 'asr', 'tts'].filter((k) => pr[k]).map((k) => `${k} ${pr[k]}`).join(' · ');
-    if (h.ready === false) { if (phase !== 'call') showSetup(false); }
-    else if (!$('notice').classList.contains('err')) $('notice').hidden = true;
+    paintSetup();
   }
 
   // ---------- personas, language ----------
@@ -368,62 +364,87 @@
     selected = p; if (!quiet) store.set('jev.profile', p.id);
     const accent = /^#[0-9a-f]{6}$/i.test(p.accent || '') ? p.accent : '#8ab4ff';
     document.documentElement.style.setProperty('--accent', accent); island.setAccent(accent);
-    document.querySelectorAll('.card').forEach((c) => { const on = c.dataset.id === p.id; c.setAttribute('aria-checked', String(on)); c.tabIndex = on ? 0 : -1; });
+    document.querySelectorAll('.card[data-id]').forEach((c) => { const on = c.dataset.id === p.id; c.setAttribute('aria-checked', String(on)); c.tabIndex = on ? 0 : -1; });
   }
-  function renderCards() {
-    const box = $('cards'); box.textContent = '';
-    profiles.forEach((p) => {
-      const card = document.createElement('button'); card.type = 'button'; card.className = 'card'; card.dataset.id = p.id; card.setAttribute('role', 'radio');
-      if (/^#[0-9a-f]{6}$/i.test(p.accent || '')) card.style.setProperty('--c', p.accent);
+  const visible = () => profiles.filter((p) => p.group !== 'fun' || funOpen);
+  function cardFor(p, box) {
+    const card = document.createElement('button'); card.type = 'button'; card.className = 'card'; card.dataset.id = p.id; card.setAttribute('role', 'radio');
+    if (/^#[0-9a-f]{6}$/i.test(p.accent || '')) card.style.setProperty('--c', p.accent);
+    const top = document.createElement('div'); top.className = 'card-top';
+    const dot = document.createElement('span'); dot.className = 'card-dot';
+    const name = document.createElement('span'); name.className = 'card-name'; name.textContent = p.name || p.id;
+    const title = document.createElement('span'); title.className = 'card-title'; title.textContent = (lang === 'zh' && p.title_zh) || p.title || '';
+    top.append(dot, name); if (title.textContent) top.appendChild(title);
+    const tag = document.createElement('p'); tag.className = 'card-tag'; tag.textContent = (lang === 'zh' && p.tagline_zh) || p.tagline || '';
+    card.append(top, tag);
+    card.onclick = () => select(p);
+    card.onkeydown = (e) => {
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]; if (!step) return;
+      e.preventDefault(); const list = visible(), next = list[(list.indexOf(p) + step + list.length) % list.length];
+      select(next); document.querySelector(`.card[data-id="${CSS.escape(next.id)}"]`).focus();
+    };
+    box.appendChild(card);
+  }
+  function renderCards() {                                     // the main tasks, then one entry that opens the fun characters
+    const box = $('cards'), funBox = $('funCards'), fun = profiles.filter((p) => p.group === 'fun');
+    box.textContent = ''; funBox.textContent = '';
+    const want = profiles.find((p) => selected && p.id === selected.id) || profiles.find((p) => p.id === store.get('jev.profile')) || profiles.find((p) => p.group !== 'fun') || profiles[0];
+    if (want && want.group === 'fun' && phase !== 'call') funOpen = true;
+    profiles.filter((p) => p.group !== 'fun').forEach((p) => cardFor(p, box));
+    if (fun.length) {
+      const more = document.createElement('button'); more.type = 'button'; more.className = 'card more'; more.id = 'funToggle';
+      more.setAttribute('aria-expanded', String(funOpen)); more.setAttribute('aria-controls', 'funCards');
       const top = document.createElement('div'); top.className = 'card-top';
-      const dot = document.createElement('span'); dot.className = 'card-dot';
-      const name = document.createElement('span'); name.className = 'card-name'; name.textContent = p.name || p.id;
-      const title = document.createElement('span'); title.className = 'card-title'; title.textContent = (lang === 'zh' && p.title_zh) || p.title || '';
-      top.append(dot, name); if (title.textContent) top.appendChild(title);
-      const tag = document.createElement('p'); tag.className = 'card-tag'; tag.textContent = (lang === 'zh' && p.tagline_zh) || p.tagline || '';
-      card.append(top, tag);
-      card.onclick = () => select(p);
-      card.onkeydown = (e) => {
-        const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]; if (!step) return;
-        e.preventDefault(); const next = profiles[(profiles.indexOf(p) + step + profiles.length) % profiles.length];
-        select(next); box.querySelector(`[data-id="${CSS.escape(next.id)}"]`).focus();
+      const name = document.createElement('span'); name.className = 'card-name'; name.textContent = t('fun');
+      const n = document.createElement('span'); n.className = 'card-title'; n.textContent = String(fun.length);
+      const chev = document.createElement('span'); chev.className = 'chev'; chev.setAttribute('aria-hidden', 'true');
+      top.append(name, n, chev);
+      const dots = document.createElement('p'); dots.className = 'card-tag more-dots';
+      fun.forEach((p) => { const d = document.createElement('span'); d.className = 'card-dot'; if (/^#[0-9a-f]{6}$/i.test(p.accent || '')) d.style.setProperty('--c', p.accent); const s = document.createElement('span'); s.textContent = p.name || p.id; dots.append(d, s); });
+      more.append(top, dots);
+      more.onclick = () => {
+        funOpen = !funOpen;
+        if (!funOpen && selected && selected.group === 'fun') select(profiles.find((p) => p.group !== 'fun') || profiles[0]);
+        renderCards(); $('funToggle').focus();
       };
-      box.appendChild(card);
-    });
-    select(profiles.find((p) => selected && p.id === selected.id) || profiles.find((p) => p.id === store.get('jev.profile')) || profiles[0], true);
+      box.appendChild(more);
+      fun.forEach((p) => cardFor(p, funBox));
+    }
+    funBox.hidden = !funOpen || !fun.length;
+    if (want) select(want, true);
   }
   function setLang(l) {
-    lang = l; store.set('jev.lang', l); document.documentElement.lang = l === 'zh' ? 'zh-CN' : 'en';
+    lang = l; document.documentElement.lang = l === 'zh' ? 'zh-CN' : 'en';
     document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
     document.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
     document.querySelectorAll('.seg-btn').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === l)));
     $('callLabel').textContent = t(phase === 'call' ? 'hang_up' : 'call'); $('call').title = $('callLabel').textContent;
     $('statusText').textContent = t('st_' + (shownState || 'idle'));
-    renderCards(); window.JevSettings.relabel();
-    if (!$('notice').hidden && !$('notice').classList.contains('err') && health && health.ready === false) showSetup(false);
+    renderCards(); paintSetup(); window.JevSettings.relabel();
   }
 
   // ---------- wiring ----------
   $('call').onclick = () => (phase === 'call' ? endCall() : params.has('demo') ? startDemo() : startCall());
   $('demo').onclick = startDemo;
-  document.querySelectorAll('.seg-btn').forEach((b) => { b.onclick = () => setLang(b.dataset.lang); });
+  document.querySelectorAll('.seg-btn').forEach((b) => { b.onclick = () => { store.set('jev.lang', b.dataset.lang); setLang(b.dataset.lang); }; });
   const drawer = (open) => { document.body.classList.toggle('drawer-open', open); $('drawer').hidden = !open; $('logToggle').setAttribute('aria-expanded', String(open)); };
   $('logToggle').onclick = () => drawer($('drawer').hidden);
   $('logClose').onclick = () => drawer(false);
   document.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+    if (window.JevSettings.isOpen()) return;                   // the setup flow has its own keys
     const tag = (e.target.tagName || '').toLowerCase(), typing = tag === 'input' || tag === 'textarea' || tag === 'select';
     if (e.code === 'Space' && !typing && tag !== 'a' && (tag !== 'button' || e.target.classList.contains('card'))) { e.preventDefault(); $('call').click(); }
     else if (e.key.toLowerCase() === 'h' && !typing) document.body.classList.toggle('clean');
     else if (e.key === 'Escape') { drawer(false); document.body.classList.remove('clean'); }
   });
 
-  window.JevSettings.init({ lang: () => lang, health: () => health, onHealth: applyHealth });
+  window.JevSettings.init({ lang: () => lang, onHealth: applyHealth, onStatus: (s) => { setup = s; paintSetup(); }, call: () => startCall(), demo: () => startDemo() });
   setLang(lang);
   if (location.protocol !== 'file:') {
     fetch('api/profiles').then((r) => (r.ok ? r.json() : Promise.reject())).then((list) => {
       if (Array.isArray(list)) list = list.filter((p) => p && p.path); else list = (list && list.profiles) || [];
-      if (list.length) { profiles = list.map((p) => Object.assign({ id: p.path }, p)); renderCards(); }
+      if (list.length) { profiles = list.map((p) => Object.assign({ id: p.path, group: 'task' }, p)); renderCards(); }
     }).catch(() => {});
     fetch('api/health').then((r) => (r.ok ? r.json() : Promise.reject())).then(applyHealth).catch(() => {});
   }

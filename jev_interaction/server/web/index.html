@@ -19,19 +19,21 @@
     <span class="brand-name">Jev-Interaction</span>
   </a>
   <nav class="top-actions">
-    <div class="seg" role="group" data-i18n-aria="lang_label" aria-label="Language">
-      <button type="button" class="seg-btn" data-lang="zh" aria-pressed="false">中文</button>
-      <button type="button" class="seg-btn" data-lang="en" aria-pressed="true">EN</button>
-    </div>
-    <button type="button" class="ghost" id="settingsToggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings">
-      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      <span class="ghost-label" data-i18n="settings">Settings</span>
+    <button type="button" class="ghost setup-chip" id="settingsToggle" data-state="unknown" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings">
+      <span class="setup-dot" aria-hidden="true"></span>
+      <span id="setupChipText" data-i18n="setup_chip">Set up</span>
+      <span class="count" id="setupCount" hidden></span>
     </button>
     <button type="button" class="ghost" id="logToggle" aria-expanded="false" aria-controls="drawer">
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      <span data-i18n="log_button">Decisions</span>
+      <span class="ghost-label" data-i18n="log_button">Decisions</span>
       <span class="count" id="logCount" hidden>0</span>
     </button>
+    <div class="seg lang" role="group" data-i18n-aria="lang_label" aria-label="Language">
+      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.5 4 5.6 4 9s-1.4 6.5-4 9c-2.6-2.500-4-5.600-4-9s1.400-6.500 4-9z"/></svg>
+      <button type="button" class="seg-btn" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" class="seg-btn" data-lang="zh" lang="zh-CN" aria-pressed="false">中文</button>
+    </div>
   </nav>
 </header>
 
@@ -60,6 +62,7 @@
   <section class="picker chrome" aria-labelledby="pickerLabel">
     <h2 id="pickerLabel" class="sr-only" data-i18n="picker_label">Who do you want to call?</h2>
     <div class="cards" id="cards" role="radiogroup" aria-labelledby="pickerLabel"></div>
+    <div class="cards fun" id="funCards" role="radiogroup" data-i18n-aria="fun" aria-label="Fun" hidden></div>
   </section>
 
   <section class="controls">
@@ -92,18 +95,20 @@
 <div class="sheet-wrap" id="settings" hidden>
   <div class="sheet-backdrop" id="settingsBackdrop"></div>
   <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
-    <header class="drawer-head">
-      <h2 id="settingsTitle" data-i18n="settings">Settings</h2>
+    <header class="drawer-head setup-head">
+      <h2 id="settingsTitle">Set up</h2>
+      <span class="tag" id="setupTag" hidden></span>
+      <div class="ref" id="setupRef" hidden>
+        <button type="button" class="ghost small" id="setupRefToggle" aria-haspopup="true" aria-expanded="false" aria-controls="setupRefMenu"></button>
+        <div class="ref-menu" id="setupRefMenu" hidden></div>
+      </div>
       <button type="button" class="icon" id="settingsClose" data-i18n-aria="close" aria-label="Close">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       </button>
     </header>
+    <ol class="rail" id="setupRail"></ol>
     <div class="sheet-body" id="settingsBody"></div>
-    <footer class="sheet-foot">
-      <span class="sheet-env" id="settingsEnv"></span>
-      <button type="button" class="ghost" id="settingsReset" hidden></button>
-      <button type="button" class="primary" id="settingsSave" disabled>Save</button>
-    </footer>
+    <footer class="sheet-foot" id="setupFoot"></footer>
   </section>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
