@@ -154,11 +154,11 @@ docker compose up             # 打开 http://localhost:8080
 
 打开 <http://localhost:8080>，选一个角色，点 **通话**。还没有密钥？页面自带模拟通话（`?demo=1`）。自带的是简单的能量 VAD，建议戴耳机。
 
-| | 海外 | 中国大陆 |
+| | 海外（我们生产环境在用的配置） | 中国大陆 |
 |---|---|---|
 | 配置模板 | `.env.example` | `.env.china.example` |
 | 法官 | Jev | Jev（如果访问 `api.typesafe.ai` 慢，给这个进程设 `HTTPS_PROXY`） |
-| 大模型 | grok-4.3（任意兼容 OpenAI 接口的服务） | 通过百炼调用 qwen-plus；也可用 DeepSeek、豆包 |
+| 大模型 | grok-4.3，关闭思考，温度 0.7（任意兼容 OpenAI 接口的服务） | 通过百炼调用 qwen-plus；也可用 DeepSeek、豆包 |
 | 语音识别 | ElevenLabs Scribe v2 realtime turbo | Paraformer realtime v2 |
 | 语音合成 | ElevenLabs eleven_v4_turbo | CosyVoice v2（每个角色可配音色） |
 | 需要的密钥 | Jev、xAI、ElevenLabs | Jev、一个百炼（DashScope）密钥 |

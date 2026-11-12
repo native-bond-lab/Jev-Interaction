@@ -207,3 +207,11 @@ def test_dashscope_messages_and_closed_sentences():
     assert closed_sentence(partial) is None and closed_sentence(done) == "你好呀。"
     assert tts_run_task("t2", "cosyvoice-v2", "longcheng_v2", 24000)["payload"]["parameters"]["voice"] == "longcheng_v2"
     assert tts_continue("t2", "嗨")["payload"]["input"]["text"] == "嗨"
+
+
+def test_reasoning_is_switched_off_where_the_provider_has_a_switch():
+    from jev_interaction.adapters.openai_compat import no_reasoning
+    assert no_reasoning("https://api.x.ai/v1") == {"reasoning_effort": "none"}
+    assert no_reasoning("https://ark.ap-southeast.bytepluses.com/api/v3") == {"thinking": {"type": "disabled"}}
+    assert no_reasoning("https://dashscope.aliyuncs.com/compatible-mode/v1") == {"enable_thinking": False}
+    assert no_reasoning("https://api.openai.com/v1") == {} and no_reasoning("http://localhost:11434/v1") == {}

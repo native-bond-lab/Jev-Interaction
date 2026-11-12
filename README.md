@@ -190,11 +190,11 @@ docker compose up             # http://localhost:8080
 Open <http://localhost:8080>, pick a persona and press **Call**. No keys yet? The page has a built-in simulated call
 (`?demo=1`). The built-in VAD is a simple energy detector, so use headphones.
 
-| | global | mainland China |
+| | global (what our production runs) | mainland China |
 |---|---|---|
 | template | `.env.example` | `.env.china.example` |
 | judge | Jev | Jev (set `HTTPS_PROXY` if `api.typesafe.ai` is slow from your network) |
-| language model | grok-4.3 (any OpenAI-compatible endpoint) | qwen-plus via DashScope; or DeepSeek, Doubao |
+| language model | grok-4.3, reasoning off, temperature 0.7 (any OpenAI-compatible endpoint) | qwen-plus via DashScope; or DeepSeek, Doubao |
 | recognition | ElevenLabs Scribe v2 realtime turbo | Paraformer realtime v2 |
 | synthesis | ElevenLabs eleven_v4_turbo | CosyVoice v2 (per-persona voices) |
 | keys | Jev, xAI, ElevenLabs | Jev, one DashScope key |
