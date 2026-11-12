@@ -195,6 +195,8 @@ await session.on_client({"type": "playback", "state": "idle"})
 
 ### 新增一个决策
 
+一个决策就是一个模块：什么时候问、问 Jev 什么、答案做什么。先写题目：
+
 ```python
 # jev_interaction/judge/questions.py
 def laugh(name: str) -> dict:
@@ -202,7 +204,38 @@ def laugh(name: str) -> dict:
             "criteria": {"laugh": f"{name} finds it funny and laughs", "smile": "a warm word, no laugh", "none": "let it pass"}}
 ```
 
-在会话里合适的地方提问，在 `Config.policies` 里给它配一个策略，再用 `tools/replay.py` 拿录下的通话重放，看它的答案落在哪里。
+再写决策本身，注册并配一个策略：
+
+```python
+# jev_interaction/decisions/laugh.py
+from .. import speaking
+from ..judge import questions as Q
+from .base import Decision
+
+speaking.event("laugh", "they made a joke; you laugh, in a few words", answers_user=True, max_tokens=60)
+
+
+class Laugh(Decision):
+    name = policy = "laugh"
+
+    def on_words(self, s):                        # 什么时候问：用户说了新的话，agent 没在说
+        if not s.speaking and not s.generating:
+            s._spawn(self.ask(s))
+
+    def questions(self, s, ctx):                  # 问 Jev 什么；状态默认是通话到此刻的情况
+        return {"laugh": Q.laugh(s.p.short)}
+
+    async def apply(self, s, answers, ctx):       # 策略选出的结果做什么
+        if self.choose(s, answers, "laugh", ctx) == "laugh":
+            await s.respond("laugh")
+```
+
+```python
+register(Laugh())                                 # jev_interaction.decisions; 或直接写进那里的 DECISIONS
+config = Config(policies={**Config().policies, "laugh": SamplePolicy()})
+```
+
+别的地方都不用改：会话在每段新识别出的话（`on_words`）和每 100 毫秒一次的 tick（`on_tick`）上把所有注册过的决策过一遍，并把状态、题目和答案记进日志。`allowed` 用来收窄此刻可选的选项，`state` 用来补充 Jev 读到的内容；`jev_interaction/decisions/` 里的五个内置决策就是例子。用 `python tools/replay.py runs/*.jsonl --purpose laugh` 拿录下的通话重放，看它的答案落在哪里。
 
 ### 测过的旋钮
 
@@ -403,8 +436,11 @@ cfg = Config(hold_after_ms=1000, listen_max_words=3, not_for_me=True, far_db=10)
 
 ```
 jev_interaction/
-  session.py          一通电话：输入、决策、说话
+  session.py          一通电话：状态和主循环（音频进，台词出）
+  decisions/          每个决策一个模块：turn · listen · floor · cut_in · quiet
   judge/              Jev 客户端 · 决策题目 · 状态文本
+  utterance.py        用户此刻在说的话：文字、时长、响度
+  speaking.py         每种台词开口前告诉大模型的那一行
   policy.py           抽签 · 阈值 · 取最大
   profile.py          任务配置
   config.py           节奏、时间参数、默认策略
@@ -417,7 +453,7 @@ server/app.py         WebSocket 通话服务、音频路由、/api/profiles 和 
 scripts/setup.sh      一键本地部署（--china 使用中国大陆服务）
 deploy/huggingface/   Hugging Face Space 说明；scripts/push_hf_space.sh 负责发布
 web/                  最简网页客户端
-tools/replay.py       用改过的题重问录下来的决策
+tools/replay.py       重问录下来的题目，原样或改写后
 docs/                 架构图和基准图表
 ```
 
