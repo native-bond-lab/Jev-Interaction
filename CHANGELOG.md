@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- After an interruption the record keeps everything the user heard of the reply, not only the line that was playing
+  (a story cut in its fourth line used to lose the first three, so "how old were you again?" had nothing to go on).
+  `heard` now carries the reply's `gen` and all of it that played; an empty text means none of it did. A client that
+  sends no `gen` works as before.
+- Listening sounds are measured in characters where words have no spaces (a whole Chinese sentence used to count as
+  one word and was voiced as a listening sound), each kind has its own length (`listen_kind_words`: an inviting "mm?"
+  2, a continuer 3, an echo 6, a feeling 8), and two never come closer than `listen_gap_s`, whichever decision asked.
 - A line that is only an audio tag ("[laughs]") is no longer sent: the voice cannot speak it, and it used to show as
   said while nothing was heard. The speech prompt now says a tag makes no sound alone, so the model writes the sound
   itself ("[laughs] ha").

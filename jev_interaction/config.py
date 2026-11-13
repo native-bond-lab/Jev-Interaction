@@ -58,6 +58,9 @@ class Config:
     judge_turn_chars: int = 300
     safe_words: tuple = ("red",)       # stop everything, no judgement involved
     listen_max_words: int = 6          # a longer listening sound is dropped (tested at 3: benchmarks count 4+ words as a turn)
+    listen_kind_words: dict = field(default_factory=lambda: {"invite": 2, "continuer": 3, "echo": 6, "feeling": 8})
+                                       # and each kind has its own length ("mm?" is not a sentence); the smaller limit holds.
+                                       # Words, or characters where words have no spaces (Chinese, Japanese, Korean)
 
     # tested knobs, off by default (README: "Tested knobs")
     not_for_me: bool = False           # a "not said to me" choice in the turn and floor questions; picked, the words are

@@ -12,7 +12,7 @@ question is in judge/questions.py and whose answer goes through the policy confi
     quiet on the line      quiet    -> go on / check on them / wait / hang up
 
 Events to the client: line {id, text, audio}, listen {id, text, audio}, hold, unhold, stop, finish_line, hangup,
-user {text}, pace {pace, probs}, decision {...}. Client messages: playback {state: playing | idle}, heard {text}.
+user {text}, pace {pace, probs}, decision {...}. Client messages: playback {state: playing | idle}, heard {gen, text}.
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from .config import Config, Pace
 from .decisions import DECISIONS, Decision
 from .judge import JevClient
 from .judge.client import probs as P
-from .ledger import Ledger
+from .ledger import Ledger, Turn
 from .profile import Profile
 from .recorder import Recorder
 from .utterance import Utterance, frame_db, is_far
@@ -52,6 +52,7 @@ class Session:
         self.decisions: dict[str, Decision] = dict(DECISIONS)       # asked in this order on new words and on each tick
         self.ledger = Ledger()
         self.lines: dict[str, str] = {}          # line id -> text, fetched by the client from the TTS route
+        self.replies: dict[int, Turn] = {}       # gen -> the agent's turn in the record, for the client's `heard`
         self.pace, self.pace_probs, self.transition = self.cfg.start_pace, {}, None
         self.user_turns = 0
         self.utt: Utterance | None = None
@@ -151,10 +152,15 @@ class Session:
                 if self.hanging_up:
                     await self.send(type="hangup")
         elif msg.get("type") == "heard":
-            last = self.ledger.last_agent()
             heard = (msg.get("text") or "").strip()
-            if last and heard and heard != last.text:
-                last.text, last.cut = heard, True
+            turn = self.replies.get(msg.get("gen"))
+            if turn is not None:                  # the client names the reply: all of it that was played, "" for none
+                if heard != turn.text:
+                    turn.text, turn.cut = heard, True
+            else:                                 # a client that sends no gen: the last reply, and only what it heard
+                last = self.ledger.last_agent()
+                if last and heard and heard != last.text:
+                    last.text, last.cut = heard, True
 
     async def _segments_loop(self):
         async for seg in self.asr.segments():
@@ -313,6 +319,7 @@ class Session:
             self.ledger.user("", line)
         messages = [{"role": "system", "content": self.system}, *self.ledger.messages()]
         turn = self.ledger.agent("")
+        self.replies[gen] = turn
         self.rec.write("respond", gen=gen, kind=kind, data_line=line)
         try:
             async for text in self.llm.lines(messages, max_tokens=event.max_tokens):
@@ -335,8 +342,8 @@ class Session:
 
     async def listen_in(self, kind: str, inviting: bool = False):
         """A listening sound while the user talks on. Voiced beside the line queue and never added to the history."""
-        if self.speaking or self.generating:
-            return
+        if self.speaking or self.generating or time.monotonic() - self.listen_last < self.cfg.listen_gap_s:
+            return                                # one at a time, spaced out, whichever decision asked for it
         self.listen_last = time.monotonic()
         turn = self.data_line("listen", listen=kind, event=speaking.LISTEN_INVITING if inviting else None)
         messages = [{"role": "system", "content": self.system}, *self.ledger.messages(),
@@ -345,7 +352,8 @@ class Session:
         async for line in self.llm.lines(messages, max_tokens=14):
             text = line
             break
-        if not speaking.has_voice(text) or len(text.split()) > self.cfg.listen_max_words or self.speaking or self.generating:
+        limit = min(self.cfg.listen_max_words, self.cfg.listen_kind_words.get("invite" if inviting else kind, self.cfg.listen_max_words))
+        if not speaking.has_voice(text) or speaking.units(text) > limit or self.speaking or self.generating:
             return
         line_id = uuid.uuid4().hex
         self.lines[line_id] = text

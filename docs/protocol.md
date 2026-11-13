@@ -10,7 +10,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `{"type": "start", "profile": "companion", "language": "en"}` | first message of the call; `profile` is an id from `/api/profiles`; `language` defaults to the profile's |
 | binary frame | 200 ms of 16 kHz mono PCM16 (3200 samples, 6400 bytes), continuously, including while the agent talks |
 | `{"type": "playback", "state": "playing" \| "idle"}` | the agent's audio started / the queue ran empty |
-| `{"type": "heard", "text": "..."}` | after `stop`: the part of the line that was actually played |
+| `{"type": "heard", "gen": 7, "text": "..."}` | after `stop`: what was actually played of the reply the last `line` belonged to (its `gen`): the lines that played to the end and the part of the one that was playing, joined by newlines; `""` when none of it played. Without `gen` the text replaces the last reply, and an empty text is ignored |
 
 ## Server → client
 

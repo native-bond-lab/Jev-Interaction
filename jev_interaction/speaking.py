@@ -16,6 +16,15 @@ def has_voice(text: str) -> bool:
     shapes the words beside it, and the synthesizers refuse a text that is nothing else."""
     return bool(re.search(r"\w", _TAG.sub(" ", text or "")))
 
+_UNIT = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]|[^\W_]+(?:['’-][^\W_]+)*")
+
+
+def units(text: str) -> int:
+    """How long a written line is to the ear: its words, with each Chinese, Japanese or Korean character counted as one
+    (a Chinese sentence has no spaces to split on). Audio tags do not count."""
+    return len(_UNIT.findall(_TAG.sub(" ", text or "")))
+
+
 LANGUAGES = {"en": "English", "zh": "Chinese", "ja": "Japanese"}
 LISTEN_EVENTS = {
     "continuer": "they are still talking; a bare listening sound that only says go on, a word at most, or nothing",

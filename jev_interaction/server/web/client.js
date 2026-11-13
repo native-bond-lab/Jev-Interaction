@@ -107,7 +107,7 @@
   function playNext() {
     if (current || !queue.length) { if (!current) { send({ type: 'playback', state: 'idle' }); fadeCaption('capAgent', 4000); } return; }
     current = queue.shift();
-    current.el.onended = () => { agentCaption(capSaid); current = null; playNext(); };
+    current.el.onended = () => { agentCaption(capSaid); playedOf(current.gen).push(current.text); current = null; playNext(); };
     if (!held) startCurrent();
   }
   function startCurrent() {
@@ -128,6 +128,8 @@
     const total = Number.isFinite(d) && d > 0 ? d : Math.max(1, line.text.length * (/[一-鿿]/.test(line.text) ? .2 : .065));  // streamed audio has no duration yet
     return line.text.slice(0, Math.floor(line.text.length * Math.min(1, line.el.currentTime / total)));
   }
+  // The lines of one reply (gen) that played to their end: with the part of the current line, what the user heard of it.
+  function playedOf(gen) { if (played.gen !== gen) played = { gen, texts: [] }; return played.texts; }
   function stopAll() {
     const heard = current ? heardSoFar(current) : '';
     if (current) { current.el.onended = null; current.el.pause(); }
@@ -137,7 +139,7 @@
 
   function onEvent(m) {
     switch (m.type) {
-      case 'line': queue.push({ el: makeAudio(m), text: m.text || '', gen: m.gen }); playNext(); break;
+      case 'line': lineGen = m.gen; queue.push({ el: makeAudio(m), text: m.text || '', gen: m.gen }); playNext(); break;
       case 'listen':
         if (listening) listening.pause();
         if (m.audio) { listening = makeAudio(m); Promise.resolve(listening.play()).catch(() => {}); }
@@ -158,8 +160,11 @@
         break;
       case 'stop': {
         const before = current ? current.before : '';
+        const part = current && current.gen === lineGen ? heardSoFar(current) : '';
         const heard = stopAll();
-        send({ type: 'heard', text: heard }); held = false;
+        // the whole reply as it was heard: its finished lines and the part of the one that was playing ('' = none of it)
+        if (lineGen !== null) send({ type: 'heard', gen: lineGen, text: [...playedOf(lineGen), part].filter(Boolean).join('\n') });
+        held = false;
         $('capAgent').classList.remove('dim');
         if (heard) agentCaption(joinLines(before, heard) + ' —'); fadeCaption('capAgent', 1800); capGen = null;
         yieldedUntil = performance.now() + 900; thinkingUntil = 0;
@@ -246,6 +251,7 @@
   }
   // The agent's caption shows a few lines; a longer reply (a story) rolls upward, its older lines fading out behind the top edge.
   let capGen = null, capSaid = '';
+  let lineGen = null, played = { gen: null, texts: [] };       // the reply the last line belonged to, and its lines played to the end
   const joinLines = (a, b) => (!a ? b : a + (/[\u3000-\u9fff\uff00-\uffef]$/.test(a) ? '' : ' ') + b);
   // `said` is what the voice has reached; `rest` is the remainder of the line being spoken, laid out but not shown yet, so
   // the words do not jump as they appear. The window follows the voice: every line is read at the bottom before it rolls up.
@@ -319,7 +325,7 @@
     $('call').setAttribute('aria-pressed', String(p === 'call')); $('callLabel').textContent = t(p === 'call' ? 'hang_up' : 'call');
   }
   function resetCall() {
-    queue = []; current = null; held = false; listening = null; pace = null; logN = 0; capGen = null; capSaid = ''; waiting = null;
+    queue = []; current = null; held = false; listening = null; pace = null; logN = 0; capGen = null; capSaid = ''; waiting = null; lineGen = null; played = { gen: null, texts: [] };
     micLevel = 0; lastPartialAt = 0; thinkingUntil = 0; yieldedUntil = 0;
     $('log').textContent = ''; $('logEmpty').hidden = false; $('logCount').hidden = true; $('chips').textContent = '';
     setCaption('capAgent', ''); setCaption('capUser', ''); $('capAgent').classList.remove('dim');

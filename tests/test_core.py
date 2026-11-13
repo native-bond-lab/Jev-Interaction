@@ -446,3 +446,37 @@ def test_a_line_of_tags_alone_has_no_voice():
     from jev_interaction import speaking
     assert not speaking.has_voice("[laughs]") and not speaking.has_voice("[quiet breath] …") and not speaking.has_voice("")
     assert speaking.has_voice("[laughs] ha") and speaking.has_voice("Mm.") and speaking.has_voice("[soft] 嗯")
+
+
+@pytest.mark.asyncio
+async def test_a_listening_sound_is_measured_in_characters_where_words_have_no_spaces():
+    s, events, _ = scripted_session()
+    s.cfg.listen_max_words = 8
+    s.llm.out = ["那时候大概十一二岁吧，我也记不清了。"]      # one "word" to str.split, a whole sentence to the ear
+    await s.listen_in("continuer")
+    assert not any(e["type"] == "listen" for e in events)
+    s.llm.out = ["嗯，我在听。慢慢讲。"]                     # inside the overall limit, too long for a bare "go on"
+    s.listen_last = 0
+    await s.listen_in("continuer")
+    assert not any(e["type"] == "listen" for e in events)
+    s.llm.out = ["嗯？"]
+    s.listen_last = 0
+    await s.listen_in("continuer")
+    await s.listen_in("continuer", inviting=True)      # right behind the first: not voiced, sounds are spaced out
+    assert [e["text"] for e in events if e["type"] == "listen"] == ["嗯？"]
+
+
+@pytest.mark.asyncio
+async def test_heard_keeps_the_lines_that_played_and_names_its_reply():
+    s, _, _ = scripted_session()
+    s.llm.out = ["I was eight.", "My dad took me to the pier.", "A wave took my shorts."]
+    await s.respond("commit")
+    story, gen = s.ledger.last_agent(), s.gen
+    await s._stop_line()
+    s.llm.out = ["Eight."]
+    await s.respond("commit")                         # the next reply is already in the record when `heard` arrives
+    await s.on_client({"type": "heard", "gen": gen, "text": "I was eight.\nMy dad took"})
+    assert (story.text, story.cut) == ("I was eight.\nMy dad took", True)
+    assert s.ledger.last_agent().text == "Eight." and not s.ledger.last_agent().cut
+    await s.on_client({"type": "heard", "gen": s.gen, "text": ""})      # none of it was played
+    assert (s.ledger.last_agent().text, s.ledger.last_agent().cut) == ("", True)
