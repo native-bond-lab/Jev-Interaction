@@ -14,7 +14,7 @@ from .base import Segment
 class ScribeRealtime:
     def __init__(self, language: str = "en", model: str | None = None, silence_s: float = 0.35,
                  api_key: str | None = None, sample_rate: int = 16000):
-        model = model or os.getenv("ELEVENLABS_ASR_MODEL", "scribe_v2_realtime")
+        model = model or os.getenv("ELEVENLABS_ASR_MODEL", "scribe_v3_live")
         self.url = (f"wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id={model}&audio_format=pcm_{sample_rate}"
                     f"&commit_strategy=vad&vad_silence_threshold_secs={silence_s}" + (f"&language_code={language}" if language else ""))
         self.key = api_key or os.getenv("ELEVENLABS_API_KEY", "")

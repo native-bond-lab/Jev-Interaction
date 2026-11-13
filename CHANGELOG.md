@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- ElevenLabs recognition defaults to Scribe v3 Live (`scribe_v3_live`): same socket and settings, the first words
+  arrive much sooner. Set `ELEVENLABS_ASR_MODEL=scribe_v2_realtime` to stay on v2.
 - A waiting line for a public demo: when every line is taken a caller is held in line, first come first, instead of
   being turned away (`MAX_WAITING_CALLS`, default 20). The page shows their place and at most how long, and the call
   starts by itself when a line frees up (protocol: `queue`, `ready`). The Space's suggested limits are now 4 calls

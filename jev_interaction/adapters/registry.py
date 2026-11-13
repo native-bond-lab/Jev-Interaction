@@ -270,7 +270,7 @@ register("llm", "openai-compatible", _openai_compat, [
     Setting("LLM_MODEL", "Model", "模型", required=True),
     Setting("LLM_TEMPERATURE", "Temperature", "温度", default="0.7")], label="OpenAI-compatible")
 register("asr", "elevenlabs", _scribe, [
-    ELEVEN_KEY, Setting("ELEVENLABS_ASR_MODEL", "Model", "模型", default="scribe_v2_realtime_turbo")], label="ElevenLabs Scribe", **ELEVEN)
+    ELEVEN_KEY, Setting("ELEVENLABS_ASR_MODEL", "Model", "模型", default="scribe_v3_live")], label="ElevenLabs Scribe", **ELEVEN)
 register("asr", "dashscope", _paraformer, [
     DASHSCOPE_KEY, Setting("DASHSCOPE_ASR_MODEL", "Model", "模型", default="paraformer-realtime-v2")],
     label="Paraformer (Alibaba Cloud Bailian)", **DASHSCOPE)
