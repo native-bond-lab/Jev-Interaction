@@ -25,7 +25,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `finish_line` | `gen` | drop queued lines, let the current one finish |
 | `decision` | `what, action?, go?, probs?, why?, ...` | a turn-taking decision Jev just made (`end_of_turn`, `floor`, `quiet`, `not_for_me`), for display and logs |
 | `pace` | `pace, probs` | the call's pace changed (normal, patient, narrate, eager) |
-| `error` | `what, text, missing?` | `settings`: required keys are empty (`missing` lists them; the socket closes with 4412); `start`: a provider refused; `judge`: a decision failed, the call falls back and goes on |
+| `error` | `what, text, missing?` | `settings`: required keys are empty (`missing` lists them; the socket closes with 4412); `start`: a provider refused; `judge`: a decision failed, the call falls back and goes on; `responder`: a reply failed or came back empty twice, nothing is said and the call goes on |
 | `queue` | `ahead, wait_s` | every line is taken and this caller is held in line: `ahead` callers before them, at most `wait_s` seconds (null when unknown); sent again when either changes. Audio sent meanwhile is ignored |
 | `ready` | | a line is free: the call starts now |
 | `busy` | `text` | the line itself is full, or today's minutes are used up; the socket closes |

@@ -322,17 +322,29 @@ class Session:
         self.replies[gen] = turn
         self.rec.write("respond", gen=gen, kind=kind, data_line=line)
         try:
-            async for text in self.llm.lines(messages, max_tokens=event.max_tokens):
-                if gen != self.gen:
+            for attempt in (1, 2):                    # a reply that fails or comes back with nothing to say is asked for
+                error = ""                            # once more: the user spoke and must not be met with silence
+                try:
+                    async for text in self.llm.lines(messages, max_tokens=event.max_tokens):
+                        if gen != self.gen:
+                            break
+                        if not speaking.has_voice(text):  # a tag with no word or sound beside it cannot be voiced: not said
+                            self.rec.write("unvoiced", gen=gen, text=text)
+                            continue
+                        line_id = uuid.uuid4().hex
+                        self.lines[line_id] = text
+                        turn.text = (turn.text + "\n" + text).strip()
+                        self.speaking = True          # on its way to the client: counts as speaking until it reports idle
+                        await self.send(type="line", gen=gen, id=line_id, text=text, audio=f"/tts/{line_id}")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - the provider refused, timed out or dropped the stream
+                    error = f"{type(exc).__name__}: {str(exc)[:160]}"
+                if turn.text or gen != self.gen:
                     break
-                if not speaking.has_voice(text):      # a tag with no word or sound beside it cannot be voiced: not said
-                    self.rec.write("unvoiced", gen=gen, text=text)
-                    continue
-                line_id = uuid.uuid4().hex
-                self.lines[line_id] = text
-                turn.text = (turn.text + "\n" + text).strip()
-                self.speaking = True              # on its way to the client: counts as speaking until it reports idle
-                await self.send(type="line", gen=gen, id=line_id, text=text, audio=f"/tts/{line_id}")
+                self.rec.write("no_reply", gen=gen, kind=kind, attempt=attempt, error=error)
+                if attempt == 2:                      # twice nothing: the page is told, the quiet question takes it from here
+                    await self.send(type="error", what="responder", text=error or "the model wrote nothing")
         finally:
             if gen == self.gen:
                 self.generating = False

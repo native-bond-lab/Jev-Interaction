@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A reply that fails (the provider refuses, times out, drops the stream) or comes back with nothing a voice can say
+  is asked for once more, so the user is not met with silence; a second miss is reported to the page
+  (`error`, `what: "responder"`) and the call goes on.
 - The floor question no longer talks on when Jev is sure the line should stop but split on how ("yield" 0.43,
   "overrule" 0.48: neither reached its own threshold, so the agent finished a long line over "let me finish!"). When
   the ways of stopping together outweigh going on and reach the pace's yield threshold, the likeliest one is taken.

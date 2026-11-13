@@ -496,3 +496,30 @@ async def test_sure_the_line_should_stop_but_split_on_how_it_stops():
     assert await floor({"carry_on": 0.07, "yield": 0.49, "overrule": 0.44}) == ["yield"]
     assert await floor({"carry_on": 0.55, "yield": 0.25, "overrule": 0.20}) == ["carry_on"]     # going on is likelier
     assert await floor({"carry_on": 0.30, "finish_first": 0.25, "yield": 0.25, "overrule": 0.20}) == ["carry_on"]
+
+
+@pytest.mark.asyncio
+async def test_a_reply_that_fails_or_says_nothing_is_asked_for_once_more():
+    class Flaky:
+        def __init__(self, outs):
+            self.outs, self.calls = list(outs), 0
+
+        async def lines(self, messages, max_tokens=160):
+            self.calls += 1
+            out = self.outs.pop(0)
+            if isinstance(out, Exception):
+                raise out
+            for x in out:
+                yield x
+
+    s, events, _ = scripted_session()
+    s.llm = Flaky([RuntimeError("503"), ["Still here."]])
+    await s.respond("commit")
+    assert s.llm.calls == 2 and [e["text"] for e in events if e["type"] == "line"] == ["Still here."]
+    s.llm = Flaky([["[sighs]"], []])                       # nothing a voice can say, then nothing at all
+    await s.respond("commit")
+    assert s.llm.calls == 2 and not s.generating and not s.speaking
+    assert [e["what"] for e in events if e["type"] == "error"] == ["responder"]
+    s.llm = Flaky([["Hi."]])
+    await s.respond("commit")
+    assert s.llm.calls == 1                                 # a reply that came is not asked for again
