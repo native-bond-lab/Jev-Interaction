@@ -21,4 +21,4 @@ policies:
   listen: sample
   quiet: sample
   cut_in: sample
-display: {title: Companion, title_zh: 陪伴, tagline: "All four paces, every decision: the call we run in production", tagline_zh: "四种节奏、全部决策：我们线上在跑的那通电话", language: en, accent: "#3ee0c8", order: 1, group: task}
+display: {title: Companion, title_zh: 陪伴, tagline: "All four paces, every decision: the call we run in production", tagline_zh: "四种节奏、全部决策：我们线上在跑的那通电话", language: en, accent: "#3ee0c8", order: 41, group: task, listed: false}

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The companion on the page is now Lyra Vex (`lyra`, `lyra_zh`): a night-shift keeper of a reading room between
+  worlds, with a life of her own to tell stories from, the same four paces and every decision open. Kai and 江屿 stay
+  in the package, unlisted.
 - A reply that fails (the provider refuses, times out, drops the stream) or comes back with nothing a voice can say
   is asked for once more, so the user is not met with silence; a second miss is reported to the page
   (`error`, `what: "responder"`) and the call goes on.

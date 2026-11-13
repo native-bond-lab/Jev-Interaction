@@ -18,4 +18,4 @@ policies:
   quiet: sample
   cut_in: sample
 voices: {dashscope: longcheng_v2}
-display: {title: Companion (Chinese), title_zh: 陪伴, tagline: "All four paces, every decision: the call we run in production", tagline_zh: "四种节奏、全部决策：我们线上在跑的那通电话", language: zh, accent: "#3ee0c8", order: 2, group: task}
+display: {title: Companion (Chinese), title_zh: 陪伴, tagline: "All four paces, every decision: the call we run in production", tagline_zh: "四种节奏、全部决策：我们线上在跑的那通电话", language: zh, accent: "#3ee0c8", order: 42, group: task, listed: false}
