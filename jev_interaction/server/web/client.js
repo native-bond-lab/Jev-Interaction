@@ -262,6 +262,7 @@
     el.classList.toggle('long', top > 0);
     if (Math.abs(el.scrollTop - top) > 1) el.scrollTo({ top, behavior: 'smooth' });
   }
+  setInterval(() => followVoice(), 100);                       // a timer, not the animation frame: the words keep up in a background tab too
   function followVoice() {                                     // each frame: has the voice reached another word?
     const line = current;
     if (!line || !line.started || line.el.paused) return;
@@ -298,7 +299,6 @@
   }
   island.onframe = (now) => {
     island.levels.mic = micLevel; island.levels.agent = agentLevel();
-    followVoice();
     const s = deriveState(now);
     island.setState(s === 'waiting' ? 'connecting' : s);
     if (s !== shownState) { shownState = s; document.body.dataset.state = s; $('statusText').textContent = t('st_' + s); }
