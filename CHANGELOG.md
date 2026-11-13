@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The floor question no longer talks on when Jev is sure the line should stop but split on how ("yield" 0.43,
+  "overrule" 0.48: neither reached its own threshold, so the agent finished a long line over "let me finish!"). When
+  the ways of stopping together outweigh going on and reach the pace's yield threshold, the likeliest one is taken.
 - After an interruption the record keeps everything the user heard of the reply, not only the line that was playing
   (a story cut in its fourth line used to lose the first three, so "how old were you again?" had nothing to go on).
   `heard` now carries the reply's `gen` and all of it that played; an empty text means none of it did. A client that

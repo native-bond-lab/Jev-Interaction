@@ -480,3 +480,19 @@ async def test_heard_keeps_the_lines_that_played_and_names_its_reply():
     assert s.ledger.last_agent().text == "Eight." and not s.ledger.last_agent().cut
     await s.on_client({"type": "heard", "gen": s.gen, "text": ""})      # none of it was played
     assert (s.ledger.last_agent().text, s.ledger.last_agent().cut) == ("", True)
+
+
+@pytest.mark.asyncio
+async def test_sure_the_line_should_stop_but_split_on_how_it_stops():
+    async def floor(probs):
+        s, events, _ = scripted_session({"floor": probs})
+        s.pace = "eager"                                # offers overrule; the line stops at p(yield) >= 0.6
+        s.speaking = True
+        s.ledger.agent("And another thing about that wave")
+        await s.on_segment(Segment("Let me finish!"))
+        await asyncio.sleep(0.05)
+        return [e["action"] for e in events if e["type"] == "decision" and e["what"] == "floor"]
+    assert await floor({"carry_on": 0.09, "yield": 0.43, "overrule": 0.48}) == ["overrule"]     # was: carried on
+    assert await floor({"carry_on": 0.07, "yield": 0.49, "overrule": 0.44}) == ["yield"]
+    assert await floor({"carry_on": 0.55, "yield": 0.25, "overrule": 0.20}) == ["carry_on"]     # going on is likelier
+    assert await floor({"carry_on": 0.30, "finish_first": 0.25, "yield": 0.25, "overrule": 0.20}) == ["carry_on"]

@@ -11,6 +11,8 @@ from ..judge.client import probs as P
 from ..policy import ThresholdPolicy
 from .base import Decision
 
+STOPS = ("yield", "overrule", "aside", "jump_in")       # every answer that drops the line the agent is on
+
 
 class Floor(Decision):
     name = "floor"
@@ -46,6 +48,19 @@ class Floor(Decision):
                                      policy.fallback or "carry_on")
         return policy
 
+    def split_stop(self, s, probs, action, ctx):
+        """Jev is sure the line should stop but split on what comes next ("yield" 0.43, "overrule" 0.48: neither reaches
+        its own threshold, and the agent used to talk on over "let me finish!"). When the ways of stopping together
+        outweigh going on and reach the pace's yield threshold, the likeliest of them is taken."""
+        policy = self.policy_for(s, ctx)
+        if action != "carry_on" or not isinstance(policy, ThresholdPolicy):
+            return action
+        stops = {k: probs.get(k, 0.0) for k in STOPS if k in ctx["criteria"]}
+        mass = sum(stops.values())
+        if mass >= ctx["pace"].yield_p and mass > probs.get("carry_on", 0.0) + probs.get("finish_first", 0.0):
+            return max(stops, key=stops.get)
+        return action
+
     async def apply(self, s, answers, ctx):
         probs = P(answers, "floor")
         if s._far() or (s._offer_elsewhere() and probs and max(probs, key=probs.get) == "elsewhere"):
@@ -55,6 +70,7 @@ class Floor(Decision):
         action = self.choose(s, answers, "floor", ctx) or "carry_on"
         if action == "elsewhere":                           # drawn but not the likeliest: not enough to treat as an aside
             action = "carry_on"
+        action = self.split_stop(s, probs, action, ctx)
         await s.send(type="decision", what="floor", action=action, probs=probs)
         if action == "carry_on":
             s.held = False
