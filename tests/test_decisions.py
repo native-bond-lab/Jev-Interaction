@@ -15,7 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 def test_every_built_in_decision_has_a_policy():
-    assert list(DECISIONS) == ["turn", "listen", "floor", "cut_in", "quiet"]      # the order they are offered in
+    assert list(DECISIONS) == ["turn", "trail", "listen", "floor", "cut_in", "quiet"]      # the order they are offered in
     assert all(d.policy in Config().policies for d in DECISIONS.values())
 
 

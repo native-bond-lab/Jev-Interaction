@@ -93,6 +93,16 @@ def cut_in(name: str) -> dict:
         "let_finish": f"{name} lets them finish: they are telling something, asking something, or saying a real no ({REAL_NO})"}}
 
 
+def trail(name: str, quiet_s: float) -> dict:
+    return {"type": "choice", "instructions": (
+        f"The user said the words below and has now been silent for {quiet_s:.0f} s, without clearly finishing. Would {name} "
+        "speak now, or leave the silence to the user? Go by what they said and by what they asked for earlier in the call."),
+        "criteria": {
+            "take_up": f"{name} speaks now: what they said stands as it is and they are waiting, or the silence has gone on long",
+            "wait": (f"{name} stays silent: they are mid-thought, looking for words or busy, or they said they would go on; "
+                     "speaking now would cut across them")}}
+
+
 def quiet(name: str, pace: str) -> dict:
     return {"type": "choice", "instructions": (
         f"It has been quiet on the line since {name}'s last line. The call is in the {pace} pace. Would {name}, being who they "

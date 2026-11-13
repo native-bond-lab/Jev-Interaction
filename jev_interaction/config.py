@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .policy import Policy, SamplePolicy, ThresholdPolicy
+from .policy import ArgmaxPolicy, Policy, SamplePolicy, ThresholdPolicy
 
 
 @dataclass
@@ -40,7 +40,8 @@ class Config:
     policies: dict[str, Policy] = field(default_factory=lambda: {
         "end_of_turn": SamplePolicy(), "listen": SamplePolicy(),
         "floor": ThresholdPolicy(fallback="carry_on"),   # yield's threshold comes from the (blended) pace
-        "cut_in": SamplePolicy(), "quiet": SamplePolicy()})
+        "cut_in": SamplePolicy(), "quiet": SamplePolicy(),
+        "trail": ArgmaxPolicy()})                        # speak into the user's unfinished silence: never drawn
 
     voice_min_ms: int = 60             # a frame with this much voice in it is the user making sound
     hold_after_ms: int = 400           # the user talks over the agent this long: its audio pauses (user first, every pace);
@@ -49,6 +50,9 @@ class Config:
     hold_release_ms: int = 700         # held, the user quiet again with no words: the line goes on
     listen_gap_s: float = 3.0          # at least this long between two listening sounds
     listen_receipt_gap_s: float = 1.0  # ... except a piece said back or a mark the user asked for: one for each
+    # the user went silent without being judged finished: Jev is asked whether to speak this long past the pace's
+    # longest wait + 1 s, and again; at the last mark the agent speaks anyway
+    trail_marks_ms: tuple = (0, 3000, 8000)
     listen_piece_min: float = 0.5      # a piece said back or an asked-for mark is made when Jev is this sure, never on a draw
     listen_finished_max: float = 0.65  # no listening sound once Jev is this sure the user has finished
     quiet_marks_s: tuple = (1.5, 4.0, 10.0, 25.0, 60.0, 120.0)   # when the quiet question is asked (jittered)

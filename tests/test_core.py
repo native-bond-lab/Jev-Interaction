@@ -569,3 +569,22 @@ async def test_a_piece_handed_over_is_said_back_once_and_sooner_than_other_sound
     said_by = [(m["role"], m["content"].split("\n")[-1]) for m in s.llm.seen[-1][-5:]]   # the agent's words are its own turns
     assert said_by == [("user", "two cartons of milk,"), ("assistant", "Two cartons of milk."), ("user", "a dozen eggs,"),
                        ("assistant", "A dozen eggs."), ("user", "and, um,")]
+
+
+@pytest.mark.asyncio
+async def test_a_silence_after_unfinished_words_is_jevs_to_break_not_a_clocks():
+    import time
+
+    from jev_interaction.decisions.trail import TRAIL
+    from jev_interaction.utterance import Utterance
+    s, _, _ = scripted_session()
+    s.utt = Utterance(1, time.monotonic(), [(0.0, "and it pushed my cup off too.")])
+    s.silence_ms = 2400
+    asked = len(s.llm.seen)
+    await TRAIL.apply(s, {"trail": {"probabilities": {"wait": 0.8, "take_up": 0.2}}}, {"quiet_s": 2.4})
+    assert len(s.llm.seen) == asked and s.utt is not None          # the responder is not asked for a line; the turn stays open
+    await TRAIL.apply(s, {"trail": {"probabilities": {"wait": 0.3, "take_up": 0.7}}}, {"quiet_s": 5.4})
+    assert "silent for" in s.llm.seen[-1][-1]["content"] and s.utt is None
+    s.utt = Utterance(2, time.monotonic(), [(0.0, "so, um")])
+    await TRAIL.apply(s, {}, {"quiet_s": 2.4})                     # a judge that fails: the agent speaks, as before
+    assert s.utt is None

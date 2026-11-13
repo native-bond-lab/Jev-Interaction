@@ -5,6 +5,7 @@
                                            listen      listen.py    listen        (rides in the turn request)
     both talk at once                      floor       floor.py     floor
     the user talks, the agent leads        cut_in      cut_in.py    cut_in
+    the user went silent, not finished     trail       trail.py     (Jev's likeliest answer)
     quiet since the agent's last line      quiet       quiet.py     quiet
 
 Adding a decision is one module with a Decision subclass, `register()` (or an entry in DECISIONS), and a policy under
@@ -17,9 +18,10 @@ from .cut_in import CUT_IN
 from .floor import FLOOR
 from .listen import LISTEN
 from .quiet import QUIET
+from .trail import TRAIL
 from .turn import TURN
 
-DECISIONS: dict[str, Decision] = {d.name: d for d in (TURN, LISTEN, FLOOR, CUT_IN, QUIET)}
+DECISIONS: dict[str, Decision] = {d.name: d for d in (TURN, TRAIL, LISTEN, FLOOR, CUT_IN, QUIET)}
 
 
 def register(decision: Decision) -> Decision:

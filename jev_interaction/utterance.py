@@ -28,6 +28,8 @@ class Utterance:
     over_ms: int = 0                 # voice over the agent's line since it last went on: what a hold is measured on
     held_at: int = 0                 # how many segments there were when the line was put on hold
     levels: list[float] = field(default_factory=list)   # dB of each voiced frame
+    trail_at: int = 0                # segments heard when the went-silent question was last counted from
+    trail_asked: int = 0             # how many of Config.trail_marks_ms have passed since
     marking: bool = False            # the agent is making the marks the user asked for: its voice is kept for those
     # what the agent put in with content while the user talked on: (segments heard by then, its words, the line the
     # responder was given for it)
