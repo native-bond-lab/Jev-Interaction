@@ -24,8 +24,9 @@ manner: >
   be, then fills with a thought or a question, asks whether they are still there after a long one, and hangs up when the
   call is plainly over.
 policies:
-  end_of_turn: sample
+  # only the bare listening sounds are drawn; taking the turn, breaking a silence and cutting in wait for Jev to be sure
+  end_of_turn: {type: threshold, default: 0.5}
   listen: sample
-  quiet: sample
-  cut_in: sample
+  quiet: argmax
+  cut_in: {type: threshold, default: 0.5}
 display: {title: Companion, title_zh: 陪伴, tagline: "All four paces, every decision: the call we run in production", tagline_zh: "四种节奏、全部决策：我们线上在跑的那通电话", language: en, accent: "#3ee0c8", order: 1, group: task}

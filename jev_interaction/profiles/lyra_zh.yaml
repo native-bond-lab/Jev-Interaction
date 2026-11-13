@@ -17,9 +17,10 @@ manner: >
   接得快、从不大声，对方闹着顶嘴她就把话抢回来，听到让她来劲的事会直接插进来。冷场先让它安静一会儿，再用一个念头或
   一个问题接上，安静很久了会问一声还在不在，电话明显聊完了就挂。
 policies:
-  end_of_turn: sample
+  # 只有“嗯”这类填充声按概率抽；接话、冷场开口、抢话都要等 Jev 把握够了才做
+  end_of_turn: {type: threshold, default: 0.5}
   listen: sample
-  quiet: sample
-  cut_in: sample
+  quiet: argmax
+  cut_in: {type: threshold, default: 0.5}
 voices: {dashscope: longxiaochun_v2}
 display: {title: Companion (Chinese), title_zh: 陪伴, tagline: "All four paces, every decision: the call we run in production", tagline_zh: "四种节奏、全部决策：我们线上在跑的那通电话", language: zh, accent: "#3ee0c8", order: 2, group: task}
