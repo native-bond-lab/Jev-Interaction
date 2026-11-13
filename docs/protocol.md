@@ -17,7 +17,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 | event | fields | what the client does |
 |---|---|---|
 | `line` | `gen, id, text, audio` | queue it; play `audio` (an HTTP URL) in order |
-| `listen` | `id, text, kind, audio` | a listening sound ("mm-hm"); play it beside the queue, never queue it |
+| `listen` | `id, text, kind, audio` | a listening sound ("mm-hm"), or one with content (`kind` `receipt`: a piece said back; `cue`: a mark the caller asked for); play it beside the queue, never queue it |
 | `user` | `text, partial` | the caller's words; `partial` while they are still talking |
 | `hold` | `gen` | pause the current line (the caller talked over it; the floor decision is pending) |
 | `unhold` | `gen` | resume it |

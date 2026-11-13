@@ -88,7 +88,7 @@
        What the user has said so far: 0.6 s ago "and then my manager pulls me into a meeting"
        Right now the user has been quiet for 0.4 s.
 
-提问   listen: continuer · feeling · echo · quiet · answer_due
+提问   listen: continuer · feeling · echo · receipt · cue · quiet · answer_due
 
 Jev    feeling 0.46 · quiet 0.27 · continuer 0.22 · answer_due 0.05
 
@@ -103,7 +103,7 @@ Jev    feeling 0.46 · quiet 0.27 · continuer 0.22 · answer_due 0.05
 | 什么时候 | 题目 | 选项 |
 |---|---|---|
 | 用户停顿 | `turn` | 说完了 / 还要说 · 再等多久 · 要回话 / 只是个声音 · 当前节奏 |
-| 用户还在说 | `listen` | 接续的声 · 有感触的反应 · 重复关键词 · 不出声 · 该回答了 |
+| 用户还在说 | `listen` | 接续的声 · 有感触的反应 · 重复关键词 · 复述刚报的那一样 · 用户交代过要标的地方 · 不出声 · 该回答了 |
 | 两人同时说话 | `floor` | 继续 · 让路 · 说完这句 · 把话头拿回来 · 立刻接话 · 简短回应 |
 | 由角色主导时 | `cut_in` | 插话 · 让对方说完 |
 | 冷场 | `quiet` | 接着说 · 问问还在不在 · 等着 · 挂电话 |

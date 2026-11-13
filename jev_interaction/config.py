@@ -48,6 +48,8 @@ class Config:
     sound_close_ms: int = 1500         # a sound with no words behind it is over after this much quiet (a cough, a breath)
     hold_release_ms: int = 700         # held, the user quiet again with no words: the line goes on
     listen_gap_s: float = 3.0          # at least this long between two listening sounds
+    listen_receipt_gap_s: float = 1.0  # ... except a piece said back or a mark the user asked for: one for each
+    listen_piece_min: float = 0.5      # a piece said back or an asked-for mark is made when Jev is this sure, never on a draw
     listen_finished_max: float = 0.65  # no listening sound once Jev is this sure the user has finished
     quiet_marks_s: tuple = (1.5, 4.0, 10.0, 25.0, 60.0, 120.0)   # when the quiet question is asked (jittered)
     quiet_jitter: float = 0.3
@@ -58,7 +60,7 @@ class Config:
     judge_turn_chars: int = 300
     safe_words: tuple = ("red",)       # stop everything, no judgement involved
     listen_max_words: int = 6          # a longer listening sound is dropped (tested at 3: benchmarks count 4+ words as a turn)
-    listen_kind_words: dict = field(default_factory=lambda: {"invite": 2, "continuer": 3, "echo": 6, "feeling": 8})
+    listen_kind_words: dict = field(default_factory=lambda: {"invite": 2, "continuer": 3, "echo": 6, "feeling": 8, "receipt": 8, "cue": 6})
                                        # and each kind has its own length ("mm?" is not a sentence); the smaller limit holds.
                                        # Words, or characters where words have no spaces (Chinese, Japanese, Korean)
 

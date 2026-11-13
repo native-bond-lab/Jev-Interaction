@@ -30,7 +30,7 @@ def test_profile_reaches_the_judge_header():
 def test_questions_offer_choices_by_pace():
     c = Q.floor_criteria("Mara", finish=True, overrule=False, aside=False, jump=True)
     assert set(c) == {"carry_on", "yield", "finish_first", "jump_in"}
-    assert set(Q.listen("Mara")["criteria"]) == {"continuer", "feeling", "echo", "quiet", "answer_due"}
+    assert set(Q.listen("Mara")["criteria"]) == {"continuer", "feeling", "echo", "receipt", "cue", "quiet", "answer_due"}
 
 
 from jev_interaction.testing import FakeASR, FakeJudge, FakeLLM, FakeVAD, scripted_session  # noqa: E402,F401
@@ -523,3 +523,44 @@ async def test_a_reply_that_fails_or_says_nothing_is_asked_for_once_more():
     s.llm = Flaky([["Hi."]])
     await s.respond("commit")
     assert s.llm.calls == 1                                 # a reply that came is not asked for again
+
+
+@pytest.mark.asyncio
+async def test_a_piece_handed_over_is_said_back_once_and_sooner_than_other_sounds():
+    import time
+
+    from jev_interaction.decisions.listen import LISTEN
+    from jev_interaction.utterance import Utterance
+    s, events, _ = scripted_session()
+    said = lambda: [(e["kind"], e["text"]) for e in events if e["type"] == "listen"]  # noqa: E731
+    answer = {"listen": {"probabilities": {"receipt": 1.0}}}
+    s.utt = Utterance(1, time.monotonic(), [(0.0, "two cartons of milk,")])
+    s.llm.out = ["Two cartons of milk."]
+    await LISTEN.apply(s, answer, {})
+    await asyncio.sleep(0.05)
+    assert said() == [("receipt", "Two cartons of milk.")]
+    assert "two cartons of milk," in s.llm.seen[-1][-1]["content"]
+
+    s.listen_last = time.monotonic() - 1.5                 # the same piece again, a moment later: not said twice
+    await LISTEN.apply(s, answer, {})
+    await asyncio.sleep(0.05)
+    assert len(said()) == 1
+
+    s.utt.segments.append((0.0, "a dozen eggs,"))          # the next piece, well inside the gap other sounds keep
+    s.llm.out = ["A dozen eggs."]
+    assert LISTEN.ready(s, {})
+    await LISTEN.apply(s, answer, {})
+    await asyncio.sleep(0.05)
+    assert said()[-1] == ("receipt", "A dozen eggs.")
+    assert s.llm.seen[-1][-1]["content"].endswith("a dozen eggs,")   # the newest piece only, not the list so far
+
+    s.utt.segments.append((0.0, "and, um,"))
+    s.listen_last = time.monotonic() - 1.5
+    s.llm.out = ["Mm."]
+    await LISTEN.apply(s, {"listen": {"probabilities": {"continuer": 1.0}}}, {})   # a plain "mm" still waits its three seconds
+    await asyncio.sleep(0.05)
+    assert len(said()) == 2
+    await s.respond("spoke")                               # the turn's record has what was said back, where it came
+    name = s.p.short
+    assert s.ledger.turns[-2].text == (f"two cartons of milk, [{name}: Two cartons of milk.] a dozen eggs, "
+                                       f"[{name}: A dozen eggs.] and, um,")

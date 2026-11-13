@@ -18,7 +18,8 @@ class Listen(Decision):
     policy = "listen"
 
     def ready(self, s, ctx):
-        return not s.speaking and not s.generating and time.monotonic() - s.listen_last >= s.cfg.listen_gap_s
+        gap = min(s.cfg.listen_gap_s, s.cfg.listen_receipt_gap_s)       # a piece said back may follow sooner
+        return not s.speaking and not s.generating and time.monotonic() - s.listen_last >= gap
 
     def questions(self, s, ctx):
         return {"listen": Q.listen(s.p.short)}
@@ -30,9 +31,17 @@ class Listen(Decision):
     async def apply(self, s, answers, ctx):
         lp = P(answers, "listen")
         kinds = {k: lp.get(k, 0.0) for k in Q.LISTEN_KINDS}       # quiet and answer_due are the mass for "no sound"
+        if s.utt is None or (s.utt.id, len(s.utt.segments)) == s.listen_at:
+            kinds = {k: v for k, v in kinds.items() if k not in Q.LISTEN_PER_PIECE}   # once: nothing new has landed
+        if time.monotonic() - s.listen_last < s.cfg.listen_gap_s:
+            kinds = {k: v for k, v in kinds.items() if k in Q.LISTEN_PER_PIECE}       # the other sounds keep their distance
         policy = self.policy_for(s, ctx)
         finished = s.judged["finished"] if s.judged else 0.0
-        if finished < s.cfg.listen_finished_max and policy.draw(sum(kinds.values())):
+        piece = {k: kinds.pop(k) for k in Q.LISTEN_PER_PIECE if k in kinds}   # exact work (a count, a list): not drawn
+        best = max(piece, key=piece.get, default=None)
+        if best and piece[best] >= s.cfg.listen_piece_min:
+            s._spawn(s.listen_in(best))
+        elif kinds and finished < s.cfg.listen_finished_max and policy.draw(sum(kinds.values())):
             s._spawn(s.listen_in(policy.choose(kinds) or "continuer"))
 
     def invite(self, s):

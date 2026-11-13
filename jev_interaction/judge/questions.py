@@ -14,7 +14,8 @@ agent's short name.
 from __future__ import annotations
 
 WAIT_MS = {"now": 0, "half_second": 500, "two_seconds": 2000, "hold": 4000}
-LISTEN_KINDS = ("continuer", "feeling", "echo")
+LISTEN_PER_PIECE = ("receipt", "cue")    # one for each piece of what the user says, not one every few seconds
+LISTEN_KINDS = ("continuer", "feeling", "echo", "receipt", "cue")
 
 # what a real "no" is: about what the user wants to happen, never about tone or swearing
 REAL_NO = ("they want what is happening to end: they tell the agent to stop, quit or leave them alone, or say they do not "
@@ -49,6 +50,10 @@ def listen(name: str) -> dict:
         "continuer": "a bare continuer that only says 'go on': mm, mm-hm, uh-huh, yeah, a breath",
         "feeling": "a short reaction to what they are telling: sympathy, surprise, a laugh, warmth",
         "echo": "picking up the one word that matters as a question, so they say more about it",
+        "receipt": ("they are handing something over piece by piece (items of a list, a number in groups, an address, steps) "
+                    "and a piece has just landed: saying that piece back so they know it was taken, and they go on"),
+        "cue": (f"earlier in the call they asked {name} to say something each time a certain thing comes up while they talk "
+                f"(count it, call it out, mark it), and it has just come up in their last words: {name} says it, and they go on"),
         "quiet": f"{name} stays silent here: they are in full flow, or {name} is the kind who listens without a sound",
         "answer_due": "they have asked something or are waiting for a reply: an answer, when they finish"}}
 

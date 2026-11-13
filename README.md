@@ -121,7 +121,7 @@ State   Phone call between the user and Mara.
         What the user has said so far: 0.6 s ago "and then my manager pulls me into a meeting"
         Right now the user has been quiet for 0.4 s.
 
-Asked   listen: continuer · feeling · echo · quiet · answer_due
+Asked   listen: continuer · feeling · echo · receipt · cue · quiet · answer_due
 
 Jev     feeling 0.46 · quiet 0.27 · continuer 0.22 · answer_due 0.05
 
@@ -136,7 +136,7 @@ The same question, the same kind of answer; the profile decides how it is read.
 | when | question | choices |
 |---|---|---|
 | the user pauses | `turn` | finished / continuing · how long to wait · reply / just a sound · which pace |
-| the user talks on | `listen` | continuer · feeling · echo · quiet · an answer is due |
+| the user talks on | `listen` | continuer · feeling · echo · a piece said back · a mark the user asked for · quiet · an answer is due |
 | both talk at once | `floor` | carry on · yield · finish the sentence · take the floor back · react at once · short aside |
 | the agent leads | `cut_in` | cut in · let them finish |
 | the line is quiet | `quiet` | go on · check on them · wait · hang up |

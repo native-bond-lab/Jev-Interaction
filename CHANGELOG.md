@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Listening with content. Two more things the agent can put in while the user talks on, beside "mm-hm": a `receipt`
+  (the user hands over a list or a number piece by piece, and each piece is said back as it lands) and a `cue` (earlier
+  in the call the user asked for something to be said whenever a certain thing comes up, "count every time I say
+  cat", and it has just come up). Nothing is configured: the request lives in the call's history and Jev reads it.
+  Both are made when Jev is at least `listen_piece_min` sure (0.5), never on a draw, once for a piece of speech, and
+  may follow each other after `listen_receipt_gap_s` (1 s) where other sounds keep 3 s. Unlike a bare listening sound
+  they go into the record, at the place they came (`... broke the vase, [Lyra: one] water everywhere ...`), so the
+  next mark and the reply after it know what was already said.
 - The companion on the page is now Lyra Vex (`lyra`, `lyra_zh`): a night-shift keeper of a reading room between
   worlds, with a life of her own to tell stories from, the same four paces and every decision open. Kai and 江屿 stay
   in the package, unlisted.
