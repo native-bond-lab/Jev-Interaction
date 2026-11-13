@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 from collections import OrderedDict
@@ -33,7 +34,7 @@ from jev_interaction.session import Session  # noqa: E402
 
 WEB = paths.WEB
 RECORD = os.getenv("JEV_RECORD_CALLS", "1") != "0"     # call logs in runs/ for replay; a public demo sets 0
-app = FastAPI(title="Jev-Interaction")
+app = FastAPI(title="Jev-Interaction", docs_url=None, redoc_url=None, openapi_url=None)   # a call page, not a public API to browse
 LINES: OrderedDict[str, tuple[str, object]] = OrderedDict()   # line id -> (text, synthesizer); the newest MAX_LINES
 MAX_LINES = 2000
 MAX_CALLS = int(os.getenv("MAX_CONCURRENT_CALLS", "0"))     # 0 = no limit; set it for a public demo (e.g. a HF Space)
@@ -41,6 +42,7 @@ MAX_CALL_S = float(os.getenv("MAX_CALL_SECONDS", "0"))      # 0 = no limit
 DAY_BUDGET_S = 60 * float(os.getenv("MAX_CALL_MINUTES_PER_DAY", "0"))   # 0 = no limit; all calls together, per UTC day
 VAD_NAME = type(best_vad()).__name__     # which ear this server has: TenVAD, or EnergyVAD without the ten-vad package
 MAX_WAITING = int(os.getenv("MAX_WAITING_CALLS", "20"))     # callers held in line when every line is taken; more than this hear busy
+LOG = logging.getLogger("uvicorn.error")   # uvicorn's own logger: the lines land beside its access log
 ACTIVE = {"calls": 0}
 STARTS: list[float] = []                # when each call in progress began (for the wait a caller in line is told)
 WAITING: list[object] = []              # callers in line, first come first
@@ -249,6 +251,8 @@ async def call(ws: WebSocket):
     ACTIVE["calls"] += 1       # the line is this caller's from here: nothing awaits between the check above and here
     started = time.monotonic()
     STARTS.append(started)
+    why = "the page closed it"                # how the call ended, for the log: no words of the call are logged
+    LOG.info("call start profile=%s language=%s", pid, language)
     judge = session = None
     try:
         judge = registry.create("judge")
@@ -258,14 +262,17 @@ async def call(ws: WebSocket):
         try:
             await session.start()
         except Exception as exc:  # noqa: BLE001 - e.g. the recognizer refused the key: tell the page, end the call
-            await ws.send_text(json.dumps({"type": "error", "what": "start", "text": f"{type(exc).__name__}: {str(exc)[:160]}"}))
+            why = f"start failed: {type(exc).__name__}: {str(exc)[:160]}"
+            await ws.send_text(json.dumps({"type": "error", "what": "start", "text": why.removeprefix("start failed: ")}))
             return
         while True:
             if MAX_CALL_S and time.monotonic() - started > MAX_CALL_S:
-                await ws.send_text(json.dumps({"type": "hangup", "why": "time limit"}))
+                why = "time limit"
+                await ws.send_text(json.dumps({"type": "hangup", "why": why}))
                 break
             if DAY_BUDGET_S and spent_today() + time.monotonic() - started > DAY_BUDGET_S:
-                await ws.send_text(json.dumps({"type": "hangup", "why": "daily limit"}))
+                why = "daily limit"
+                await ws.send_text(json.dumps({"type": "hangup", "why": why}))
                 break
             msg = await ws.receive()
             if msg.get("type") == "websocket.disconnect":
@@ -276,7 +283,11 @@ async def call(ws: WebSocket):
                 await session.on_client(json.loads(msg["text"]))
     except WebSocketDisconnect:
         pass
+    except Exception as exc:  # noqa: BLE001 - named in the log, then raised as before
+        why = f"error: {type(exc).__name__}: {str(exc)[:160]}"
+        raise
     finally:
+        LOG.info("call end profile=%s seconds=%.0f why=%s", pid, time.monotonic() - started, why)
         ACTIVE["calls"] -= 1
         STARTS.remove(started)
         spent_today()
@@ -287,6 +298,20 @@ async def call(ws: WebSocket):
         finally:
             if judge is not None:
                 await judge.aclose()
+
+
+@app.post("/api/call-report")
+async def call_report(request: Request):
+    """The page says how a call failed or dropped (a refused microphone, a socket that never opened or closed on its
+    own), so the server log shows the failures that never reached the call route. No words of the call, no identity."""
+    try:
+        body = json.loads((await request.body())[:400])
+        seen = {k: (str(body[k])[:40] if isinstance(body[k], str) else body[k]) for k in ("opened", "code", "seconds", "mic")
+                if isinstance(body.get(k), (bool, int, float, str))}
+    except (ValueError, AttributeError):
+        raise HTTPException(400, "Send JSON.") from None
+    LOG.info("call report %s", json.dumps(seen))
+    return {"ok": True}
 
 
 NO_STALE = {"Cache-Control": "no-cache"}     # revalidate the page's files each time, so an update is never half-applied

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The server log says how each call started and ended (time limit, a failed start, the page closing it), and the page
+  reports the failures that never reach the call route (a refused microphone, a socket that never opened or dropped).
+  No words of the call are logged. The API browser (`/docs`, `/openapi.json`) is off.
 - ElevenLabs recognition defaults to Scribe v3 Live (`scribe_v3_live`): same socket and settings, the first words
   arrive much sooner. Set `ELEVENLABS_ASR_MODEL=scribe_v2_realtime` to stay on v2.
 - A waiting line for a public demo: when every line is taken a caller is held in line, first come first, instead of

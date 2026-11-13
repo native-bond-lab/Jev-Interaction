@@ -34,6 +34,7 @@
       err_mic_missing: 'No microphone found. Plug one in, then call again.',
       err_mic: 'Could not open the microphone.',
       err_server: 'Could not reach the call server. Check that it is still running, then call again.',
+      err_dropped: 'The connection dropped. Call again.',
     },
     zh: {
       tagline: '端到端的交互直觉，来自一条读得懂的级联。',
@@ -60,6 +61,7 @@
       err_mic_missing: '没有找到麦克风，接上之后再拨一次。',
       err_mic: '无法打开麦克风。',
       err_server: '连不上通话服务。请确认服务仍在运行，然后再拨一次。',
+      err_dropped: '连接断了，请再拨一次。',
     },
   };
   let lang = params.get('lang') || store.get('jev.lang') || 'en';      // English unless the visitor picked 中文 (or ?lang=zh)
@@ -314,6 +316,7 @@
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     } catch (e) {
       endCall();
+      report({ mic: e.name });
       showNotice(t(e.name === 'NotAllowedError' || e.name === 'SecurityError' ? 'err_mic_denied' : e.name === 'NotFoundError' ? 'err_mic_missing' : 'err_mic'), true);
       return;
     }
@@ -341,8 +344,16 @@
       sock.send(JSON.stringify({ type: 'start', profile: selected.id, language: selected.language || 'en' }));   // the persona speaks its own language; the toggle is for the page
     };
     sock.onmessage = (e) => { if (typeof e.data === 'string' && ws === sock) onEvent(JSON.parse(e.data)); };
-    sock.onclose = () => { if (ws !== sock) return; endCall(); if (!opened) showNotice(t('err_server'), true); };
+    sock.onclose = (e) => {                                    // closed by the server or the network, not by this page
+      if (ws !== sock) return;
+      report({ opened, code: e.code, seconds: callStart ? Math.round((performance.now() - callStart) / 1000) : 0 });
+      endCall();
+      if (!opened) showNotice(t('err_server'), true); else if (e.code === 1006) showNotice(t('err_dropped'), true);
+    };
   }
+
+  // how a call failed, for the server's log (the failures that never reach it otherwise); nothing about who or what was said
+  function report(o) { try { navigator.sendBeacon('api/call-report', new Blob([JSON.stringify(o)], { type: 'application/json' })); } catch (e) { /* no beacon */ } }
 
   function endCall() {
     if (phase !== 'call') return;
