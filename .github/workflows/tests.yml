@@ -26,7 +26,7 @@ jobs:
         run: |
           cd "$RUNNER_TEMP" && jev-interaction serve --port 8099 --quiet &
           for i in $(seq 1 20); do curl -sf localhost:8099/api/health && break; sleep 1; done
-          curl -sf localhost:8099/api/profiles | grep -q kai
+          curl -sf localhost:8099/api/profiles | grep -q lyra
           curl -sf localhost:8099/ | grep -qi "<html"
 
   lint:
