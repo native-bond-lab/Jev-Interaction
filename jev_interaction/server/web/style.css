@@ -131,6 +131,7 @@ body[data-state="yielded"] .status-dot { background: var(--yield); }
 .cap { margin: 0; min-height: 1.5em; text-wrap: balance; transition: opacity .5s; overflow-wrap: anywhere; }
 .cap:empty { opacity: 0; }
 .cap-agent { font-size: clamp(17px, 2.3vw, 21px); line-height: 1.4; font-weight: 500; color: var(--ink); max-height: 5.6em; overflow: hidden; text-wrap: pretty; }
+.cap-agent .unsaid { color: transparent; }
 .cap-agent.long { -webkit-mask-image: linear-gradient(to bottom, transparent 0, rgba(0, 0, 0, .35) 30%, #000 62%); mask-image: linear-gradient(to bottom, transparent 0, rgba(0, 0, 0, .35) 30%, #000 62%); }
 .cap-agent.dim { opacity: .45; }
 .cap-user { font-size: 15px; color: var(--ink-2); }

@@ -107,7 +107,7 @@
   function playNext() {
     if (current || !queue.length) { if (!current) { send({ type: 'playback', state: 'idle' }); fadeCaption('capAgent', 4000); } return; }
     current = queue.shift();
-    current.el.onended = () => { current = null; playNext(); };
+    current.el.onended = () => { agentCaption(capSaid); current = null; playNext(); };
     if (!held) startCurrent();
   }
   function startCurrent() {
@@ -117,7 +117,7 @@
       if (!line.started) {                                     // only caption a line once it starts, not again on resume
         if (line.gen !== capGen) { capGen = line.gen; capSaid = ''; $('capAgent').scrollTop = 0; }
         line.before = capSaid; capSaid = joinLines(capSaid, line.text);
-        agentCaption(capSaid);
+        line.shown = 0; agentCaption(line.before, line.text);
       }
       line.started = true; thinkingUntil = 0; send({ type: 'playback', state: 'playing' });
     })
@@ -247,10 +247,29 @@
   // The agent's caption shows a few lines; a longer reply (a story) rolls upward, its older lines fading out behind the top edge.
   let capGen = null, capSaid = '';
   const joinLines = (a, b) => (!a ? b : a + (/[\u3000-\u9fff\uff00-\uffef]$/.test(a) ? '' : ' ') + b);
-  function agentCaption(text) {
-    setCaption('capAgent', text);
-    const el = $('capAgent'); el.classList.toggle('long', el.scrollHeight > el.clientHeight + 2);
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  // `said` is what the voice has reached; `rest` is the remainder of the line being spoken, laid out but not shown yet, so
+  // the words do not jump as they appear. The window follows the voice: every line is read at the bottom before it rolls up.
+  function agentCaption(said, rest) {
+    const el = $('capAgent'); clearTimeout(capTimers.capAgent); el.classList.remove('fade', 'partial');
+    el.textContent = '';
+    if (!said && !rest) return;
+    const a = document.createElement('span'); a.textContent = said || '';
+    const b = document.createElement('span'); b.className = 'unsaid'; b.textContent = rest ? (said ? joinLines(said, rest).slice(said.length) : rest) : '';
+    el.append(a, b);
+    const rects = a.getClientRects(), box = el.getBoundingClientRect();
+    const reached = rects.length ? rects[rects.length - 1].bottom - box.top + el.scrollTop : 0;      // the bottom of the last line spoken
+    const top = Math.max(0, Math.round(reached - el.clientHeight));
+    el.classList.toggle('long', top > 0);
+    if (Math.abs(el.scrollTop - top) > 1) el.scrollTo({ top, behavior: 'smooth' });
+  }
+  function followVoice() {                                     // each frame: has the voice reached another word?
+    const line = current;
+    if (!line || !line.started || line.el.paused) return;
+    let h = heardSoFar(line);
+    if (h.length < line.text.length && /[a-z]/i.test(line.text)) h = h.slice(0, Math.max(0, h.lastIndexOf(' ')));   // whole words
+    if (h.length === line.shown) return;
+    line.shown = h.length;
+    agentCaption(joinLines(line.before, h), line.text.slice(h.length));
   }
   function fadeCaption(id, after) { clearTimeout(capTimers[id]); capTimers[id] = setTimeout(() => $(id).classList.add('fade'), after); }
 
@@ -279,6 +298,7 @@
   }
   island.onframe = (now) => {
     island.levels.mic = micLevel; island.levels.agent = agentLevel();
+    followVoice();
     const s = deriveState(now);
     island.setState(s === 'waiting' ? 'connecting' : s);
     if (s !== shownState) { shownState = s; document.body.dataset.state = s; $('statusText').textContent = t('st_' + s); }
