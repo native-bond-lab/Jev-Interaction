@@ -26,7 +26,8 @@ class Listen(Decision):
 
     def state(self, s, ctx):
         segments = s.utt.segments if s.utt else []
-        return super().state(s, ctx) + S.user_turn(s.p.short, segments, time.monotonic(), s.silence_ms, s.speaking)
+        return super().state(s, ctx) + S.user_turn(s.p.short, segments, time.monotonic(), s.silence_ms, s.speaking,
+                                                    s.utt.asides if s.utt else ())
 
     async def apply(self, s, answers, ctx):
         lp = P(answers, "listen")

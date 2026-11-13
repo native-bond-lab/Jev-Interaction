@@ -545,6 +545,8 @@ async def test_a_piece_handed_over_is_said_back_once_and_sooner_than_other_sound
     await LISTEN.apply(s, answer, {})
     await asyncio.sleep(0.05)
     assert len(said()) == 1
+    assert 'and Mara put in: "Two cartons of milk."'.replace("Mara", s.p.short) in LISTEN.state(s, {})   # Jev reads it too
+    assert s.ledger.open is s.utt                          # one record: the turn in progress is part of the call
 
     s.utt.segments.append((0.0, "a dozen eggs,"))          # the next piece, well inside the gap other sounds keep
     s.llm.out = ["A dozen eggs."]
@@ -564,3 +566,6 @@ async def test_a_piece_handed_over_is_said_back_once_and_sooner_than_other_sound
     name = s.p.short
     assert s.ledger.turns[-2].text == (f"two cartons of milk, [{name}: Two cartons of milk.] a dozen eggs, "
                                        f"[{name}: A dozen eggs.] and, um,")
+    said_by = [(m["role"], m["content"].split("\n")[-1]) for m in s.llm.seen[-1][-5:]]   # the agent's words are its own turns
+    assert said_by == [("user", "two cartons of milk,"), ("assistant", "Two cartons of milk."), ("user", "a dozen eggs,"),
+                       ("assistant", "A dozen eggs."), ("user", "and, um,")]

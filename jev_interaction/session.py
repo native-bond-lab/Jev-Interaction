@@ -56,7 +56,6 @@ class Session:
         self.replies: dict[int, Turn] = {}       # gen -> the agent's turn in the record, for the client's `heard`
         self.pace, self.pace_probs, self.transition = self.cfg.start_pace, {}, None
         self.user_turns = 0
-        self.utt: Utterance | None = None
         self.utt_seq = 0
         self.silence_ms = 0
         self.judged: dict | None = None          # the latest turn answer for the open utterance
@@ -68,7 +67,6 @@ class Session:
         self.quiet_marks: list[float] = []
         self.spoke_into_quiet = 0
         self.listen_last = 0.0
-        self.marks: list[str] = []        # what the agent said at each cue the user asked it to mark, in order
         self.listen_at = None             # (utterance id, segments heard) when the last listening sound was made
         self.reply_gaps: list[float] = []
         self.caller_levels: list[float] = []   # loudness of the utterances answered as the caller's (Config.far_db)
@@ -294,15 +292,23 @@ class Session:
         self.quiet_marks = [m * random.uniform(1 - j, 1 + j) for m in self.cfg.quiet_marks_s]
 
     # ------------------------------------------------------------------ speaking
-    def data_line(self, kind: str, quiet_s: float = 0.0, listen: str = "", event: str | None = None, piece: str = "",
-                  said: str = "") -> str:
+    def data_line(self, kind: str, quiet_s: float = 0.0, listen: str = "", event: str | None = None, piece: str = "") -> str:
         """The bracketed line the responder reads before it speaks (speaking.py has the wording for each kind)."""
         pace = self.pace + (f" (just changed from {self.transition[0]})" if self.transition else "")
         if kind != "listen":
             self.transition = None
         last = self.ledger.last_agent()
-        event = event or speaking.event_text(kind, last=last.text if last else "", quiet_s=quiet_s, listen=listen, piece=piece, said=said)
+        event = event or speaking.event_text(kind, last=last.text if last else "", quiet_s=quiet_s, listen=listen, piece=piece)
         return speaking.data_line(pace, event, self.cfg.language)
+
+    @property
+    def utt(self) -> Utterance | None:
+        """The user's turn in progress. It lives in the ledger, with the rest of the call (Ledger.open)."""
+        return self.ledger.open
+
+    @utt.setter
+    def utt(self, value: Utterance | None):
+        self.ledger.open = value
 
     async def respond(self, kind: str, quiet_s: float = 0.0):
         self.gen += 1
@@ -313,11 +319,9 @@ class Session:
         if self.utt is not None and event.answers_user:
             if self.utt.level is not None:
                 self.caller_levels = (self.caller_levels + [self.utt.level])[-20:]
-            if self.utt.asides:               # the record shows them; the reply is not one more of them
-                line += ("\n[what you put in as they talked is in brackets where you said it, and is done; "
-                         "this is your reply to what they said]")
-            self.ledger.user(self.utt.with_asides(self.p.short), line)   # with what the agent put in, where it came
-            await self.send(type="user", text=self.utt.text, partial=False)
+            text = self.utt.text
+            self.ledger.close_open(self.p.short, line)
+            await self.send(type="user", text=text, partial=False)
             self.user_turns += 1
             self.spoke_into_quiet = 0
             self.utt = None
@@ -370,15 +374,10 @@ class Session:
         segments = self.utt.segments if self.utt else []
         self.listen_at = (self.utt.id, len(segments)) if self.utt else None
         piece = segments[-1][1] if segments else ""
-        said = ""
-        if self.marks:                    # the marks so far, for the next one; and any other sound is told it is not one
-            said = ("; at the ones before you said: " + " · ".join(self.marks[-12:]) if kind == "cue" else
-                    "; what they asked you to mark has not come up in these words, so this is not a mark")
-        turn = self.data_line("listen", listen=kind, event=speaking.LISTEN_INVITING if inviting else None, piece=piece,
-                              said=said)
-        # a receipt is for the newest piece only; the others read the words so far, with what was already put in
-        heard = piece if kind == "receipt" else self.utt.with_asides(self.p.short) if self.utt else ""
-        messages = [{"role": "system", "content": self.system}, *self.ledger.messages(),
+        turn = self.data_line("listen", listen=kind, event=speaking.LISTEN_INVITING if inviting else None, piece=piece)
+        # the turn so far as it went: what was put in before is the agent's own turn, then the user's words since
+        before, heard = self.ledger.open_messages()
+        messages = [{"role": "system", "content": self.system}, *self.ledger.messages(), *before,
                     {"role": "user", "content": turn + "\n" + heard}]
         text = ""
         async for line in self.llm.lines(messages, max_tokens=14):
@@ -390,11 +389,9 @@ class Session:
         line_id = uuid.uuid4().hex
         self.lines[line_id] = text
         if kind in LISTEN_PER_PIECE and self.utt is not None and self.listen_at and self.listen_at[0] == self.utt.id:
-            self.utt.asides.append((self.listen_at[1], text))    # said with content: part of the turn's record
-        if kind == "cue":
-            self.marks.append(text)
-            if self.utt is not None:
-                self.utt.marking = True
+            self.utt.asides.append((self.listen_at[1], text, turn))    # said with content: part of the turn's record
+        if kind == "cue" and self.utt is not None:
+            self.utt.marking = True
         await self.send(type="listen", id=line_id, text=text, kind=kind, audio=f"/tts/{line_id}")
 
     async def _stop_line(self):

@@ -33,7 +33,7 @@ LISTEN_EVENTS = {
     "receipt": ("they are handing this over piece by piece and will go on; say back only the piece that just landed "
                 '("{piece}"), plainly, so they know you have it: no question, nothing added'),
     "cue": ('they are still talking and will go on; what they asked you to mark while they talk has just come up '
-            '("{piece}"); say what they asked for, as they asked, and nothing else{said}'),
+            '("{piece}"); say what they asked for, as they asked, and nothing else'),
 }
 LISTEN_INVITING = "they may not have finished; a questioning sound that invites them on (mm?), or nothing"
 
@@ -67,10 +67,9 @@ def event(kind: str, text: str, *, answers_user: bool = False, max_tokens: int =
     EVENTS[kind] = Event(text, answers_user, max_tokens)
 
 
-def event_text(kind: str, *, last: str = "", quiet_s: float = 0.0, listen: str = "", piece: str = "", said: str = "") -> str:
+def event_text(kind: str, *, last: str = "", quiet_s: float = 0.0, listen: str = "", piece: str = "") -> str:
     if kind == "listen":
-        text = LISTEN_EVENTS.get(listen, LISTEN_EVENTS["continuer"])
-        return (text if "{said}" in text else text + "{said}").replace("{piece}", piece).replace("{said}", said)
+        return LISTEN_EVENTS.get(listen, LISTEN_EVENTS["continuer"]).replace("{piece}", piece)
     if kind not in EVENTS:
         return kind
     return EVENTS[kind].text.format(last=last, quiet_s=quiet_s)

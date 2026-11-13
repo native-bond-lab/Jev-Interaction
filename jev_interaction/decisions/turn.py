@@ -37,7 +37,8 @@ class Turn(Decision):
         return qs
 
     def state(self, s, ctx):
-        return super().state(s, ctx) + S.user_turn(s.p.short, s.utt.segments, time.monotonic(), s.silence_ms, s.speaking)
+        return super().state(s, ctx) + S.user_turn(s.p.short, s.utt.segments, time.monotonic(), s.silence_ms, s.speaking,
+                                                    s.utt.asides)
 
     def current(self, s, ctx):
         return s.utt is not None and s.utt.id == ctx["utt_id"]      # still the same utterance

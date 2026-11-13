@@ -12,11 +12,15 @@ def header(profile: Profile, pace: str, ledger: Ledger, turns: int, chars: int) 
             f"Current pace of the call: {pace}.\nRecent call:\n{recent}\n")
 
 
-def user_turn(name: str, segments: list[tuple[float, str]], now: float, silence_ms: int, agent_speaking: bool) -> str:
+def user_turn(name: str, segments: list[tuple[float, str]], now: float, silence_ms: int, agent_speaking: bool,
+              asides: list[tuple] = ()) -> str:
+    """`asides`: what the agent put in with content while the user talked (Utterance.asides), shown where it came."""
     lines = [f"{name} is {'speaking' if agent_speaking else 'silent'}."]
     if segments:
         lines.append("What the user has said so far, in the segments the recognizer closed after each short pause:")
-        lines += [f'  {max(0.0, now - t):.1f} s ago: "{x}"' for t, x in segments[-6:]]
+        for i, (t, x) in list(enumerate(segments, 1))[-6:]:
+            lines.append(f'  {max(0.0, now - t):.1f} s ago: "{x}"')
+            lines += [f'      and {name} put in: "{said}"' for at, said, *_ in asides if at == i]
     else:
         lines.append("No words recognized yet; the user is making sound.")
     lines.append("Right now the user's voice is still going." if silence_ms == 0 else

@@ -29,8 +29,9 @@ class Utterance:
     held_at: int = 0                 # how many segments there were when the line was put on hold
     levels: list[float] = field(default_factory=list)   # dB of each voiced frame
     marking: bool = False            # the agent is making the marks the user asked for: its voice is kept for those
-    asides: list[tuple[int, str]] = field(default_factory=list)   # what the agent put in with content while the user
-                                                                  # talked on: (segments heard by then, its words)
+    # what the agent put in with content while the user talked on: (segments heard by then, its words, the line the
+    # responder was given for it)
+    asides: list[tuple[int, str, str]] = field(default_factory=list)
 
     @property
     def level(self) -> float | None:
@@ -46,12 +47,21 @@ class Utterance:
 
     def with_asides(self, name: str) -> str:
         """The words with what the agent put in at the place it came ("... the vase, [Lyra: one] water everywhere ..."):
-        the record of the turn, for the responder and for Jev. Bare listening sounds are not in it."""
+        the turn as one text, for Jev's recent turns. Bare listening sounds are not in it."""
         out = []
         for i, (_, words) in enumerate(self.segments, 1):
             out.append(words)
-            out += [f"[{name}: {said}]" for at, said in self.asides if at == i]
+            out += [f"[{name}: {said}]" for at, said, _ in self.asides if at == i]
         return " ".join(out)
+
+    def exchanges(self) -> tuple[list[tuple[str, str, str]], str]:
+        """The turn as it went, for the responder: (the user's words up to there, what the agent put in, the line it
+        was given), one for each aside in order, then the words since the last one."""
+        done, start = [], 0
+        for at, said, line in sorted(self.asides, key=lambda a: a[0]):
+            done.append((" ".join(x for _, x in self.segments[start:at]), said, line))
+            start = max(start, at)
+        return done, " ".join(x for _, x in self.segments[start:])
 
 
 def is_far(utt: Utterance | None, caller_levels: list[float], far_db: float | None) -> bool:
