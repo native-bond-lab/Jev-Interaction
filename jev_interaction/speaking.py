@@ -48,6 +48,8 @@ class Event:
 EVENTS: dict[str, Event] = {
     "pickup": Event("the call was just picked up"),
     "spoke": Event("they spoke", answers_user=True),
+    "trailed": Event("they said this and have now been silent for {quiet_s:.0f} s; it is not clear they had finished",
+                     answers_user=True),
     "cut_in": Event("they are still talking and you cut in", answers_user=True),
     "overrule": Event('they cut in while you were saying "{last}"; take the floor back', answers_user=True, max_tokens=60),
     "aside": Event("they chimed in while you were telling something; answer in a word, then the story waits",

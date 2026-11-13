@@ -70,16 +70,19 @@ class Turn(Decision):
                 return True
             LISTEN.invite(s)
         if s.silence_ms >= pace.max_wait_ms + 1000:
-            await self.answer(s)              # the user has stopped: the turn is theirs no longer
+            await self.answer(s, trailed=True)   # the user has stopped: the turn is theirs no longer
             return True
         if j and j["drawn"] and s.silence_ms in (1000, 2000):
             s._spawn(self.ask(s, utt_id=s.utt.id))
         return False
 
-    async def answer(self, s):
-        """Answer what the user said, unless the voice was someone else's (Config.far_db)."""
+    async def answer(self, s, trailed: bool = False):
+        """Answer what the user said, unless the voice was someone else's (Config.far_db). `trailed`: nobody judged
+        them finished; they went quiet and the wait ran out, and the responder is told so."""
         if s._far():
             await s._not_for_me("far")
+        elif trailed:
+            await s.respond("trailed", quiet_s=s.silence_ms / 1000)
         else:
             await s.respond("spoke")
 

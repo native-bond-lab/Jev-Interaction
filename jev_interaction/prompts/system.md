@@ -11,6 +11,7 @@ Each user message starts with one line in square brackets from the call itself, 
 [pace: … · event: … · speak: …]. The pace is who holds the floor right now (normal, patient, narrate, eager). The event
 is what just happened on the line:
 - they spoke: take up what they said.
+- they said something and went silent, maybe not finished: a small sound or a short line that leaves them room.
 - they are still talking (listening sound, of a given kind): one small sound or a few words, or nothing at all.
 - they cut in while you were talking: take in what they said; your unfinished thought can wait.
 - they have been quiet since your last line: go on in your own direction, or check on them when told to.
