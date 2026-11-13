@@ -19,7 +19,8 @@ from huggingface_hub import HfApi
 space, folder = sys.argv[1], sys.argv[2]
 api = HfApi(token=os.environ.get("HF_TOKEN") or None)
 api.create_repo(space, repo_type="space", space_sdk="docker", exist_ok=True)
-LIMITS = {"JEV_RECORD_CALLS": "0", "MAX_CONCURRENT_CALLS": "2", "MAX_CALL_SECONDS": "180", "MAX_CALL_MINUTES_PER_DAY": "120"}
+LIMITS = {"JEV_RECORD_CALLS": "0", "MAX_CONCURRENT_CALLS": "4", "MAX_CALL_SECONDS": "300", "MAX_CALL_MINUTES_PER_DAY": "300",
+          "MAX_WAITING_CALLS": "20"}
 have = api.get_space_variables(space)
 for name, value in LIMITS.items():
     if name not in have:

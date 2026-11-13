@@ -16,7 +16,8 @@
       log_button: 'Decisions', log_title: 'Decision log', log_empty: 'Each moment Jev decides something, it lands here with its probabilities.',
       key_space: 'call / hang up', key_h: 'clean view', built_on: 'Built on Jev',
       call: 'Call', hang_up: 'Hang up', you: 'You',
-      st_idle: 'Tap to call', st_connecting: 'Connecting', st_listening: 'Listening', st_talking: 'Hearing you', st_thinking: 'Thinking',
+      q_next: 'you are next', q_ahead: '{n} ahead of you', q_wait: 'up to {m} min',
+      st_idle: 'Tap to call', st_connecting: 'Connecting', st_waiting: 'In line', st_listening: 'Listening', st_talking: 'Hearing you', st_thinking: 'Thinking',
       st_speaking: 'Speaking', st_held: 'Holding', st_yielded: 'Yielded', st_ended: 'Call ended',
       d_go: 'answer now', d_wait: 'wait, still talking', d_carry_on: 'carry on', d_yield: 'yield', d_finish_first: 'finish the sentence',
       d_overrule: 'take the floor back', d_jump_in: 'jump in', d_aside: 'quick aside', d_go_on: 'fill the silence', d_quiet_wait: 'let it be quiet',
@@ -41,7 +42,8 @@
       log_button: '决策', log_title: '决策记录', log_empty: 'Jev 每做一次判断，都会连同概率记在这里。',
       key_space: '拨打 / 挂断', key_h: '纯净画面', built_on: '基于 Jev 构建',
       call: '拨打', hang_up: '挂断', you: '你',
-      st_idle: '点击通话', st_connecting: '接通中', st_listening: '在听', st_talking: '你在说', st_thinking: '思考中',
+      q_next: '下一位就是你', q_ahead: '前面还有 {n} 位', q_wait: '最多约 {m} 分钟',
+      st_idle: '点击通话', st_connecting: '接通中', st_waiting: '排队中', st_listening: '在听', st_talking: '你在说', st_thinking: '思考中',
       st_speaking: '在说', st_held: '停顿', st_yielded: '让出话轮', st_ended: '通话结束',
       d_go: '现在回答', d_wait: '再等等，还没说完', d_carry_on: '继续说', d_yield: '让出话轮', d_finish_first: '说完这句',
       d_overrule: '拿回话轮', d_jump_in: '抢着接话', d_aside: '插一句', d_go_on: '打破沉默', d_quiet_wait: '保持安静',
@@ -84,6 +86,7 @@
   let ws = null, ctx = null, proc = null, stream = null, analyser = null, analyserBuf = null;
   let queue = [], current = null, held = false, listening = null;
   let phase = 'idle', connecting = false, callStart = 0, pace = null;
+  let waiting = null;                                          // in line for a free call: {ahead, wait_s}, as the server last said
   let micLevel = 0, lastPartialAt = 0, thinkingUntil = 0, yieldedUntil = 0, endedUntil = 0, shownState = '';
   let capTimers = {};
 
@@ -168,6 +171,8 @@
         break;
       case 'hangup': endCall(); break;
       case 'busy': showNotice(m.text, true); break;
+      case 'queue': waiting = { ahead: m.ahead, wait_s: m.wait_s }; break;       // every line is taken: the server holds this caller in line
+      case 'ready': waiting = null; callStart = performance.now(); break;      // a line is free: the call starts now
       case 'error':
         if (m.what === 'settings') window.JevSettings.open();          // at the first step that is not ready
         else if (m.what === 'start') showNotice(m.text, true);
@@ -262,6 +267,7 @@
   function deriveState(now) {
     if (phase !== 'call') return now < endedUntil ? 'ended' : 'idle';
     if (connecting) return 'connecting';
+    if (waiting) return 'waiting';
     if (now < yieldedUntil) return 'yielded';
     if (current && held) return 'held';
     if (current && current.started && !current.el.paused) return 'speaking';
@@ -272,11 +278,16 @@
   island.onframe = (now) => {
     island.levels.mic = micLevel; island.levels.agent = agentLevel();
     const s = deriveState(now);
-    island.setState(s);
+    island.setState(s === 'waiting' ? 'connecting' : s);
     if (s !== shownState) { shownState = s; document.body.dataset.state = s; $('statusText').textContent = t('st_' + s); }
   };
   setInterval(() => {
     if (phase !== 'call' || connecting) { $('statusMeta').textContent = ''; return; }
+    if (waiting) {
+      const mins = waiting.wait_s == null ? 0 : Math.max(1, Math.ceil(waiting.wait_s / 60));
+      $('statusMeta').textContent = [waiting.ahead ? t('q_ahead').replace('{n}', waiting.ahead) : t('q_next'), mins ? t('q_wait').replace('{m}', mins) : ''].filter(Boolean).join(' · ');
+      return;
+    }
     $('statusMeta').textContent = [clock(), pace && pace !== 'normal' ? t('p_' + pace) : ''].filter(Boolean).join(' · ');
   }, 500);
 
@@ -286,7 +297,7 @@
     $('call').setAttribute('aria-pressed', String(p === 'call')); $('callLabel').textContent = t(p === 'call' ? 'hang_up' : 'call');
   }
   function resetCall() {
-    queue = []; current = null; held = false; listening = null; pace = null; logN = 0; capGen = null; capSaid = '';
+    queue = []; current = null; held = false; listening = null; pace = null; logN = 0; capGen = null; capSaid = ''; waiting = null;
     micLevel = 0; lastPartialAt = 0; thinkingUntil = 0; yieldedUntil = 0;
     $('log').textContent = ''; $('logEmpty').hidden = false; $('logCount').hidden = true; $('chips').textContent = '';
     setCaption('capAgent', ''); setCaption('capUser', ''); $('capAgent').classList.remove('dim');
@@ -320,7 +331,7 @@
       for (let i = 0; i < x.length; i += ratio) buf.push(Math.max(-1, Math.min(1, x[Math.floor(i)])));
       while (buf.length >= 3200) {                              // 200 ms at 16 kHz
         const frame = new Int16Array(buf.splice(0, 3200).map((v) => v * 32767));
-        if (sock.readyState === 1) sock.send(frame.buffer);
+        if (sock.readyState === 1 && !waiting) sock.send(frame.buffer);     // nobody is listening while in line
       }
     };
     src.connect(proc); proc.connect(ctx.destination);
@@ -340,7 +351,7 @@
     if (proc) { proc.onaudioprocess = null; proc.disconnect(); proc = null; }
     if (stream) { stream.getTracks().forEach((tr) => tr.stop()); stream = null; }
     if (ctx) { ctx.close().catch(() => {}); ctx = null; analyser = null; }
-    connecting = false; micLevel = 0; held = false; endedUntil = performance.now() + 900;
+    connecting = false; waiting = null; micLevel = 0; held = false; endedUntil = performance.now() + 900;
     setPhase('idle'); fadeCaption('capAgent', 0); fadeCaption('capUser', 0);
   }
 

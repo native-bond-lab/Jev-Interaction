@@ -26,7 +26,9 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `decision` | `what, action?, go?, probs?, why?, ...` | a turn-taking decision Jev just made (`end_of_turn`, `floor`, `quiet`, `not_for_me`), for display and logs |
 | `pace` | `pace, probs` | the call's pace changed (normal, patient, narrate, eager) |
 | `error` | `what, text, missing?` | `settings`: required keys are empty (`missing` lists them; the socket closes with 4412); `start`: a provider refused; `judge`: a decision failed, the call falls back and goes on |
-| `busy` | `text` | the server's concurrent-call limit is reached; the socket closes |
+| `queue` | `ahead, wait_s` | every line is taken and this caller is held in line: `ahead` callers before them, at most `wait_s` seconds (null when unknown); sent again when either changes. Audio sent meanwhile is ignored |
+| `ready` | | a line is free: the call starts now |
+| `busy` | `text` | the line itself is full, or today's minutes are used up; the socket closes |
 | `hangup` | `why?` | the agent ended the call (or the time limit did) |
 
 `gen` numbers each reply; events for an older `gen` refer to lines that were already replaced.

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A waiting line for a public demo: when every line is taken a caller is held in line, first come first, instead of
+  being turned away (`MAX_WAITING_CALLS`, default 20). The page shows their place and at most how long, and the call
+  starts by itself when a line frees up (protocol: `queue`, `ready`). The Space's suggested limits are now 4 calls
+  at once, 5 minutes a call, 300 minutes a day.
 - The page shows one reply as one caption, however many lines it was written in, and fetches the next line while the
   one before it plays; a long reply rolls upward, its older lines fading out behind the top edge.
 - A hold is measured on voice over the line only (an earlier cough gave it a head start), lets go when no new words

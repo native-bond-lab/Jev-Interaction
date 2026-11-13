@@ -1,5 +1,7 @@
 import asyncio
+import json
 import pathlib
+import time
 
 import pytest
 
@@ -399,3 +401,42 @@ async def test_after_carry_on_the_next_sound_holds_afresh_and_lets_go_without_wo
     for _ in range(4):
         await s.on_audio(b"\x00" * 6400)
     assert [e["type"] for e in events if e["type"] in ("hold", "unhold")] == ["hold", "unhold", "hold", "unhold"]
+
+
+async def test_a_caller_waits_in_line_until_a_call_ends_and_is_told_where_they_stand(monkeypatch):
+    from jev_interaction.server import app as server
+
+    class Sock:
+        def __init__(self):
+            self.sent, self.inbox = [], asyncio.Queue()
+
+        async def send_text(self, text):
+            self.sent.append(json.loads(text))
+
+        async def receive(self):
+            return await self.inbox.get()
+
+    monkeypatch.setattr(server, "MAX_CALLS", 1)
+    monkeypatch.setattr(server, "MAX_CALL_S", 300.0)
+    monkeypatch.setattr(server, "ACTIVE", {"calls": 1})
+    monkeypatch.setattr(server, "STARTS", [time.monotonic() - 240])          # the call in progress has a minute left
+    first, second, gone = object(), object(), object()
+    monkeypatch.setattr(server, "WAITING", [first, second, gone])
+    a, b, c = Sock(), Sock(), Sock()
+    waits = [asyncio.create_task(server.wait_in_line(s, tk)) for s, tk in ((a, first), (b, second), (c, gone))]
+    await asyncio.sleep(0.05)
+    assert a.sent == [{"type": "queue", "ahead": 0, "wait_s": a.sent[0]["wait_s"]}] and 55 <= a.sent[0]["wait_s"] <= 60
+    assert b.sent == [{"type": "queue", "ahead": 1, "wait_s": None}]         # further back than the calls in progress: no promise
+    await c.inbox.put({"type": "websocket.disconnect"})                      # the third hangs up while waiting
+    assert await waits[2] is False
+    await a.inbox.put({"type": "websocket.receive", "bytes": b"\0" * 6400})  # audio sent while in line is ignored
+    await asyncio.sleep(0.05)
+    assert not waits[0].done()
+    server.ACTIVE["calls"] = 0                                               # the call ends: the first in line gets it
+    assert await asyncio.wait_for(waits[0], 3) is True and a.sent[-1] == {"type": "ready"}
+    server.WAITING.remove(first)
+    server.WAITING.remove(gone)
+    server.ACTIVE["calls"] = 1
+    await asyncio.sleep(1.2)
+    assert not waits[1].done() and b.sent[-1]["ahead"] == 0                  # the second moved up and was told
+    waits[1].cancel()

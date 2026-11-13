@@ -11,6 +11,7 @@ any OpenAI-compatible LLM (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL), and JEV_PRESET
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -39,7 +40,10 @@ MAX_CALLS = int(os.getenv("MAX_CONCURRENT_CALLS", "0"))     # 0 = no limit; set 
 MAX_CALL_S = float(os.getenv("MAX_CALL_SECONDS", "0"))      # 0 = no limit
 DAY_BUDGET_S = 60 * float(os.getenv("MAX_CALL_MINUTES_PER_DAY", "0"))   # 0 = no limit; all calls together, per UTC day
 VAD_NAME = type(best_vad()).__name__     # which ear this server has: TenVAD, or EnergyVAD without the ten-vad package
+MAX_WAITING = int(os.getenv("MAX_WAITING_CALLS", "20"))     # callers held in line when every line is taken; more than this hear busy
 ACTIVE = {"calls": 0}
+STARTS: list[float] = []                # when each call in progress began (for the wait a caller in line is told)
+WAITING: list[object] = []              # callers in line, first come first
 SPENT = {"day": "", "seconds": 0.0}     # call time already used today (finished calls)
 
 
@@ -48,6 +52,35 @@ def spent_today() -> float:
     if SPENT["day"] != day:
         SPENT.update(day=day, seconds=0.0)
     return SPENT["seconds"]
+
+
+def wait_estimate(ahead: int) -> int | None:
+    """At most how many seconds until the caller with `ahead` others before them gets a line; None when calls have
+    no time limit or the line is longer than the calls in progress."""
+    if not MAX_CALL_S or ahead >= len(STARTS):
+        return None
+    now = time.monotonic()
+    return max(0, round(sorted(MAX_CALL_S - (now - t) for t in STARTS)[ahead]))
+
+
+async def wait_in_line(ws: WebSocket, ticket: object) -> bool:
+    """Hold a caller until a line is free and it is their turn, telling the page where they stand. False when they
+    hang up first."""
+    told, told_at = None, 0.0
+    while True:
+        ahead = WAITING.index(ticket)
+        if ahead == 0 and ACTIVE["calls"] < MAX_CALLS:
+            await ws.send_text(json.dumps({"type": "ready"}))
+            return True
+        if ahead != told or time.monotonic() - told_at >= 10:
+            told, told_at = ahead, time.monotonic()
+            await ws.send_text(json.dumps({"type": "queue", "ahead": ahead, "wait_s": wait_estimate(ahead)}))
+        try:
+            msg = await asyncio.wait_for(ws.receive(), 1.0)
+        except asyncio.TimeoutError:
+            continue
+        if msg.get("type") == "websocket.disconnect":
+            return False
 
 
 def make_recognizer(language: str):
@@ -164,12 +197,9 @@ async def call(ws: WebSocket):
         await ws.close(code=4403)
         return
     await ws.accept()
-    if MAX_CALLS and ACTIVE["calls"] >= MAX_CALLS:
-        await ws.send_text(json.dumps({"type": "busy", "text": "All lines are busy, try again in a minute."}))
-        await ws.close(code=4429)
-        return
+    day_used = {"type": "busy", "text": "Today's call minutes are used up. Come back tomorrow, or run it yourself."}
     if DAY_BUDGET_S and spent_today() >= DAY_BUDGET_S:
-        await ws.send_text(json.dumps({"type": "busy", "text": "Today's call minutes are used up. Come back tomorrow, or run it yourself."}))
+        await ws.send_text(json.dumps(day_used))
         await ws.close(code=4429)
         return
     start = json.loads(await ws.receive_text())
@@ -184,6 +214,26 @@ async def call(ws: WebSocket):
                                        "text": "Missing settings: " + ", ".join(missing)}))
         await ws.close(code=4412)
         return
+    if MAX_CALLS and (ACTIVE["calls"] >= MAX_CALLS or WAITING):     # every line is taken: wait in line, first come first
+        if len(WAITING) >= MAX_WAITING:
+            await ws.send_text(json.dumps({"type": "busy", "text": "All lines are busy and the line is full, try again in a few minutes."}))
+            await ws.close(code=4429)
+            return
+        ticket = object()
+        WAITING.append(ticket)
+        try:
+            try:
+                admitted = await wait_in_line(ws, ticket)
+            except (WebSocketDisconnect, RuntimeError):
+                admitted = False
+        finally:
+            WAITING.remove(ticket)
+        if not admitted:
+            return
+        if DAY_BUDGET_S and spent_today() >= DAY_BUDGET_S:
+            await ws.send_text(json.dumps(day_used))
+            await ws.close(code=4429)
+            return
     profile = Profile.load(path)
     language = start.get("language") or (profile.extra.get("display") or {}).get("language", "en")
     cfg = preset_config(os.getenv("JEV_PRESET", "production"), language=language)
@@ -196,13 +246,15 @@ async def call(ws: WebSocket):
                 LINES.popitem(last=False)
         await ws.send_text(json.dumps(event, ensure_ascii=False))
 
-    judge = registry.create("judge")
-    session = Session(profile, send=send, judge=judge, recognizer=make_recognizer(language),
-                      responder=registry.create("llm"), vad=best_vad(), config=cfg,
-                      recorder=Recorder(paths.runs_dir() / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl" if RECORD else None))
-    ACTIVE["calls"] += 1
+    ACTIVE["calls"] += 1       # the line is this caller's from here: nothing awaits between the check above and here
     started = time.monotonic()
+    STARTS.append(started)
+    judge = session = None
     try:
+        judge = registry.create("judge")
+        session = Session(profile, send=send, judge=judge, recognizer=make_recognizer(language),
+                          responder=registry.create("llm"), vad=best_vad(), config=cfg,
+                          recorder=Recorder(paths.runs_dir() / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl" if RECORD else None))
         try:
             await session.start()
         except Exception as exc:  # noqa: BLE001 - e.g. the recognizer refused the key: tell the page, end the call
@@ -226,12 +278,15 @@ async def call(ws: WebSocket):
         pass
     finally:
         ACTIVE["calls"] -= 1
+        STARTS.remove(started)
         spent_today()
         SPENT["seconds"] += time.monotonic() - started
         try:
-            await session.close()
+            if session is not None:
+                await session.close()
         finally:
-            await judge.aclose()
+            if judge is not None:
+                await judge.aclose()
 
 
 NO_STALE = {"Cache-Control": "no-cache"}     # revalidate the page's files each time, so an update is never half-applied

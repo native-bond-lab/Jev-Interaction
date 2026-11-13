@@ -121,7 +121,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); transition: background .3s, box-shadow .3s; }
 body[data-state="listening"] .status-dot, body[data-state="talking"] .status-dot { background: #7fd6ff; box-shadow: 0 0 10px #7fd6ff; }
 body[data-state="speaking"] .status-dot { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
-body[data-state="thinking"] .status-dot, body[data-state="connecting"] .status-dot { background: #fff; animation: blink 1s ease-in-out infinite; }
+body[data-state="thinking"] .status-dot, body[data-state="connecting"] .status-dot, body[data-state="waiting"] .status-dot { background: #fff; animation: blink 1s ease-in-out infinite; }
 body[data-state="held"] .status-dot { background: var(--hold); }
 body[data-state="yielded"] .status-dot { background: var(--yield); }
 .status-meta { font: 12px var(--mono); letter-spacing: 0; text-transform: none; color: var(--ink-3); }

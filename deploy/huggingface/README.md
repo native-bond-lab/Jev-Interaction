@@ -24,7 +24,8 @@ Calls need keys: add these as Space secrets (`push_hf_space.sh` sets the limits 
 | `ASR_PROVIDER`, `TTS_PROVIDER` | `elevenlabs` or `dashscope` (no default) |
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` / `DASHSCOPE_API_KEY` | the keys for the providers you picked |
 | `TTS_VOICES` | optional, a voice per persona: `companion=<voice id>,vera=<voice id>` |
-| `MAX_CONCURRENT_CALLS` | e.g. `2`: every call is billed to the keys above |
-| `MAX_CALL_SECONDS` | e.g. `180` |
-| `MAX_CALL_MINUTES_PER_DAY` | e.g. `120`: all calls together, per UTC day |
+| `MAX_CONCURRENT_CALLS` | e.g. `4`: every call is billed to the keys above |
+| `MAX_CALL_SECONDS` | e.g. `300` |
+| `MAX_CALL_MINUTES_PER_DAY` | e.g. `300`: all calls together, per UTC day |
+| `MAX_WAITING_CALLS` | e.g. `20`: callers held in line when every line is taken (the page shows their place); beyond it they hear busy |
 | `JEV_RECORD_CALLS` | `0`: keep no call logs of your visitors |
