@@ -5,7 +5,16 @@ user's open utterance, and how long it may be. A new decision that makes the age
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+
+_TAG = re.compile(r"\[[^\]]*\]")
+
+
+def has_voice(text: str) -> bool:
+    """Whether a written line has anything a voice can say. A line of audio tags alone ("[laughs]") has not: a tag
+    shapes the words beside it, and the synthesizers refuse a text that is nothing else."""
+    return bool(re.search(r"\w", _TAG.sub(" ", text or "")))
 
 LANGUAGES = {"en": "English", "zh": "Chinese", "ja": "Japanese"}
 LISTEN_EVENTS = {

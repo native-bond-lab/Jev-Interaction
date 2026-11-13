@@ -440,3 +440,9 @@ async def test_a_caller_waits_in_line_until_a_call_ends_and_is_told_where_they_s
     await asyncio.sleep(1.2)
     assert not waits[1].done() and b.sent[-1]["ahead"] == 0                  # the second moved up and was told
     waits[1].cancel()
+
+
+def test_a_line_of_tags_alone_has_no_voice():
+    from jev_interaction import speaking
+    assert not speaking.has_voice("[laughs]") and not speaking.has_voice("[quiet breath] …") and not speaking.has_voice("")
+    assert speaking.has_voice("[laughs] ha") and speaking.has_voice("Mm.") and speaking.has_voice("[soft] 嗯")

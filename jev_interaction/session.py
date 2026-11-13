@@ -318,6 +318,9 @@ class Session:
             async for text in self.llm.lines(messages, max_tokens=event.max_tokens):
                 if gen != self.gen:
                     break
+                if not speaking.has_voice(text):      # a tag with no word or sound beside it cannot be voiced: not said
+                    self.rec.write("unvoiced", gen=gen, text=text)
+                    continue
                 line_id = uuid.uuid4().hex
                 self.lines[line_id] = text
                 turn.text = (turn.text + "\n" + text).strip()
@@ -342,7 +345,7 @@ class Session:
         async for line in self.llm.lines(messages, max_tokens=14):
             text = line
             break
-        if not text or len(text.split()) > self.cfg.listen_max_words or self.speaking or self.generating:
+        if not speaking.has_voice(text) or len(text.split()) > self.cfg.listen_max_words or self.speaking or self.generating:
             return
         line_id = uuid.uuid4().hex
         self.lines[line_id] = text

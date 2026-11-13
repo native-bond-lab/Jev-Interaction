@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A line that is only an audio tag ("[laughs]") is no longer sent: the voice cannot speak it, and it used to show as
+  said while nothing was heard. The speech prompt now says a tag makes no sound alone, so the model writes the sound
+  itself ("[laughs] ha").
 - The server log says how each call started and ended (time limit, a failed start, the page closing it), and the page
   reports the failures that never reach the call route (a refused microphone, a socket that never opened or dropped).
   No words of the call are logged. The API browser (`/docs`, `/openapi.json`) is off.
