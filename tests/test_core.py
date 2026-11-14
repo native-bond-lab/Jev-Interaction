@@ -57,18 +57,54 @@ async def test_a_finished_turn_is_answered_and_the_pace_timing_is_blended():
     assert s.params().max_wait_ms == int(0.6 * 1200 + 0.4 * 2500)
 
 
-async def test_talking_over_the_agent_holds_then_the_floor_question_decides():
+async def test_talking_over_the_agent_never_pauses_the_line_and_the_floor_question_decides():
     s, events, _ = make({"floor": {"carry_on": 0.1, "yield": 0.8, "finish_first": 0.1, "jump_in": 0.0}})
     s.speaking = True
     s.ledger.agent("So the thing about my morning is")
     s.vad.voice = True
     for _ in range(3):
         await s.on_audio(b"\x00" * 6400)
-    assert any(e["type"] == "hold" for e in events)
+    assert not any(e["type"] in ("hold", "stop") for e in events)        # a voice over the line: no clock touches it
     await s.on_segment(Segment("Wait, can I ask something?"))
     await asyncio.sleep(0.05)
     assert any(e["type"] == "stop" for e in events)
     assert s.ledger.last_agent().cut
+
+
+async def test_words_not_yet_closed_are_put_to_jev_once_the_voice_has_been_over_the_line_a_while():
+    s, events, judge = make({"floor": {"carry_on": 0.9, "yield": 0.1, "finish_first": 0.0, "jump_in": 0.0}})
+    s.speaking = True
+    s.ledger.agent("So the thing about my morning is")
+    s.vad.voice = True
+    await s.on_audio(b"\x00" * 6400)
+    await s.on_segment(Segment("wait", final=False))                     # 200 ms over the line: too soon to ask
+    await asyncio.sleep(0.05)
+    assert not judge.asked
+    await s.on_audio(b"\x00" * 6400)                                    # 400 ms, and there are words: Jev is asked
+    await asyncio.sleep(0.05)
+    assert len(judge.asked) == 1 and 'the user is saying: "wait"' in judge.asked[0][1]
+    assert not any(e["type"] in ("stop", "decision") for e in events) and s.utt is not None   # "carry on": nothing happens
+    await s.on_segment(Segment("wait can I", final=False))               # more words, but not yet as much voice again
+    await asyncio.sleep(0.05)
+    assert len(judge.asked) == 1
+    judge.answers = {"floor": {"carry_on": 0.1, "yield": 0.8, "finish_first": 0.1, "jump_in": 0.0}}
+    for _ in range(2):
+        await s.on_audio(b"\x00" * 6400)
+    await asyncio.sleep(0.05)
+    assert len(judge.asked) == 2 and any(e["type"] == "stop" for e in events)   # the user needs the floor: the line stops
+    assert s.utt is not None and not s.utt.segments                      # before the recognizer has closed a word
+    stop = [e for e in events if e["type"] == "decision"][-1]
+    assert stop["action"] == "yield" and stop["early"]
+
+
+async def test_a_sound_over_the_line_with_no_words_asks_nothing():
+    s, events, judge = make({"floor": {"carry_on": 0.1, "yield": 0.9}})
+    s.speaking = True
+    s.ledger.agent("So the thing about my morning is")
+    s.vad.voice = True
+    for _ in range(5):
+        await s.on_audio(b"\x00" * 6400)                                # a laugh, a second long
+    assert not judge.asked and not events
 
 
 async def test_a_quiet_line_may_be_picked_up_and_hang_up_is_never_first():
@@ -138,9 +174,9 @@ async def test_a_long_listening_sound_is_dropped():
 def test_presets_carry_production_and_tested_settings():
     from jev_interaction.presets import config
     prod = config("production")
-    assert prod.quiet_marks_s[-1] == 240.0 and prod.hold_after_ms == 400 and not prod.not_for_me
+    assert prod.quiet_marks_s[-1] == 240.0 and prod.overlap_ask_ms == 400 and not prod.not_for_me
     tested = config("tested", language="zh")
-    assert tested.hold_after_ms == 1000 and tested.not_for_me and tested.far_db == 10.0 and tested.language == "zh"
+    assert tested.overlap_ask_ms == 1000 and tested.not_for_me and tested.far_db == 10.0 and tested.language == "zh"
     with pytest.raises(KeyError):
         config("nope")
 
@@ -174,7 +210,7 @@ def test_reasoning_is_switched_off_where_the_provider_has_a_switch():
     assert no_reasoning("https://api.openai.com/v1") == {} and no_reasoning("http://localhost:11434/v1") == {}
 
 
-async def test_a_failing_judge_never_leaves_the_line_held():
+async def test_a_failing_judge_leaves_the_line_playing():
     class BrokenJudge:
         async def ask(self, questions, state):
             raise RuntimeError("judge down")
@@ -185,10 +221,9 @@ async def test_a_failing_judge_never_leaves_the_line_held():
     s.vad.voice = True
     for _ in range(3):
         await s.on_audio(b"\x00" * 6400)
-    assert s.held
     await s.on_segment(Segment("Wait, what?"))
     await asyncio.sleep(0.05)
-    assert not s.held and any(e["type"] == "unhold" for e in events)
+    assert not any(e["type"] == "stop" for e in events)
     assert any(e["type"] == "error" and e["what"] == "judge" for e in events)
 
 
@@ -344,9 +379,7 @@ async def test_a_detector_that_measures_voice_is_asked_how_much_and_told_when_th
     for _ in range(4):
         await s.on_audio(b"\x00" * 6400)
     assert s.vad.asked == [True] * 4
-    assert s.utt.speech_ms == 320 and not any(e["type"] == "hold" for e in events)   # 400 ms of real voice, not two frames
-    await s.on_audio(b"\x00" * 6400)
-    assert any(e["type"] == "hold" for e in events)
+    assert s.utt.speech_ms == 320 and s.utt.over_ms == 320               # the voice in the frames, not the frames
 
 
 def test_the_energy_detector_raises_its_bar_while_the_line_plays():
@@ -357,16 +390,14 @@ def test_the_energy_detector_raises_its_bar_while_the_line_plays():
     assert EnergyVAD().voiced_ms(tone) == 200 and EnergyVAD().voiced_ms(tone, playing=True) == 0
 
 
-async def test_a_sound_before_the_line_gives_no_head_start_on_a_hold():
+async def test_a_sound_before_the_line_does_not_count_as_voice_over_it():
     s, events, _ = make({})
     s.vad.voice = True
     for _ in range(3):
         await s.on_audio(b"\x00" * 6400)                                # a cough while nobody is speaking
     s.speaking = True                                                    # the agent's line starts
     await s.on_audio(b"\x00" * 6400)
-    assert not any(e["type"] == "hold" for e in events)                  # 200 ms over the line, not 800
-    await s.on_audio(b"\x00" * 6400)
-    assert any(e["type"] == "hold" for e in events)
+    assert s.utt.over_ms == 200                                          # 200 ms over the line, not 800
 
 
 async def test_a_wordless_sound_is_over_after_a_quiet_stretch():
@@ -379,7 +410,7 @@ async def test_a_wordless_sound_is_over_after_a_quiet_stretch():
     assert s.utt is None
 
 
-async def test_after_carry_on_the_next_sound_holds_afresh_and_lets_go_without_words():
+async def test_words_over_a_line_that_goes_on_are_in_the_record_at_once():
     s, events, _ = make({"floor": {"carry_on": 0.9, "yield": 0.1, "finish_first": 0.0, "jump_in": 0.0}})
     s.speaking = True
     s.ledger.agent("So there I was, forty seconds of dead air")
@@ -388,20 +419,15 @@ async def test_after_carry_on_the_next_sound_holds_afresh_and_lets_go_without_wo
         await s.on_audio(b"\x00" * 6400)
     await s.on_segment(Segment("no way"))
     await asyncio.sleep(0.05)
-    assert [e["type"] for e in events if e["type"] in ("hold", "unhold")] == ["hold", "unhold"]
+    assert not any(e["type"] in ("hold", "unhold", "stop") for e in events)
     assert s.utt is None and s.ledger.turns[-1].over                     # in the record at once; the story goes on
     assert s.ledger.messages()[-1] == {"role": "user", "content": "(over you: no way)"}
     assert "who went on): no way" in s.ledger.recent_text("Mara", 8, 300)
     s.ledger.user("so what happened", "[event]")
     assert s.ledger.messages()[-1]["content"] == "(over you: no way)\n[event]\nso what happened"
     s.ledger.turns.pop()
-    await s.on_audio(b"\x00" * 6400)                                    # a laugh a little later
-    assert [e["type"] for e in events if e["type"] in ("hold", "unhold")] == ["hold", "unhold"]
-    await s.on_audio(b"\x00" * 6400)
-    s.vad.voice = False
-    for _ in range(4):
-        await s.on_audio(b"\x00" * 6400)
-    assert [e["type"] for e in events if e["type"] in ("hold", "unhold")] == ["hold", "unhold", "hold", "unhold"]
+    await s.on_audio(b"\x00" * 6400)                                    # a laugh a little later: a new sound, from nothing
+    assert s.utt is not None and s.utt.over_ms == 200
 
 
 async def test_a_caller_waits_in_line_until_a_call_ends_and_is_told_where_they_stand(monkeypatch):

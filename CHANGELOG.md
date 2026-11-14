@@ -15,6 +15,15 @@
 - A silence after words Jev never judged finished stays the user's: the turn question is asked again as the quiet grows
   (`turn_reask_ms`), with the listen question beside it, so a sound may slip in while the turn is not taken. Only
   `turn_last_ms` past the pace's longest wait does the agent speak anyway, and its line is told so (`trailed`).
+- No clock pauses the agent's line (experimental). 400 ms of the user's voice over a line used to pause it (`hold`)
+  before a word was recognized or Jev was asked, then resume it or stop it; an "mm-hm" froze the line for a second.
+  Now the line plays on, and that much voice over it (`overlap_ask_ms`, was `hold_after_ms`) is when the floor question
+  is asked on the words so far, closed or not, and again each time as much voice has passed. Asked early, only "the
+  user needs the floor" does anything: the line stops. A sound without words asks nothing. Recognizers may send the
+  words so far of an unclosed piece (`Segment(final=False)`; Scribe and Paraformer do). The `hold` / `unhold` events,
+  `hold_release_ms` and the page's paused state are gone.
+- Words said over a line that ended before Jev judged them are asked about as the quiet grows, like any pause, rather
+  than answered by the clock.
 - The companion on the page is now Lyra Vex (`lyra`, `lyra_zh`): a night-shift keeper of a reading room between
   worlds, with a life of her own to tell stories from, the same four paces and every decision open. Kai and 江屿 stay
   in the package, unlisted.

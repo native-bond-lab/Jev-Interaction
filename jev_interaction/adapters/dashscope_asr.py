@@ -32,15 +32,22 @@ def finish_task(task_id: str) -> dict:
     return {"header": {"action": "finish-task", "task_id": task_id, "streaming": "duplex"}, "payload": {"input": {}}}
 
 
-def closed_sentence(message: dict) -> str | None:
-    """The text of a sentence the service has closed, from one server event; None for partials and other events."""
+def sentence(message: dict) -> tuple[str, bool] | None:
+    """(text, closed) of the sentence in one server event: closed by the service, or its words so far; None for other
+    events and empty text."""
     header, payload = message.get("header") or {}, message.get("payload") or {}
     if header.get("event") != "result-generated":
         return None
     sentence = (payload.get("output") or {}).get("sentence") or {}
     done = sentence.get("sentence_end") is True or (sentence.get("sentence_end") is None and sentence.get("end_time") is not None)
     text = (sentence.get("text") or "").strip()
-    return text if done and text else None
+    return (text, done) if text else None
+
+
+def closed_sentence(message: dict) -> str | None:
+    """The text of a sentence the service has closed, from one server event; None for partials and other events."""
+    heard = sentence(message)
+    return heard[0] if heard and heard[1] else None
 
 
 class ParaformerRealtime:
@@ -74,8 +81,8 @@ class ParaformerRealtime:
                 elif event == "task-failed":
                     self.started.set()
                     raise RuntimeError(f"paraformer: {(m.get('header') or {}).get('error_message', m)}")
-                elif (text := closed_sentence(m)) is not None:
-                    await self.queue.put(Segment(text))
+                elif (heard := sentence(m)) is not None:
+                    await self.queue.put(Segment(heard[0], final=heard[1]))
                 elif event == "task-finished":
                     break
         finally:

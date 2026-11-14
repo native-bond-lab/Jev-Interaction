@@ -19,8 +19,6 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `line` | `gen, id, text, audio` | queue it; play `audio` (an HTTP URL) in order |
 | `listen` | `id, text, kind, audio` | what the agent puts in while the caller has the floor, "mm-hm" or a few words (`kind` `due`: the caller was waiting for it; `fits`: in passing); play it beside the queue, never queue it |
 | `user` | `text, partial` | the caller's words; `partial` while they are still talking |
-| `hold` | `gen` | pause the current line (the caller talked over it; the floor decision is pending) |
-| `unhold` | `gen` | resume it |
 | `stop` | `gen` | drop everything, then reply `heard` |
 | `finish_line` | `gen` | drop queued lines, let the current one finish |
 | `decision` | `what, action?, go?, probs?, why?, ...` | a turn-taking decision Jev just made (`end_of_turn`, `floor`, `quiet`, `not_for_me`), for display and logs |

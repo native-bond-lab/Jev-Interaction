@@ -4,8 +4,8 @@
     cfg = config("production", language="zh")
 
 production  the timing of the companion-call engine this framework was extracted from, as it runs today
-            (paces, 400 ms hold, quiet-question marks up to 4 minutes, listening sounds up to 8 words)
-tested      production plus the knobs measured in the README ("All knobs together"): late hold, short listening
+            (paces, the floor asked 400 ms into an overlap, quiet-question marks up to 4 minutes, listening sounds up to 8 words)
+tested      production plus the knobs measured in the README ("All knobs together"): a later floor question, short listening
             sounds, a "not said to me" choice, voices 10 dB under the caller treated as someone else's
 default     the library defaults
 
@@ -21,8 +21,7 @@ PRESETS: dict[str, dict] = {
     "production": {
         "quiet_marks_s": (1.5, 4.0, 10.0, 25.0, 60.0, 120.0, 240.0),
         "listen_max_words": 8,
-        "hold_after_ms": 400,
-        "hold_release_ms": 700,
+        "overlap_ask_ms": 400,
         "listen_gap_s": 3.0,
         "listen_finished_max": 0.65,
         "check_min_quiet_s": 10.0,
@@ -30,7 +29,7 @@ PRESETS: dict[str, dict] = {
         "opening_turns": 2,
     },
 }
-PRESETS["tested"] = {**PRESETS["production"], "hold_after_ms": 1000, "listen_max_words": 3, "not_for_me": True, "far_db": 10.0}
+PRESETS["tested"] = {**PRESETS["production"], "overlap_ask_ms": 1000, "listen_max_words": 3, "not_for_me": True, "far_db": 10.0}
 
 
 def preset(name: str = "production", **overrides) -> Config:

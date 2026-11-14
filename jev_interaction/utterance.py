@@ -25,8 +25,9 @@ class Utterance:
     segments: list[tuple[float, str]] = field(default_factory=list)
     speech_ms: int = 0
     over: bool = False               # began while the agent was speaking
-    over_ms: int = 0                 # voice over the agent's line since it last went on: what a hold is measured on
-    held_at: int = 0                 # how many segments there were when the line was put on hold
+    over_ms: int = 0                 # voice over the agent's line since it last went on
+    over_ask_at: int = 0             # the floor question is next asked on unclosed words when over_ms reaches this
+    hearing: str = ""                # the words so far of the piece the recognizer has not closed yet, when it sends them
     levels: list[float] = field(default_factory=list)   # dB of each voiced frame
     # what the agent put in while the user talked on, a bare "mm" as much as a count the user asked for: (segments heard
     # by then, its words, the line the responder was given for it)
@@ -43,6 +44,11 @@ class Utterance:
     @property
     def text(self) -> str:
         return " ".join(x for _, x in self.segments)
+
+    @property
+    def heard(self) -> str:
+        """Everything made out so far: the closed words and the piece still being said."""
+        return (self.text + " " + self.hearing).strip()
 
     def with_asides(self, name: str) -> str:
         """The words with what the agent put in at the place it came ("... the vase, [Lyra: one] water everywhere ..."):

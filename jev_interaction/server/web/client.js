@@ -1,5 +1,5 @@
 // The call page. Microphone -> 200 ms PCM16 16 kHz frames over a WebSocket; lines played in a queue; the server's
-// hold / unhold / stop / finish_line pause, resume and drop audio; playback state goes back to the server.
+// stop / finish_line drop audio; playback state goes back to the server. Nothing pauses a line: it plays until it is stopped.
 // Around that protocol: the island (island.js) shows who holds the floor, and chips show each decision Jev makes.
 (function () {
   'use strict';
@@ -86,7 +86,7 @@
   // ---------- call state ----------
   const island = new window.JevIsland($('island'));
   let ws = null, ctx = null, proc = null, stream = null, analyser = null, analyserBuf = null;
-  let queue = [], current = null, held = false, listening = null;
+  let queue = [], current = null, listening = null;
   let phase = 'idle', connecting = false, callStart = 0, pace = null;
   let waiting = null;                                          // in line for a free call: {ahead, wait_s}, as the server last said
   let micLevel = 0, lastPartialAt = 0, thinkingUntil = 0, yieldedUntil = 0, endedUntil = 0, shownState = '';
@@ -108,7 +108,7 @@
     if (current || !queue.length) { if (!current) { send({ type: 'playback', state: 'idle' }); fadeCaption('capAgent', 4000); } return; }
     current = queue.shift();
     current.el.onended = () => { agentCaption(capSaid); playedOf(current.gen).push(current.text); current = null; playNext(); };
-    if (!held) startCurrent();
+    startCurrent();
   }
   function startCurrent() {
     const line = current;
@@ -150,22 +150,12 @@
         if (m.partial) { lastPartialAt = performance.now(); thinkingUntil = 0; }
         else { thinkingUntil = performance.now() + 9000; fadeCaption('capUser', 6000); }
         break;
-      case 'hold':
-        held = true; if (current) current.el.pause();
-        $('capAgent').classList.add('dim'); note({ tone: 'hold', kind: 'hold', label: t('d_hold') });
-        break;
-      case 'unhold':
-        held = false; $('capAgent').classList.remove('dim');
-        if (current) startCurrent();
-        break;
       case 'stop': {
         const before = current ? current.before : '';
         const part = current && current.gen === lineGen ? heardSoFar(current) : '';
         const heard = stopAll();
         // the whole reply as it was heard: its finished lines and the part of the one that was playing ('' = none of it)
         if (lineGen !== null) send({ type: 'heard', gen: lineGen, text: [...playedOf(lineGen), part].filter(Boolean).join('\n') });
-        held = false;
-        $('capAgent').classList.remove('dim');
         if (heard) agentCaption(joinLines(before, heard) + ' —'); fadeCaption('capAgent', 1800); capGen = null;
         yieldedUntil = performance.now() + 900; thinkingUntil = 0;
         break;
@@ -297,7 +287,6 @@
     if (connecting) return 'connecting';
     if (waiting) return 'waiting';
     if (now < yieldedUntil) return 'yielded';
-    if (current && held) return 'held';
     if (current && current.started && !current.el.paused) return 'speaking';
     if (now - lastPartialAt < 900 || micLevel > .2) return 'talking';
     if (now < thinkingUntil || current) return 'thinking';
@@ -325,7 +314,7 @@
     $('call').setAttribute('aria-pressed', String(p === 'call')); $('callLabel').textContent = t(p === 'call' ? 'hang_up' : 'call');
   }
   function resetCall() {
-    queue = []; current = null; held = false; listening = null; pace = null; logN = 0; capGen = null; capSaid = ''; waiting = null; lineGen = null; played = { gen: null, texts: [] };
+    queue = []; current = null; listening = null; pace = null; logN = 0; capGen = null; capSaid = ''; waiting = null; lineGen = null; played = { gen: null, texts: [] };
     micLevel = 0; lastPartialAt = 0; thinkingUntil = 0; yieldedUntil = 0;
     $('log').textContent = ''; $('logEmpty').hidden = false; $('logCount').hidden = true; $('chips').textContent = '';
     setCaption('capAgent', ''); setCaption('capUser', ''); $('capAgent').classList.remove('dim');
@@ -388,7 +377,7 @@
     if (proc) { proc.onaudioprocess = null; proc.disconnect(); proc = null; }
     if (stream) { stream.getTracks().forEach((tr) => tr.stop()); stream = null; }
     if (ctx) { ctx.close().catch(() => {}); ctx = null; analyser = null; }
-    connecting = false; waiting = null; micLevel = 0; held = false; endedUntil = performance.now() + 900;
+    connecting = false; waiting = null; micLevel = 0; endedUntil = performance.now() + 900;
     setPhase('idle'); fadeCaption('capAgent', 0); fadeCaption('capUser', 0);
   }
 

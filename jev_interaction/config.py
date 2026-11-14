@@ -43,10 +43,10 @@ class Config:
         "cut_in": SamplePolicy(), "quiet": SamplePolicy()})
 
     voice_min_ms: int = 60             # a frame with this much voice in it is the user making sound
-    hold_after_ms: int = 400           # the user talks over the agent this long: its audio pauses (user first, every pace);
-                                       # tested at 1000: an "mm-hm" no longer pauses the line, a real interruption stops ~0.6 s later
+    overlap_ask_ms: int = 400          # the user talks over the agent this long: the words so far, closed or not, go to the
+                                       # floor question (and again each time as much voice has passed). The line plays on
+                                       # until Jev says the user needs the floor: no clock pauses it
     sound_close_ms: int = 1500         # a sound with no words behind it is over after this much quiet (a cough, a breath)
-    hold_release_ms: int = 700         # held, the user quiet again with no words: the line goes on
     listen_gap_s: float = 3.0          # at least this long between two listening sounds that could as well be left out
     listen_min_gap_s: float = 1.0      # and no two things put in closer than this, whatever they are: they would run together
     listen_due_min: float = 0.5        # what the user is waiting for is put in when Jev is this sure, never left to a draw

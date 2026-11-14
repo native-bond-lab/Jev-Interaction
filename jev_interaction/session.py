@@ -11,7 +11,7 @@ question is in judge/questions.py and whose answer goes through the policy confi
     the agent leads        cut_in   -> talk over the user now?
     quiet on the line      quiet    -> go on / check on them / wait / hang up
 
-Events to the client: line {id, text, audio}, listen {id, text, audio}, hold, unhold, stop, finish_line, hangup,
+Events to the client: line {id, text, audio}, listen {id, text, audio}, stop, finish_line, hangup,
 user {text}, pace {pace, probs}, decision {...}. Client messages: playback {state: playing | idle}, heard {gen, text}.
 """
 from __future__ import annotations
@@ -61,7 +61,6 @@ class Session:
         self.speaking = False                    # the client is playing a line of the agent's
         self.generating = False
         self.gen = 0
-        self.held = False
         self.idle_since = time.monotonic()
         self.quiet_marks: list[float] = []
         self.spoke_into_quiet = 0
@@ -126,21 +125,12 @@ class Session:
             self.utt.levels.append(frame_db(pcm))
             self.silence_ms = 0
             if self.speaking:
-                self.utt.over_ms += heard         # only voice over the line counts toward a hold, not what came before it
-            if self.speaking and not self.held and self.utt.over_ms >= self.cfg.hold_after_ms:
-                self.held = True                  # the user comes first: the agent's audio pauses until the words decide
-                self.utt.held_at = len(self.utt.segments)
-                await self.send(type="hold", gen=self.gen)
+                self.utt.over_ms += heard         # only voice over the line counts, not what came before it
+                self._over()
         elif self.utt is not None:
             self.silence_ms += step
-            if self.held and len(self.utt.segments) <= self.utt.held_at and self.silence_ms >= self.cfg.hold_release_ms:
-                self.held = False                 # a breath or a laugh over the line, no new words: the line goes on
-                self.utt.over_ms = 0
-                await self.send(type="unhold", gen=self.gen)
-                if not self.utt.segments:
-                    self.utt = None
-            elif not self.held and not self.utt.segments and self.silence_ms >= self.cfg.sound_close_ms:
-                self.utt = None                   # a sound and nothing after it: nobody's turn, and no head start on a hold
+            if not self.utt.heard and self.silence_ms >= self.cfg.sound_close_ms:
+                self.utt = None                   # a sound and nothing after it: nobody's turn
 
     async def on_client(self, msg: dict):
         if msg.get("type") == "playback":
@@ -169,19 +159,37 @@ class Session:
         text = seg.text.strip()
         if not text:
             return
-        if any(re.search(rf"\b{re.escape(w)}\b", text, re.I) for w in self.cfg.safe_words):
+        if seg.final and any(re.search(rf"\b{re.escape(w)}\b", text, re.I) for w in self.cfg.safe_words):
             await self.safe_word(text)
             return
         if self.speaking and self._own_words(text):
-            self.rec.write("echo", text=text)       # the agent's own line, back through the microphone: nobody said it
+            if seg.final:
+                self.rec.write("echo", text=text)   # the agent's own line, back through the microphone: nobody said it
+            return
+        if not seg.final:                         # the words so far of a piece still being said: only an overlap uses them
+            if self.utt is not None:
+                self.utt.hearing = text
+                self._over()
             return
         if self.utt is None:
             self._open_utterance()
             self.utt.speech_ms = max(self.utt.speech_ms, 400)
+        self.utt.hearing = ""
         self.utt.segments.append((time.monotonic(), text))
         await self.send(type="user", text=self.utt.text, partial=True)
         for d in list(self.decisions.values()):
             d.on_words(self)                      # floor while the agent speaks; turn (and cut_in) while it is quiet
+
+    def _over(self):
+        """The user's voice has been going over the agent's line for a while (Config.overlap_ask_ms, and each time as
+        much again) and words have been made out that the recognizer has not closed: they go to the floor question now.
+        Nothing happens to the line until Jev answers; a sound without words asks nothing and the line plays on."""
+        u = self.utt
+        if (u is None or not self.speaking or not u.hearing or "floor" in self.busy
+                or u.over_ms < max(u.over_ask_at, self.cfg.overlap_ask_ms)):
+            return
+        u.over_ask_at = u.over_ms + self.cfg.overlap_ask_ms
+        self._spawn(self.ask("floor", gen=self.gen, early=True, closed=len(u.segments)))
 
     def _own_words(self, text: str) -> bool:
         """The recognizer heard words of the agent's own recent lines (a speaker next to the microphone)."""
@@ -234,9 +242,6 @@ class Session:
         text = self.utt.text if self.utt else ""
         self.rec.write("not_for_me", why=why, text=text, level=self.utt.level if self.utt else None)
         await self.send(type="decision", what="not_for_me", why=why, text=text)
-        if self.held:
-            self.held = False
-            await self.send(type="unhold", gen=self.gen)
         self.utt, self.judged = None, None
 
     # ------------------------------------------------------------------ judgements
@@ -389,8 +394,7 @@ class Session:
 
     async def _stop_line(self):
         self.gen += 1
-        self.generating = self.held = False
-        self.speaking = False
+        self.generating = self.speaking = False
         last = self.ledger.last_agent()
         if last:
             last.cut = True
