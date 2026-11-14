@@ -57,8 +57,8 @@ def listen(name: str) -> dict:
                 f"number in groups, an address, steps) and a piece has just landed; {name} has not put anything in for it yet"),
         "fits": (f"a spot where a listener like {name} might let a small sound or a word slip in to show they are there; "
                  "nothing is lost without it"),
-        "quiet": (f"{name} stays silent here: they are in full flow, {name} has only just put something in, or {name} is "
-                  "the kind who listens without a sound"),
+        "quiet": (f"{name} stays silent here: they are in full flow, {name} has only just put something in, they asked "
+                  f"{name} to say nothing else while they talk, or {name} is the kind who listens without a sound"),
         "answer_due": "they have asked something or are waiting for a reply: an answer, when they finish"}}
 
 
