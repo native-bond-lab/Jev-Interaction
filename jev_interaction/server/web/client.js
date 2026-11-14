@@ -353,6 +353,11 @@
     if (health && health.ready === false) { window.JevSettings.open(); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { showNotice(t('err_mic_insecure'), true); return; }
     resetCall(); setPhase('call'); connecting = true; callStart = 0;
+    // the audio context is made and started here, inside the tap: on an iPhone one made later (after the microphone
+    // prompt) stays suspended, and then nothing is heard from the microphone and nothing sent
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    wake();
+    ctx.onstatechange = wake;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     } catch (e) {
@@ -362,11 +367,11 @@
       return;
     }
     if (phase !== 'call') { stream.getTracks().forEach((tr) => tr.stop()); stream = null; return; }   // hung up while the prompt was open
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    wake();
     analyser = ctx.createAnalyser(); analyser.fftSize = 512; analyserBuf = new Uint8Array(analyser.fftSize); analyser.connect(ctx.destination);
     const src = ctx.createMediaStreamSource(stream);
     proc = ctx.createScriptProcessor(4096, 1, 1);
-    const ratio = ctx.sampleRate / 16000; let buf = [];
+    const ratio = ctx.sampleRate / 16000; let buf = [], frames = 0;
     const sock = ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
     proc.onaudioprocess = (e) => {
       const x = e.inputBuffer.getChannelData(0);
@@ -375,13 +380,19 @@
       for (let i = 0; i < x.length; i += ratio) buf.push(Math.max(-1, Math.min(1, x[Math.floor(i)])));
       while (buf.length >= 3200) {                              // 200 ms at 16 kHz
         const frame = new Int16Array(buf.splice(0, 3200).map((v) => v * 32767));
-        if (sock.readyState === 1 && !waiting) sock.send(frame.buffer);     // nobody is listening while in line
+        if (sock.readyState === 1 && !waiting) { sock.send(frame.buffer); frames++; }   // nobody is listening while in line
       }
     };
     src.connect(proc); proc.connect(ctx.destination);
     let opened = false;
+    const ears = () => {                                       // is the microphone reaching the server? for the server's log
+      const tr = stream && stream.getAudioTracks()[0];
+      return { ctx: ctx ? ctx.state : 'none', frames, rate: ctx ? ctx.sampleRate : 0, muted: !!(tr && tr.muted) };
+    };
     sock.onopen = () => {
       opened = true; connecting = false; callStart = performance.now();
+      setTimeout(() => { if (ws === sock) report({ at: 5, ...ears() }); }, 5000);
+      setTimeout(() => { if (ws === sock) report({ at: 20, ...ears() }); }, 20000);
       sock.send(JSON.stringify({ type: 'start', profile: selected.id, language: selected.language || 'en' }));   // the persona speaks its own language; the toggle is for the page
     };
     sock.onmessage = (e) => { if (typeof e.data === 'string' && ws === sock) onEvent(JSON.parse(e.data)); };
@@ -395,6 +406,12 @@
 
   // how a call failed, for the server's log (the failures that never reach it otherwise); nothing about who or what was said
   function report(o) { try { navigator.sendBeacon('api/call-report', new Blob([JSON.stringify(o)], { type: 'application/json' })); } catch (e) { /* no beacon */ } }
+
+  // a suspended or (iPhone) interrupted audio context is started again: at the tap, when its state changes, and on any
+  // touch during a call
+  function wake() { if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {}); }
+  document.addEventListener('pointerdown', wake, true);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
 
   function endCall() {
     if (phase !== 'call') return;

@@ -348,10 +348,11 @@ async def call(ws: WebSocket):
 @app.post("/api/call-report")
 async def call_report(request: Request):
     """The page says how a call failed or dropped (a refused microphone, a socket that never opened or closed on its
-    own, a line the browser would not play), so the server log shows the failures that never reached the call route. No words of the call, no identity."""
+    own, a line the browser would not play; and, a few seconds in, whether the microphone is reaching the
+    server: the audio context's state and the frames sent), so the server log shows the failures that never reached the call route. No words of the call, no identity."""
     try:
         body = json.loads((await request.body())[:400])
-        seen = {k: (str(body[k])[:40] if isinstance(body[k], str) else body[k]) for k in ("opened", "code", "seconds", "mic", "audio")
+        seen = {k: (str(body[k])[:40] if isinstance(body[k], str) else body[k]) for k in ("opened", "code", "seconds", "mic", "audio", "at", "ctx", "frames", "rate", "muted")
                 if isinstance(body.get(k), (bool, int, float, str))}
     except (ValueError, AttributeError):
         raise HTTPException(400, "Send JSON.") from None
