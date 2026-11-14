@@ -59,8 +59,9 @@ EVENTS: dict[str, Event] = {
     "hangup": Event("they have been quiet for {quiet_s:.0f} s and you are ending the call"),
     "hand_over": Event("they asked for {who}; tell them in a few words that you are putting {who} on, nothing more: you "
                        "are off the line after this", answers_user=True, max_tokens=60),
-    "take_over": Event("you have just been put on this call in place of {who}, because they asked for you; the call so "
-                       "far is above. Come on the line in your own way, a line or two"),
+    "take_over": Event("you have just been put on this call: the user was talking with {who} and asked for you, so {who} "
+                       "is off the line and the user is the one you are talking to now; the call so far is above. Come "
+                       "on the line in your own way, a line or two"),
     "safe_word": Event("the safe word: everything stops; step out in one or two calm lines and ask if they are all right"),
 }
 UNKNOWN = Event("")             # a kind nobody registered: its name is the event text, and it is an ordinary line

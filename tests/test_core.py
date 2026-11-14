@@ -652,7 +652,7 @@ async def test_someone_else_is_put_on_the_line_when_the_user_asks_for_them():
     assert persona["id"] == "vera" and persona["gen"] == s.gen and persona["accent"] == "#e5e7eb"
     leaving, arriving = s.llm.seen[-2], s.llm.seen[-1]
     assert "You are Lyra." in leaving[0]["content"] and "putting Vera on" in leaving[-1]["content"]
-    assert "You are Vera." in arriving[0]["content"] and "in place of Lyra" in arriving[-1]["content"]
+    assert "You are Vera." in arriving[0]["content"] and "was talking with Lyra and asked for you" in arriving[-1]["content"]
     assert not any(m["role"] == "assistant" for m in arriving)       # nothing Lyra said is Vera's own turn
     assert "(Lyra: Sure, one second.)" in arriving[-1]["content"] and "Can you put Vera on?" in arriving[-1]["content"]
     assert "Lyra: Sure, one second." in s.ledger.recent_text("Vera", 8, 300)   # and Jev reads who said what
