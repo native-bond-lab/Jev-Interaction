@@ -26,16 +26,14 @@ def units(text: str) -> int:
 
 
 LANGUAGES = {"en": "English", "zh": "Chinese", "ja": "Japanese"}
+# what is put in while listening: the event says which moment Jev saw (as every event does), the words are the
+# responder's, from the record. Nothing of the user's is quoted and nothing is said about what to say.
 LISTEN_EVENTS = {
-    "continuer": "they are still talking; a bare listening sound that only says go on, a word at most, or nothing",
-    "feeling": "they are still talking and it lands on you: a few words that show how (oh no; really?; a laugh), not an answer",
-    "echo": "they are still talking; say back the one word of theirs that matters, as a question, nothing else",
-    "receipt": ("they are handing this over piece by piece and will go on; say back only the piece that just landed "
-                '("{piece}"), plainly, so they know you have it: no question, nothing added'),
-    "cue": ('they are still talking and will go on; what they asked you to mark while they talk has just come up '
-            '("{piece}"); say what they asked for, as they asked, and nothing else'),
+    "due": ("it is still their turn and they will go on; what they are waiting to hear from you has just come up in "
+            "their words: say it, as they asked, a few words at most; or nothing"),
+    "fits": ("it is still their turn and they will go on; a spot where you might let a small sound or a word slip in to "
+             "show you are there, a few words at most, not an answer; or nothing"),
 }
-LISTEN_INVITING = "they may not have finished; a questioning sound that invites them on (mm?), or nothing"
 
 
 @dataclass(frozen=True)
@@ -69,9 +67,9 @@ def event(kind: str, text: str, *, answers_user: bool = False, max_tokens: int =
     EVENTS[kind] = Event(text, answers_user, max_tokens)
 
 
-def event_text(kind: str, *, last: str = "", quiet_s: float = 0.0, listen: str = "", piece: str = "") -> str:
+def event_text(kind: str, *, last: str = "", quiet_s: float = 0.0, listen: str = "") -> str:
     if kind == "listen":
-        return LISTEN_EVENTS.get(listen, LISTEN_EVENTS["continuer"]).replace("{piece}", piece)
+        return LISTEN_EVENTS.get(listen, LISTEN_EVENTS["fits"])
     if kind not in EVENTS:
         return kind
     return EVENTS[kind].text.format(last=last, quiet_s=quiet_s)

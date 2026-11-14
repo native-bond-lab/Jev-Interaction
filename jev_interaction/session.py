@@ -29,7 +29,6 @@ from .config import Config, Pace
 from .decisions import DECISIONS, Decision
 from .judge import JevClient
 from .judge.client import probs as P
-from .judge.questions import LISTEN_PER_PIECE
 from .ledger import Ledger, Turn
 from .profile import Profile
 from .recorder import Recorder
@@ -67,7 +66,6 @@ class Session:
         self.quiet_marks: list[float] = []
         self.spoke_into_quiet = 0
         self.listen_last = 0.0
-        self.listen_at = None             # (utterance id, segments heard) when the last listening sound was made
         self.reply_gaps: list[float] = []
         self.caller_levels: list[float] = []   # loudness of the utterances answered as the caller's (Config.far_db)
         self.hanging_up = False
@@ -292,13 +290,13 @@ class Session:
         self.quiet_marks = [m * random.uniform(1 - j, 1 + j) for m in self.cfg.quiet_marks_s]
 
     # ------------------------------------------------------------------ speaking
-    def data_line(self, kind: str, quiet_s: float = 0.0, listen: str = "", event: str | None = None, piece: str = "") -> str:
+    def data_line(self, kind: str, quiet_s: float = 0.0, listen: str = "") -> str:
         """The bracketed line the responder reads before it speaks (speaking.py has the wording for each kind)."""
         pace = self.pace + (f" (just changed from {self.transition[0]})" if self.transition else "")
         if kind != "listen":
             self.transition = None
         last = self.ledger.last_agent()
-        event = event or speaking.event_text(kind, last=last.text if last else "", quiet_s=quiet_s, listen=listen, piece=piece)
+        event = speaking.event_text(kind, last=last.text if last else "", quiet_s=quiet_s, listen=listen)
         return speaking.data_line(pace, event, self.cfg.language)
 
     @property
@@ -363,36 +361,31 @@ class Session:
                     self.speaking = False
                     self.idle_since = time.monotonic()
 
-    async def listen_in(self, kind: str, inviting: bool = False):
-        """A listening sound while the user talks on. Voiced beside the line queue and never added to the history."""
-        gap = self.cfg.listen_receipt_gap_s if kind in LISTEN_PER_PIECE else self.cfg.listen_gap_s
-        if self.utt is not None and self.utt.marking and kind not in LISTEN_PER_PIECE:
-            return                                # making the marks the user asked for: no "mm" between them
-        if self.speaking or self.generating or time.monotonic() - self.listen_last < gap:
-            return                                # one at a time, spaced out, whichever decision asked for it
+    async def listen_in(self, why: str = "fits"):
+        """What the agent lets slip in while the user talks on. Jev chose the moment (`why`: "due", the user is waiting
+        for it, or "fits", it could as well be left out) and the event line says which; the words are the responder's,
+        from the same record as every line, and may be none. Voiced beside the line queue and kept in the turn's record
+        where it came, as the agent's own words."""
+        utt = self.utt
+        if utt is None or self.speaking or self.generating or time.monotonic() - self.listen_last < self.cfg.listen_min_gap_s:
+            return                                # one at a time, never run together
         self.listen_last = time.monotonic()
-        segments = self.utt.segments if self.utt else []
-        self.listen_at = (self.utt.id, len(segments)) if self.utt else None
-        piece = segments[-1][1] if segments else ""
-        turn = self.data_line("listen", listen=kind, event=speaking.LISTEN_INVITING if inviting else None, piece=piece)
+        at, line = len(utt.segments), self.data_line("listen", listen=why)
         # the turn so far as it went: what was put in before is the agent's own turn, then the user's words since
         before, heard = self.ledger.open_messages()
         messages = [{"role": "system", "content": self.system}, *self.ledger.messages(), *before,
-                    {"role": "user", "content": turn + "\n" + heard}]
+                    {"role": "user", "content": (line + "\n" + heard).strip()}]
         text = ""
-        async for line in self.llm.lines(messages, max_tokens=14):
-            text = line
+        async for said in self.llm.lines(messages, max_tokens=14):
+            text = said
             break
-        limit = min(self.cfg.listen_max_words, self.cfg.listen_kind_words.get("invite" if inviting else kind, self.cfg.listen_max_words))
-        if not speaking.has_voice(text) or speaking.units(text) > limit or self.speaking or self.generating:
+        if (not speaking.has_voice(text) or speaking.units(text) > self.cfg.listen_max_words or self.speaking
+                or self.generating or self.utt is not utt):
             return
         line_id = uuid.uuid4().hex
         self.lines[line_id] = text
-        if kind in LISTEN_PER_PIECE and self.utt is not None and self.listen_at and self.listen_at[0] == self.utt.id:
-            self.utt.asides.append((self.listen_at[1], text, turn))    # said with content: part of the turn's record
-        if kind == "cue" and self.utt is not None:
-            self.utt.marking = True
-        await self.send(type="listen", id=line_id, text=text, kind=kind, audio=f"/tts/{line_id}")
+        utt.asides.append((at, text, line))
+        await self.send(type="listen", id=line_id, text=text, kind=why, audio=f"/tts/{line_id}")
 
     async def _stop_line(self):
         self.gen += 1

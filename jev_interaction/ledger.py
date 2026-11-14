@@ -1,7 +1,7 @@
 """The call as it went, for both readers: the responder replays it as chat messages, Jev reads its recent text.
 
-The turn the user is in the middle of is here as well (`open`): its words so far and what the agent put in with content
-while they talked. Every reader takes it from this one place (`open_text`, `Utterance.asides`), so the judge, a
+The turn the user is in the middle of is here as well (`open`): its words so far and what the agent put in while they
+talked, a listening sound as much as a word with content. Every reader takes it from this one place (`open_text`, `Utterance.asides`), so the judge, a
 listening sound and the reply that follows all know the same things about it.
 
 A line of the agent's that was cut off ends in "—" (the user heard only that much); words the user said over the agent
@@ -21,7 +21,7 @@ class Turn:
     data_line: str = ""  # the bracketed line the responder was given with this user turn
     cut: bool = False
     over: bool = False   # said over a line of the agent's that carried on
-    # a user turn the agent put something into with content: (the user's words up to there, what the agent said, the
+    # a user turn the agent put something into while listening: (the user's words up to there, what the agent said, the
     # line it was given), in order, and `tail`, the user's words after the last one. Empty for an ordinary turn.
     exchanges: list[tuple[str, str, str]] = field(default_factory=list)
     tail: str = ""

@@ -14,7 +14,7 @@ def header(profile: Profile, pace: str, ledger: Ledger, turns: int, chars: int) 
 
 def user_turn(name: str, segments: list[tuple[float, str]], now: float, silence_ms: int, agent_speaking: bool,
               asides: list[tuple] = ()) -> str:
-    """`asides`: what the agent put in with content while the user talked (Utterance.asides), shown where it came."""
+    """`asides`: what the agent put in while the user talked (Utterance.asides), shown where it came."""
     lines = [f"{name} is {'speaking' if agent_speaking else 'silent'}."]
     if segments:
         lines.append("What the user has said so far, in the segments the recognizer closed after each short pause:")

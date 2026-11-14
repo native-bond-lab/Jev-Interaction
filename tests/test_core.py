@@ -30,7 +30,7 @@ def test_profile_reaches_the_judge_header():
 def test_questions_offer_choices_by_pace():
     c = Q.floor_criteria("Mara", finish=True, overrule=False, aside=False, jump=True)
     assert set(c) == {"carry_on", "yield", "finish_first", "jump_in"}
-    assert set(Q.listen("Mara")["criteria"]) == {"continuer", "feeling", "echo", "receipt", "cue", "quiet", "answer_due"}
+    assert set(Q.listen("Mara")["criteria"]) == {"due", "fits", "quiet", "answer_due"}
 
 
 from jev_interaction.testing import FakeASR, FakeJudge, FakeLLM, FakeVAD, scripted_session  # noqa: E402,F401
@@ -42,7 +42,7 @@ def make(answers, policies=None):
 
 TURN = {"done": {"finished": 0.9, "continuing": 0.1}, "wait": {"now": 1.0, "half_second": 0, "two_seconds": 0, "hold": 0},
         "kind": {"reply": 0.9, "sound": 0.1}, "pace": {"normal": 0.6, "patient": 0.4, "narrate": 0, "eager": 0},
-        "listen": {"continuer": 0, "feeling": 0, "echo": 0, "quiet": 1.0, "answer_due": 0}}
+        "listen": {"due": 0, "fits": 0, "quiet": 1.0, "answer_due": 0}}
 
 
 async def test_a_finished_turn_is_answered_and_the_pace_timing_is_blended():
@@ -129,9 +129,10 @@ async def test_a_long_listening_sound_is_dropped():
     s, events, _ = make(TURN)
     s.cfg.listen_max_words = 3
     s.llm.out = ["Oh yeah? What do you have in mind?"]
-    s.utt = None
-    await s.listen_in("feeling")
-    assert not any(e["type"] == "listen" for e in events)
+    s._open_utterance()
+    s.utt.segments.append((0.0, "so I was thinking,"))
+    await s.listen_in()
+    assert not any(e["type"] == "listen" for e in events) and not s.utt.asides      # not voiced, not in the record
 
 
 def test_presets_carry_production_and_tested_settings():
@@ -451,18 +452,15 @@ def test_a_line_of_tags_alone_has_no_voice():
 @pytest.mark.asyncio
 async def test_a_listening_sound_is_measured_in_characters_where_words_have_no_spaces():
     s, events, _ = scripted_session()
-    s.cfg.listen_max_words = 8
+    s._open_utterance()
+    s.utt.segments.append((0.0, "我小时候住在海边，"))
     s.llm.out = ["那时候大概十一二岁吧，我也记不清了。"]      # one "word" to str.split, a whole sentence to the ear
-    await s.listen_in("continuer")
-    assert not any(e["type"] == "listen" for e in events)
-    s.llm.out = ["嗯，我在听。慢慢讲。"]                     # inside the overall limit, too long for a bare "go on"
-    s.listen_last = 0
-    await s.listen_in("continuer")
+    await s.listen_in()
     assert not any(e["type"] == "listen" for e in events)
     s.llm.out = ["嗯？"]
     s.listen_last = 0
-    await s.listen_in("continuer")
-    await s.listen_in("continuer", inviting=True)      # right behind the first: not voiced, sounds are spaced out
+    await s.listen_in()
+    await s.listen_in()                                # right behind the first: not voiced, they would run together
     assert [e["text"] for e in events if e["type"] == "listen"] == ["嗯？"]
 
 
@@ -526,65 +524,78 @@ async def test_a_reply_that_fails_or_says_nothing_is_asked_for_once_more():
 
 
 @pytest.mark.asyncio
-async def test_a_piece_handed_over_is_said_back_once_and_sooner_than_other_sounds():
+async def test_jev_picks_the_moment_and_the_responder_the_words_of_what_is_put_in():
     import time
 
     from jev_interaction.decisions.listen import LISTEN
     from jev_interaction.utterance import Utterance
-    s, events, _ = scripted_session()
+    s, events, _ = scripted_session(policies={"listen": ThresholdPolicy(default=0.5)})
     said = lambda: [(e["kind"], e["text"]) for e in events if e["type"] == "listen"]  # noqa: E731
-    answer = {"listen": {"probabilities": {"receipt": 1.0}}}
+    due = {"listen": {"probabilities": {"due": 0.9, "quiet": 0.1}}}
+    fits = {"listen": {"probabilities": {"fits": 0.9, "quiet": 0.1}}}
     s.utt = Utterance(1, time.monotonic(), [(0.0, "two cartons of milk,")])
     s.llm.out = ["Two cartons of milk."]
-    await LISTEN.apply(s, answer, {})
+    await LISTEN.apply(s, due, {})
     await asyncio.sleep(0.05)
-    assert said() == [("receipt", "Two cartons of milk.")]
-    assert "two cartons of milk," in s.llm.seen[-1][-1]["content"]
-
-    s.listen_last = time.monotonic() - 1.5                 # the same piece again, a moment later: not said twice
-    await LISTEN.apply(s, answer, {})
-    await asyncio.sleep(0.05)
-    assert len(said()) == 1
-    assert 'and Mara put in: "Two cartons of milk."'.replace("Mara", s.p.short) in LISTEN.state(s, {})   # Jev reads it too
+    assert said() == [("due", "Two cartons of milk.")]
+    asked = s.llm.seen[-1][-1]["content"]                  # the event says which moment it is; none of their words quoted
+    assert asked.endswith("two cartons of milk,") and "waiting to hear from you" in asked and '"two cartons' not in asked
+    assert f'and {s.p.short} put in: "Two cartons of milk."' in LISTEN.state(s, {})    # Jev reads what was put in
     assert s.ledger.open is s.utt                          # one record: the turn in progress is part of the call
 
-    s.utt.segments.append((0.0, "a dozen eggs,"))          # the next piece, well inside the gap other sounds keep
+    s.utt.segments.append((0.0, "a dozen eggs,"))          # the next piece, well inside the gap optional sounds keep
+    s.listen_last = time.monotonic() - 1.5
     s.llm.out = ["A dozen eggs."]
     assert LISTEN.ready(s, {})
-    await LISTEN.apply(s, answer, {})
+    await LISTEN.apply(s, due, {})
     await asyncio.sleep(0.05)
-    assert said()[-1] == ("receipt", "A dozen eggs.")
-    assert s.llm.seen[-1][-1]["content"].endswith("a dozen eggs,")   # the newest piece only, not the list so far
+    assert said()[-1] == ("due", "A dozen eggs.")
+    assert s.llm.seen[-1][-1]["content"].endswith("a dozen eggs,")   # the words since, not the list so far
 
     s.utt.segments.append((0.0, "and, um,"))
     s.listen_last = time.monotonic() - 1.5
     s.llm.out = ["Mm."]
-    await LISTEN.apply(s, {"listen": {"probabilities": {"continuer": 1.0}}}, {})   # a plain "mm" still waits its three seconds
+    await LISTEN.apply(s, fits, {})                        # a sound that could be left out still waits its three seconds
     await asyncio.sleep(0.05)
     assert len(said()) == 2
-    await s.respond("spoke")                               # the turn's record has what was said back, where it came
+    s.listen_last = time.monotonic() - 3.5
+    await LISTEN.apply(s, fits, {})
+    await asyncio.sleep(0.05)
+    assert said()[-1] == ("fits", "Mm.")                   # and a bare "mm" is in the record like anything else put in
+    s.utt.segments.append((0.0, "that's all."))
+    s.listen_last = time.monotonic() - 3.5
+    s.llm.out = [""]
+    await LISTEN.apply(s, fits, {})                        # the responder may write nothing: then nothing is put in
+    await asyncio.sleep(0.05)
+    assert len(said()) == 3
+    s.llm.out = ["Got it."]
+    await s.respond("spoke")                               # the turn's record has what was put in, where it came
     name = s.p.short
     assert s.ledger.turns[-2].text == (f"two cartons of milk, [{name}: Two cartons of milk.] a dozen eggs, "
-                                       f"[{name}: A dozen eggs.] and, um,")
-    said_by = [(m["role"], m["content"].split("\n")[-1]) for m in s.llm.seen[-1][-5:]]   # the agent's words are its own turns
+                                       f"[{name}: A dozen eggs.] and, um, [{name}: Mm.] that's all.")
+    said_by = [(m["role"], m["content"].split("\n")[-1]) for m in s.llm.seen[-1][-7:]]   # the agent's words are its own turns
     assert said_by == [("user", "two cartons of milk,"), ("assistant", "Two cartons of milk."), ("user", "a dozen eggs,"),
-                       ("assistant", "A dozen eggs."), ("user", "and, um,")]
+                       ("assistant", "A dozen eggs."), ("user", "and, um,"), ("assistant", "Mm."), ("user", "that's all.")]
 
 
 @pytest.mark.asyncio
-async def test_a_silence_after_unfinished_words_is_jevs_to_break_not_a_clocks():
+async def test_a_silence_after_unfinished_words_stays_the_users_until_jev_is_sure_or_it_has_gone_on_long():
     import time
 
-    from jev_interaction.decisions.trail import TRAIL
+    from jev_interaction.decisions.turn import TURN as TURN_DECISION
     from jev_interaction.utterance import Utterance
-    s, _, _ = scripted_session()
+    s, _, judge = scripted_session({"done": {"finished": 0.2, "continuing": 0.8}},
+                                   policies={"end_of_turn": ThresholdPolicy(default=0.5)})
     s.utt = Utterance(1, time.monotonic(), [(0.0, "and it pushed my cup off too.")])
-    s.silence_ms = 2400
+    s.judged = {"finished": 0.2, "wait_ms": 0, "reply": 1.0, "drawn": True}
     asked = len(s.llm.seen)
-    await TRAIL.apply(s, {"trail": {"probabilities": {"wait": 0.8, "take_up": 0.2}}}, {"quiet_s": 2.4})
-    assert len(s.llm.seen) == asked and s.utt is not None          # the responder is not asked for a line; the turn stays open
-    await TRAIL.apply(s, {"trail": {"probabilities": {"wait": 0.3, "take_up": 0.7}}}, {"quiet_s": 5.4})
+    s.silence_ms = s.cfg.pace("normal").max_wait_ms + 1000         # past the longest wait: no clock hands her the turn
+    assert not await TURN_DECISION.on_tick(s, time.monotonic())
+    assert len(s.llm.seen) == asked and s.utt is not None
+    s.silence_ms = s.cfg.turn_reask_ms[-1]                         # the quiet grows: Jev is asked again, the listen
+    await TURN_DECISION.on_tick(s, time.monotonic())               # question with it
+    await asyncio.sleep(0.05)
+    assert "listen" in judge.asked[-1][0] and "quiet for 4.0 s" in judge.asked[-1][1]
+    s.silence_ms = s.cfg.pace("normal").max_wait_ms + s.cfg.turn_last_ms
+    assert await TURN_DECISION.on_tick(s, time.monotonic())        # a long silence: she speaks, and her line is told why
     assert "silent for" in s.llm.seen[-1][-1]["content"] and s.utt is None
-    s.utt = Utterance(2, time.monotonic(), [(0.0, "so, um")])
-    await TRAIL.apply(s, {}, {"quiet_s": 2.4})                     # a judge that fails: the agent speaks, as before
-    assert s.utt is None

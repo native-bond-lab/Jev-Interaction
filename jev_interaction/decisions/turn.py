@@ -1,8 +1,10 @@
 """The user pauses while talking: have they finished, how long to wait, a reply or a sound, which pace.
 
-Asked on every new segment of words, and again after 1 s and 2 s of quiet if the first draw said "not yet". The answer
-is kept on the session (`judged`); the tick draws against p(finished) once the quiet reaches the wait Jev suggested,
-and answers anyway one second past the pace's longest wait. The listen question rides in the same request (listen.py).
+Asked on every new segment of words, and again as the quiet grows (Config.turn_reask_ms) if the last draw said "not
+yet". The answer is kept on the session (`judged`); the tick draws against p(finished) once the quiet reaches the wait
+Jev suggested. The listen question rides in the same request (listen.py), so while the user is not judged finished the
+agent is still listening: a sound may slip in, the turn is not taken. Only when the quiet has outlasted the pace's
+longest wait by Config.turn_last_ms with Jev never sure does the agent speak anyway, and its line is told so ("trailed").
 """
 from __future__ import annotations
 
@@ -68,18 +70,19 @@ class Turn(Decision):
             if go:
                 await self.answer(s)
                 return True
-            LISTEN.invite(s)
-        # past the pace's longest wait with nobody sure they had finished: trail.py asks whether to speak
-        if j and j["drawn"] and s.silence_ms in (1000, 2000):
+        if s.silence_ms >= pace.max_wait_ms + s.cfg.turn_last_ms:
+            await self.answer(s, "trailed")   # a long silence after their words: the agent speaks, as a person does
+            return True
+        if j and j["drawn"] and s.silence_ms in s.cfg.turn_reask_ms:
             s._spawn(self.ask(s, utt_id=s.utt.id))
         return False
 
-    async def answer(self, s):
+    async def answer(self, s, kind: str = "spoke"):
         """Answer what the user said, unless the voice was someone else's (Config.far_db)."""
         if s._far():
             await s._not_for_me("far")
         else:
-            await s.respond("spoke")
+            await s.respond(kind, quiet_s=s.silence_ms / 1000)
 
 
 TURN = Turn()

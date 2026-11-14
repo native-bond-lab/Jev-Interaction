@@ -2,14 +2,19 @@
 
 ## Unreleased
 
-- Listening with content. Two more things the agent can put in while the user talks on, beside "mm-hm": a `receipt`
-  (the user hands over a list or a number piece by piece, and each piece is said back as it lands) and a `cue` (earlier
-  in the call the user asked for something to be said whenever a certain thing comes up, "count every time I say
-  cat", and it has just come up). Nothing is configured: the request lives in the call's history and Jev reads it.
-  Both are made when Jev is at least `listen_piece_min` sure (0.5), never on a draw, once for a piece of speech, and
-  may follow each other after `listen_receipt_gap_s` (1 s) where other sounds keep 3 s. Unlike a bare listening sound
-  they go into the record, at the place they came (`... broke the vase, [Lyra: one] water everywhere ...`), so the
-  next mark and the reply after it know what was already said.
+- Listening, one question (experimental). Everything the agent puts in while the user has the floor is one thing,
+  a bare "mm" as much as a count the user asked for ("say a number every time I mention the cat") or an item of a list
+  said back. Jev is asked only about the moment: `due` (the user is waiting for it and would miss it), `fits` (a spot
+  for a sound that could as well be left out), `quiet`, `answer_due`. What is said is the responder's, from the call's
+  record; its event line says which moment Jev saw and quotes nothing. `due` is made when Jev is `listen_due_min` sure
+  (0.5), `fits` is drawn by the listen policy and keeps `listen_gap_s`; nothing put in comes closer than
+  `listen_min_gap_s` to the last, or runs longer than `listen_max_words`. All of it goes into the record where it came,
+  as the agent's own turn between the user's words, and Jev reads it there. Gone: the five kinds of listening sound and
+  their per-kind lengths, the fixed 50 % inviting "mm?", the separate question for a silence after unfinished words.
+- The turn in progress is part of the call's record (`Ledger.open`), read by every decision and by the responder.
+- A silence after words Jev never judged finished stays the user's: the turn question is asked again as the quiet grows
+  (`turn_reask_ms`), with the listen question beside it, so a sound may slip in while the turn is not taken. Only
+  `turn_last_ms` past the pace's longest wait does the agent speak anyway, and its line is told so (`trailed`).
 - The companion on the page is now Lyra Vex (`lyra`, `lyra_zh`): a night-shift keeper of a reading room between
   worlds, with a life of her own to tell stories from, the same four paces and every decision open. Kai and 江屿 stay
   in the package, unlisted.
@@ -24,8 +29,7 @@
   `heard` now carries the reply's `gen` and all of it that played; an empty text means none of it did. A client that
   sends no `gen` works as before.
 - Listening sounds are measured in characters where words have no spaces (a whole Chinese sentence used to count as
-  one word and was voiced as a listening sound), each kind has its own length (`listen_kind_words`: an inviting "mm?"
-  2, a continuer 3, an echo 6, a feeling 8), and two never come closer than `listen_gap_s`, whichever decision asked.
+  one word and was voiced as a listening sound).
 - A line that is only an audio tag ("[laughs]") is no longer sent: the voice cannot speak it, and it used to show as
   said while nothing was heard. The speech prompt now says a tag makes no sound alone, so the model writes the sound
   itself ("[laughs] ha").

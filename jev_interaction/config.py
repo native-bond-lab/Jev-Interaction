@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .policy import ArgmaxPolicy, Policy, SamplePolicy, ThresholdPolicy
+from .policy import Policy, SamplePolicy, ThresholdPolicy
 
 
 @dataclass
@@ -40,20 +40,18 @@ class Config:
     policies: dict[str, Policy] = field(default_factory=lambda: {
         "end_of_turn": SamplePolicy(), "listen": SamplePolicy(),
         "floor": ThresholdPolicy(fallback="carry_on"),   # yield's threshold comes from the (blended) pace
-        "cut_in": SamplePolicy(), "quiet": SamplePolicy(),
-        "trail": ArgmaxPolicy()})                        # speak into the user's unfinished silence: never drawn
+        "cut_in": SamplePolicy(), "quiet": SamplePolicy()})
 
     voice_min_ms: int = 60             # a frame with this much voice in it is the user making sound
     hold_after_ms: int = 400           # the user talks over the agent this long: its audio pauses (user first, every pace);
                                        # tested at 1000: an "mm-hm" no longer pauses the line, a real interruption stops ~0.6 s later
     sound_close_ms: int = 1500         # a sound with no words behind it is over after this much quiet (a cough, a breath)
     hold_release_ms: int = 700         # held, the user quiet again with no words: the line goes on
-    listen_gap_s: float = 3.0          # at least this long between two listening sounds
-    listen_receipt_gap_s: float = 1.0  # ... except a piece said back or a mark the user asked for: one for each
-    # the user went silent without being judged finished: Jev is asked whether to speak this long past the pace's
-    # longest wait + 1 s, and again; at the last mark the agent speaks anyway
-    trail_marks_ms: tuple = (0, 3000, 8000)
-    listen_piece_min: float = 0.5      # a piece said back or an asked-for mark is made when Jev is this sure, never on a draw
+    listen_gap_s: float = 3.0          # at least this long between two listening sounds that could as well be left out
+    listen_min_gap_s: float = 1.0      # and no two things put in closer than this, whatever they are: they would run together
+    listen_due_min: float = 0.5        # what the user is waiting for is put in when Jev is this sure, never left to a draw
+    turn_reask_ms: tuple = (1000, 2000, 4000)   # quiet after words not judged finished: the turn question is asked again
+    turn_last_ms: int = 4000           # ... and this far past the pace's longest wait the agent speaks anyway
     listen_finished_max: float = 0.65  # no listening sound once Jev is this sure the user has finished
     quiet_marks_s: tuple = (1.5, 4.0, 10.0, 25.0, 60.0, 120.0)   # when the quiet question is asked (jittered)
     quiet_jitter: float = 0.3
@@ -63,10 +61,9 @@ class Config:
     judge_turns: int = 8               # recent turns in every Jev state
     judge_turn_chars: int = 300
     safe_words: tuple = ("red",)       # stop everything, no judgement involved
-    listen_max_words: int = 6          # a longer listening sound is dropped (tested at 3: benchmarks count 4+ words as a turn)
-    listen_kind_words: dict = field(default_factory=lambda: {"invite": 2, "continuer": 3, "echo": 6, "feeling": 8, "receipt": 8, "cue": 6})
-                                       # and each kind has its own length ("mm?" is not a sentence); the smaller limit holds.
-                                       # Words, or characters where words have no spaces (Chinese, Japanese, Korean)
+    listen_max_words: int = 6          # anything longer put in while listening is dropped: it would be a turn (tested at 3:
+                                       # benchmarks count 4+ words as a turn). Words, or characters where words have no
+                                       # spaces (Chinese, Japanese, Korean)
 
     # tested knobs, off by default (README: "Tested knobs")
     not_for_me: bool = False           # a "not said to me" choice in the turn and floor questions; picked, the words are
