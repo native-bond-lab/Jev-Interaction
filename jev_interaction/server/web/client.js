@@ -88,7 +88,7 @@
   // ---------- call state ----------
   const island = new window.JevIsland($('island'));
   let ws = null, ctx = null, proc = null, stream = null, analyser = null, analyserBuf = null;
-  let queue = [], current = null, listening = null, incoming = null;
+  let queue = [], current = null, listening = null, incoming = null, voices = [];
   let phase = 'idle', connecting = false, callStart = 0, pace = null;
   let waiting = null;                                          // in line for a free call: {ahead, wait_s}, as the server last said
   let micLevel = 0, lastPartialAt = 0, thinkingUntil = 0, yieldedUntil = 0, endedUntil = 0, shownState = '';
@@ -99,11 +99,33 @@
   }
 
   // ---------- playback (the queue the server steers) ----------
+  // A phone plays sound only from an audio element that was started inside a tap. So the tap that starts the call starts
+  // a handful of them on a moment of silence (`unlockVoices`), and every line and listening sound is then played on one
+  // of those, whichever is free.
+  function wire(el) {                                          // through the analyser, so the island follows the agent's voice
+    try { if (ctx && analyser) ctx.createMediaElementSource(el).connect(analyser); } catch (e) { /* plays directly; the island falls back to a synthetic level */ }
+  }
+  function silence() {                                         // a tenth of a second of it, as a WAV
+    const n = 800, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+    const w = (o, t) => { for (let i = 0; i < t.length; i++) b[o + i] = t.charCodeAt(i); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
+    b.fill(128, 44);
+    return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+  }
+  function unlockVoices() {
+    const hush = silence();
+    voices = Array.from({ length: 8 }, () => {
+      const el = new Audio(hush); el.preload = 'auto'; wire(el);
+      Promise.resolve(el.play()).then(() => { if (el.src === hush) el.pause(); }).catch(() => {});
+      return el;
+    });
+  }
   function makeAudio(m) {
-    const el = new Audio(m.audio); el.preload = 'auto';         // fetched while the line before it plays: one reply sounds like one
-    try {                                                      // route through an analyser so the island follows the agent's voice
-      if (ctx && analyser) ctx.createMediaElementSource(el).connect(analyser);
-    } catch (e) { /* plays directly; the island falls back to a synthetic level */ }
+    const used = new Set([current && current.el, listening, ...queue.map((l) => l.el)]);
+    let el = voices.find((v) => !used.has(v));
+    if (!el) { el = new Audio(); wire(el); }                   // more lines waiting than voices: a new one (a phone may refuse it)
+    el.onended = null; el.preload = 'auto'; el.src = m.audio;  // fetched while the line before it plays: one reply sounds like one
     return el;
   }
   function playNext() {
@@ -358,6 +380,8 @@
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     wake();
     ctx.onstatechange = wake;
+    analyser = ctx.createAnalyser(); analyser.fftSize = 512; analyserBuf = new Uint8Array(analyser.fftSize); analyser.connect(ctx.destination);
+    unlockVoices();
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     } catch (e) {
@@ -368,7 +392,6 @@
     }
     if (phase !== 'call') { stream.getTracks().forEach((tr) => tr.stop()); stream = null; return; }   // hung up while the prompt was open
     wake();
-    analyser = ctx.createAnalyser(); analyser.fftSize = 512; analyserBuf = new Uint8Array(analyser.fftSize); analyser.connect(ctx.destination);
     const src = ctx.createMediaStreamSource(stream);
     proc = ctx.createScriptProcessor(4096, 1, 1);
     const ratio = ctx.sampleRate / 16000; let buf = [], frames = 0;
@@ -419,6 +442,7 @@
     const sock = ws; ws = null; if (sock) { try { sock.close(); } catch (e) { /* already closed */ } }
     if (proc) { proc.onaudioprocess = null; proc.disconnect(); proc = null; }
     if (stream) { stream.getTracks().forEach((tr) => tr.stop()); stream = null; }
+    voices.forEach((el) => { el.onended = null; el.pause(); }); voices = [];
     if (ctx) { ctx.close().catch(() => {}); ctx = null; analyser = null; }
     connecting = false; waiting = null; micLevel = 0; endedUntil = performance.now() + 900;
     setPhase('idle'); fadeCaption('capAgent', 0); fadeCaption('capUser', 0);
