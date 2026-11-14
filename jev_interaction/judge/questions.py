@@ -53,7 +53,8 @@ def listen(name: str) -> dict:
         "what the user just said call for an answer, so that slipping something in would be wrong?"), "criteria": {
         "due": (f"something from {name} is expected right here and would be missed: earlier in the call they asked {name} to "
                 "say something each time a certain thing comes up while they talk (count it, call it out, mark it) and it has "
-                "just come up in their last words, or they are handing something over piece by piece (items of a list, a "
+                "just come up in their last words (the words that make the request are not a case of it), or they are "
+                "handing something over piece by piece (items of a list, a "
                 f"number in groups, an address, steps) and a piece has just landed; {name} has not put anything in for it yet"),
         "fits": (f"a spot where a listener like {name} might let a small sound or a word slip in to show they are there; "
                  "nothing is lost without it"),

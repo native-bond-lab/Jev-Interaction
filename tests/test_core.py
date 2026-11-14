@@ -569,6 +569,11 @@ async def test_jev_picks_the_moment_and_the_responder_the_words_of_what_is_put_i
     assert f'and {s.p.short} put in: "Two cartons of milk."' in LISTEN.state(s, {})    # Jev reads what was put in
     assert s.ledger.open is s.utt                          # one record: the turn in progress is part of the call
 
+    s.listen_last = time.monotonic() - 1.5                 # asked again about the same words as the quiet grows: it came
+    await LISTEN.apply(s, due, {})                         # up once, however sure Jev is the second time
+    await asyncio.sleep(0.05)
+    assert len(said()) == 1
+
     s.utt.segments.append((0.0, "a dozen eggs,"))          # the next piece, well inside the gap optional sounds keep
     s.listen_last = time.monotonic() - 1.5
     s.llm.out = ["A dozen eggs."]
