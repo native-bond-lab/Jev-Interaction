@@ -12,7 +12,7 @@ question is in judge/questions.py and whose answer goes through the policy confi
     quiet on the line      quiet    -> go on / check on them / wait / hang up
 
 Events to the client: line {id, text, audio}, listen {id, text, audio}, stop, finish_line, hangup,
-user {text}, pace {pace, probs}, decision {...}. Client messages: playback {state: playing | idle}, heard {gen, text}.
+user {text}, pace {pace, probs}, persona {id, name, gen}, decision {...}. Client messages: playback {state: playing | idle}, heard {gen, text}.
 """
 from __future__ import annotations
 
@@ -40,15 +40,17 @@ SYSTEM_TEMPLATE = (__import__("pathlib").Path(__file__).parent / "prompts" / "sy
 class Session:
     def __init__(self, profile: Profile, *, send: Callable[[dict], Awaitable[None]], judge: JevClient, recognizer: Recognizer,
                  responder: Responder, vad: VAD, config: Config | None = None, recorder: Recorder | None = None,
-                 system_template: str = SYSTEM_TEMPLATE, speech: str | None = None):
+                 system_template: str = SYSTEM_TEMPLATE, speech: str | None = None, cast: dict[str, Profile] | None = None):
         self.p, self.cfg, self.send_event = profile, config or Config(), send
         self.judge, self.asr, self.llm, self.vad = judge, recognizer, responder, vad
         self.rec = recorder or Recorder(None)
         if speech is None:                       # how to write for the voice in use: the synthesizer's speaking style
             from .adapters import registry
             speech = registry.speech_prompt()
-        self.system = system_template.format(name=profile.name, profile=profile.prompt or profile.task, speech=speech)
+        self._system = lambda p: system_template.format(name=p.name, profile=p.prompt or p.task, speech=speech)
+        self.system = self._system(profile)
         self.policies = {**self.cfg.policies, **profile.policies}   # a task type may bring its own policies
+        self.cast = dict(cast or {})             # id -> profile: everyone who can be on this line (Session.hand_over)
         self.decisions: dict[str, Decision] = dict(DECISIONS)       # asked in this order on new words and on each tick
         self.ledger = Ledger()
         self.lines: dict[str, str] = {}          # line id -> text, fetched by the client from the TTS route
@@ -295,13 +297,13 @@ class Session:
         self.quiet_marks = [m * random.uniform(1 - j, 1 + j) for m in self.cfg.quiet_marks_s]
 
     # ------------------------------------------------------------------ speaking
-    def data_line(self, kind: str, quiet_s: float = 0.0, listen: str = "") -> str:
+    def data_line(self, kind: str, quiet_s: float = 0.0, listen: str = "", who: str = "") -> str:
         """The bracketed line the responder reads before it speaks (speaking.py has the wording for each kind)."""
         pace = self.pace + (f" (just changed from {self.transition[0]})" if self.transition else "")
         if kind != "listen":
             self.transition = None
         last = self.ledger.last_agent()
-        event = speaking.event_text(kind, last=last.text if last else "", quiet_s=quiet_s, listen=listen)
+        event = speaking.event_text(kind, last=last.text if last else "", quiet_s=quiet_s, listen=listen, who=who)
         return speaking.data_line(pace, event, self.cfg.language)
 
     @property
@@ -313,11 +315,31 @@ class Session:
     def utt(self, value: Utterance | None):
         self.ledger.open = value
 
-    async def respond(self, kind: str, quiet_s: float = 0.0):
+    def others(self) -> dict[str, Profile]:
+        """Who else can be put on the line right now: the cast without the one on it."""
+        return {pid: p for pid, p in self.cast.items() if p is not self.p}
+
+    async def hand_over(self, pid: str):
+        """The user asked for someone else in the cast. The one on the line says so in a few words; then the other is
+        on it: their prompt for the responder, their manner for Jev, their policies, and (the transport's part, told by
+        the `persona` event) their voice. The record stays one record and says who said what (ledger.py)."""
+        new, old, gen = self.cast[pid], self.p, self.gen + 1
+        await self.respond("hand_over", who=new.short)
+        if self.gen != gen or self.closed:        # the user spoke over the goodbye: they are still talking to this one
+            return
+        self.p, self.system = new, self._system(new)
+        self.policies = {**self.cfg.policies, **new.policies}
+        self.pace, self.pace_probs, self.transition = self.cfg.start_pace, {}, None
+        self.rec.write("persona", id=pid, name=new.name)
+        await self.send(type="persona", id=pid, name=new.name, gen=self.gen + 1,
+                        accent=(new.extra.get("display") or {}).get("accent"))
+        await self.respond("take_over", who=old.short)
+
+    async def respond(self, kind: str, quiet_s: float = 0.0, who: str = ""):
         self.gen += 1
         gen = self.gen
         self.generating = True
-        line = self.data_line(kind, quiet_s)
+        line = self.data_line(kind, quiet_s, who=who)
         event = speaking.EVENTS.get(kind, speaking.UNKNOWN)
         if self.utt is not None and event.answers_user:
             if self.utt.level is not None:
@@ -330,9 +352,9 @@ class Session:
             self.utt = None
             self.judged = None
         else:
-            self.ledger.user("", line)
-        messages = [{"role": "system", "content": self.system}, *self.ledger.messages()]
-        turn = self.ledger.agent("")
+            self.ledger.user("", line, who=self.p.short)
+        messages = [{"role": "system", "content": self.system}, *self.ledger.messages(self.p.short)]
+        turn = self.ledger.agent("", who=self.p.short)
         self.replies[gen] = turn
         self.rec.write("respond", gen=gen, kind=kind, data_line=line)
         try:
@@ -378,7 +400,7 @@ class Session:
         at, line = len(utt.segments), self.data_line("listen", listen=why)
         # the turn so far as it went: what was put in before is the agent's own turn, then the user's words since
         before, heard = self.ledger.open_messages()
-        messages = [{"role": "system", "content": self.system}, *self.ledger.messages(), *before,
+        messages = [{"role": "system", "content": self.system}, *self.ledger.messages(self.p.short), *before,
                     {"role": "user", "content": (line + "\n" + heard).strip()}]
         text = ""
         async for said in self.llm.lines(messages, max_tokens=14):

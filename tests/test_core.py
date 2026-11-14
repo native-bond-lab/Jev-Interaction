@@ -625,3 +625,42 @@ async def test_a_silence_after_unfinished_words_stays_the_users_until_jev_is_sur
     s.silence_ms = s.cfg.pace("normal").max_wait_ms + s.cfg.turn_last_ms
     assert await TURN_DECISION.on_tick(s, time.monotonic())        # a long silence: she speaks, and her line is told why
     assert "silent for" in s.llm.seen[-1][-1]["content"] and s.utt is None
+
+
+@pytest.mark.asyncio
+async def test_someone_else_is_put_on_the_line_when_the_user_asks_for_them():
+    lyra = Profile(name="Lyra Vex", task="a companion", prompt="You are Lyra.", manner="Chatty listener.")
+    vera = Profile(name="Vera", task="a speaking coach", prompt="You are Vera.", manner="Few words.",
+                   policies={"quiet": ArgmaxPolicy()}, extra={"display": {"accent": "#e5e7eb"}})
+    answers = {**TURN, "who": {"stay": 0.1, "vera": 0.9}}
+    s, events, judge = scripted_session(answers, profile=lyra, policies={"end_of_turn": ThresholdPolicy(default=0.5)})
+    s.cast = {"lyra": lyra, "vera": vera}
+    await s.respond("pickup")
+    s.speaking = False                                               # her greeting has played
+    s.llm.out = ["Sure, one second."]
+    s._open_utterance()
+    s.utt.segments.append((0.0, "Can you put Vera on? I have a talk tomorrow."))
+    from jev_interaction.decisions.turn import TURN as TURN_DECISION
+    await TURN_DECISION.ask(s, utt_id=s.utt.id)
+    assert "who" in judge.asked[-1][0] and s.judged["who"] == "vera"
+    s.silence_ms = 200
+    assert await TURN_DECISION.on_tick(s, 0.0)                       # the turn is taken: a word from Lyra, then Vera is on
+    assert s.p is vera and "You are Vera." in s.system and isinstance(s.policies["quiet"], ArgmaxPolicy)
+    kinds = [(e["type"], e.get("id") or e.get("name")) for e in events if e["type"] in ("line", "persona")]
+    assert [k for k, _ in kinds][-3:] == ["line", "persona", "line"]   # her goodbye in her voice, then the other's first line
+    persona = next(e for e in events if e["type"] == "persona")
+    assert persona["id"] == "vera" and persona["gen"] == s.gen and persona["accent"] == "#e5e7eb"
+    leaving, arriving = s.llm.seen[-2], s.llm.seen[-1]
+    assert "You are Lyra." in leaving[0]["content"] and "putting Vera on" in leaving[-1]["content"]
+    assert "You are Vera." in arriving[0]["content"] and "in place of Lyra" in arriving[-1]["content"]
+    assert not any(m["role"] == "assistant" for m in arriving)       # nothing Lyra said is Vera's own turn
+    assert "(Lyra: Sure, one second.)" in arriving[-1]["content"] and "Can you put Vera on?" in arriving[-1]["content"]
+    assert "Lyra: Sure, one second." in s.ledger.recent_text("Vera", 8, 300)   # and Jev reads who said what
+    assert set(s.others()) == {"lyra"}                               # she can be asked back
+
+    s2, _, judge2 = scripted_session({**TURN, "who": {"stay": 0.9, "vera": 0.1}}, profile=lyra)
+    assert not s2.others()                                           # no cast: the question is not asked at all
+    s2._open_utterance()
+    s2.utt.segments.append((0.0, "Vera told me the same thing yesterday."))
+    await TURN_DECISION.ask(s2, utt_id=s2.utt.id)
+    assert "who" not in judge2.asked[-1][0] and s2.judged["who"] is None

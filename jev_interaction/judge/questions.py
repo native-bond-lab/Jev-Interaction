@@ -10,6 +10,7 @@ agent's short name.
     both talk at once                      floor       carry_on / yield / finish_first / overrule / jump_in / aside
     the user talks, the agent leads        cut_in      cut_in / let_finish
     quiet since the agent's last line      quiet       go_on / check / wait / hang_up
+    someone else can be put on the line    who         stay / one of the others (rides in the turn request)
 """
 from __future__ import annotations
 
@@ -59,6 +60,18 @@ def listen(name: str) -> dict:
         "quiet": (f"{name} stays silent here: they are in full flow, {name} has only just put something in, or {name} is "
                   "the kind who listens without a sound"),
         "answer_due": "they have asked something or are waiting for a reply: an answer, when they finish"}}
+
+
+def who(name: str, cast: dict[str, tuple[str, str]]) -> dict:
+    """`cast`: the others who can be put on this line, id -> (name, what they are for)."""
+    listed = "; ".join(f"{n} ({task})" for n, task in cast.values())
+    criteria = {"stay": (f"the user is talking with {name} and wants to go on with {name}; naming or talking about someone "
+                         "else is not asking for them")}
+    for pid, (n, _) in cast.items():
+        criteria[pid] = f"the user asks for {n} to come on the line now, in {name}'s place"
+    return {"type": "choice", "instructions": (
+        f"{name} is on the line. Others can be put on it in {name}'s place: {listed}. In what the user has just said, are "
+        f"they asking for one of them now?"), "criteria": criteria}
 
 
 def floor_criteria(name: str, *, finish: bool, overrule: bool, aside: bool, jump: bool) -> dict:

@@ -38,7 +38,7 @@ LISTEN_EVENTS = {
 
 @dataclass(frozen=True)
 class Event:
-    text: str                   # may use {last} (the agent's last line) and {quiet_s} (seconds of quiet)
+    text: str                   # may use {last} (the agent's last line), {quiet_s} (seconds of quiet), {who} (the other)
     answers_user: bool = False  # the line answers the open utterance, which then goes into the history as the user's turn
     max_tokens: int = 160       # 60 for the lines that must be a few words
 
@@ -57,6 +57,10 @@ EVENTS: dict[str, Event] = {
     "lead": Event("they have been quiet for {quiet_s:.0f} s since your last line"),
     "check": Event("they have been quiet for {quiet_s:.0f} s; you check on them", max_tokens=60),
     "hangup": Event("they have been quiet for {quiet_s:.0f} s and you are ending the call"),
+    "hand_over": Event("they asked for {who}; tell them in a few words that you are putting {who} on, nothing more: you "
+                       "are off the line after this", answers_user=True, max_tokens=60),
+    "take_over": Event("you have just been put on this call in place of {who}, because they asked for you; the call so "
+                       "far is above. Come on the line in your own way, a line or two"),
     "safe_word": Event("the safe word: everything stops; step out in one or two calm lines and ask if they are all right"),
 }
 UNKNOWN = Event("")             # a kind nobody registered: its name is the event text, and it is an ordinary line
@@ -67,12 +71,12 @@ def event(kind: str, text: str, *, answers_user: bool = False, max_tokens: int =
     EVENTS[kind] = Event(text, answers_user, max_tokens)
 
 
-def event_text(kind: str, *, last: str = "", quiet_s: float = 0.0, listen: str = "") -> str:
+def event_text(kind: str, *, last: str = "", quiet_s: float = 0.0, listen: str = "", who: str = "") -> str:
     if kind == "listen":
         return LISTEN_EVENTS.get(listen, LISTEN_EVENTS["fits"])
     if kind not in EVENTS:
         return kind
-    return EVENTS[kind].text.format(last=last, quiet_s=quiet_s)
+    return EVENTS[kind].text.format(last=last, quiet_s=quiet_s, who=who)
 
 
 def data_line(pace: str, event: str, language: str) -> str:

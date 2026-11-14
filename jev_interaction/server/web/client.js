@@ -86,7 +86,7 @@
   // ---------- call state ----------
   const island = new window.JevIsland($('island'));
   let ws = null, ctx = null, proc = null, stream = null, analyser = null, analyserBuf = null;
-  let queue = [], current = null, listening = null;
+  let queue = [], current = null, listening = null, incoming = null;
   let phase = 'idle', connecting = false, callStart = 0, pace = null;
   let waiting = null;                                          // in line for a free call: {ahead, wait_s}, as the server last said
   let micLevel = 0, lastPartialAt = 0, thinkingUntil = 0, yieldedUntil = 0, endedUntil = 0, shownState = '';
@@ -114,6 +114,11 @@
     const line = current;
     Promise.resolve(line.el.play()).then(() => {
       if (current !== line) return;                            // dropped while play() was pending
+      if (incoming && line.gen >= incoming.gen) {              // someone else comes on the line with this reply
+        const accent = /^#[0-9a-f]{6}$/i.test(incoming.accent || '') ? incoming.accent : null;
+        if (accent) { document.documentElement.style.setProperty('--accent', accent); island.setAccent(accent); }
+        incoming = null;
+      }
       if (!line.started) {                                     // only caption a line once it starts, not again on resume
         if (line.gen !== capGen) { capGen = line.gen; capSaid = ''; $('capAgent').scrollTop = 0; }
         line.before = capSaid; capSaid = joinLines(capSaid, line.text);
@@ -160,6 +165,7 @@
         yieldedUntil = performance.now() + 900; thinkingUntil = 0;
         break;
       }
+      case 'persona': incoming = m; note({ tone: 'pace', kind: 'pace', label: `→ ${m.name}` }); break;
       case 'finish_line': queue.forEach((l) => l.el.pause()); queue = []; break;
       case 'decision': onDecision(m); break;
       case 'pace':
@@ -314,7 +320,7 @@
     $('call').setAttribute('aria-pressed', String(p === 'call')); $('callLabel').textContent = t(p === 'call' ? 'hang_up' : 'call');
   }
   function resetCall() {
-    queue = []; current = null; listening = null; pace = null; logN = 0; capGen = null; capSaid = ''; waiting = null; lineGen = null; played = { gen: null, texts: [] };
+    queue = []; current = null; listening = null; incoming = null; pace = null; logN = 0; capGen = null; capSaid = ''; waiting = null; lineGen = null; played = { gen: null, texts: [] };
     micLevel = 0; lastPartialAt = 0; thinkingUntil = 0; yieldedUntil = 0;
     $('log').textContent = ''; $('logEmpty').hidden = false; $('logCount').hidden = true; $('chips').textContent = '';
     setCaption('capAgent', ''); setCaption('capUser', ''); $('capAgent').classList.remove('dim');

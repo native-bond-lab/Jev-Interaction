@@ -29,4 +29,5 @@ policies:
   listen: sample
   quiet: argmax
   cut_in: {type: threshold, default: 0.5}
+cast: [vera]      # who the caller can ask to be put on the line in her place
 display: {title: Companion, title_zh: 陪伴, tagline: "All four paces, every decision: the call we run in production", tagline_zh: "四种节奏、全部决策：我们线上在跑的那通电话", language: en, accent: "#3ee0c8", order: 1, group: task}

@@ -40,7 +40,8 @@ class Config:
     policies: dict[str, Policy] = field(default_factory=lambda: {
         "end_of_turn": SamplePolicy(), "listen": SamplePolicy(),
         "floor": ThresholdPolicy(fallback="carry_on"),   # yield's threshold comes from the (blended) pace
-        "cut_in": SamplePolicy(), "quiet": SamplePolicy()})
+        "cut_in": SamplePolicy(), "quiet": SamplePolicy(),
+        "who": ThresholdPolicy(fallback="stay")})        # someone else is put on the line only when Jev is sure
 
     voice_min_ms: int = 60             # a frame with this much voice in it is the user making sound
     overlap_ask_ms: int = 400          # the user talks over the agent this long: the words so far, closed or not, go to the

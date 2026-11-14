@@ -14,6 +14,7 @@ from ..judge import questions as Q
 from ..judge import state as S
 from ..judge.client import probs as P
 from .base import Decision
+from .handover import HANDOVER
 from .listen import LISTEN
 
 
@@ -34,6 +35,8 @@ class Turn(Decision):
         ctx["may_listen"] = LISTEN.ready(s, ctx)
         if ctx["may_listen"]:
             qs.update(LISTEN.questions(s, ctx))
+        if HANDOVER.ready(s, ctx):
+            qs.update(HANDOVER.questions(s, ctx))
         if s._offer_elsewhere():
             qs["kind"]["criteria"]["elsewhere"] = Q.elsewhere(s.p.short)
         return qs
@@ -54,7 +57,8 @@ class Turn(Decision):
         wait = P(answers, "wait")                                   # a failed judge: no wait, p(finished) 0, so the
         s.judged = {"finished": P(answers, "done").get("finished", 0.0),   # turn is answered at the pace's longest wait
                     "wait_ms": int(sum(Q.WAIT_MS[k] * v for k, v in wait.items())),
-                    "reply": kind.get("reply", 1.0), "drawn": False}
+                    "reply": kind.get("reply", 1.0), "drawn": False,
+                    "who": HANDOVER.chosen(s, answers, ctx) if HANDOVER.ready(s, ctx) else None}
         if ctx["may_listen"]:
             await LISTEN.apply(s, answers, ctx)
 
@@ -82,6 +86,8 @@ class Turn(Decision):
         """Answer what the user said, unless the voice was someone else's (Config.far_db)."""
         if s._far():
             await s._not_for_me("far")
+        elif s.judged and s.judged.get("who"):
+            await s.hand_over(s.judged["who"])            # they asked for someone else: a word, then the other comes on
         else:
             await s.respond(kind, quiet_s=s.silence_ms / 1000)
 

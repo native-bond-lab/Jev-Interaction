@@ -240,8 +240,13 @@ async def call(ws: WebSocket):
     language = start.get("language") or (profile.extra.get("display") or {}).get("language", "en")
     cfg = preset_config(os.getenv("JEV_PRESET", "production"), language=language)
     synth = make_synthesizer(profile, pid)
+    # who else can be put on this line (the persona's `cast`): the caller asks, Jev hears it, the session hands over
+    cast = {pid: profile, **{c: Profile.load(paths.profiles()[c]) for c in profile.extra.get("cast") or [] if c in paths.profiles()}}
 
     async def send(event: dict):
+        nonlocal synth
+        if event.get("type") == "persona":       # someone else is on the line from here: their voice for the lines after
+            synth = make_synthesizer(cast[event["id"]], event["id"])
         if event.get("type") in ("line", "listen"):
             LINES[event["id"]] = (event["text"], synth)
             while len(LINES) > MAX_LINES:
@@ -257,7 +262,7 @@ async def call(ws: WebSocket):
     try:
         judge = registry.create("judge")
         session = Session(profile, send=send, judge=judge, recognizer=make_recognizer(language),
-                          responder=registry.create("llm"), vad=best_vad(), config=cfg,
+                          responder=registry.create("llm"), vad=best_vad(), config=cfg, cast=cast,
                           recorder=Recorder(paths.runs_dir() / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl" if RECORD else None))
         try:
             await session.start()

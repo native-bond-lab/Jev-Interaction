@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Someone else can be put on the line mid-call (experimental). A persona lists who the caller may ask for (`cast:
+  [vera]`); the question `who` then rides in the turn request, and when Jev is sure the caller is asking for one of
+  them, the agent on the line says so in a few words and the other comes on: their prompt, manner, policies and voice
+  (`persona` event; `Session.hand_over`, `Session(cast=...)`). The call stays one record that says who said what: the
+  new agent reads the other's lines as things heard, "(Lyra: ...)", never as its own turns. Naming someone is not
+  asking for them. Lyra and Vera list each other.
 - Listening, one question (experimental). Everything the agent puts in while the user has the floor is one thing,
   a bare "mm" as much as a count the user asked for ("say a number every time I mention the cat") or an item of a list
   said back. Jev is asked only about the moment: `due` (the user is waiting for it and would miss it), `fits` (a spot
