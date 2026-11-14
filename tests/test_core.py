@@ -669,3 +669,33 @@ async def test_someone_else_is_put_on_the_line_when_the_user_asks_for_them():
     s2.utt.segments.append((0.0, "Vera told me the same thing yesterday."))
     await TURN_DECISION.ask(s2, utt_id=s2.utt.id)
     assert "who" not in judge2.asked[-1][0] and s2.judged["who"] is None
+
+
+def test_a_player_that_asks_for_byte_ranges_gets_them_and_the_others_get_the_stream():
+    from fastapi.testclient import TestClient
+
+    from jev_interaction.server import app as server
+    from jev_interaction.testing import FakeSynthesizer
+
+    class Counting(FakeSynthesizer):
+        calls = 0
+
+        async def audio(self, text):
+            Counting.calls += 1
+            yield text.encode("utf-8")[:4]
+            yield text.encode("utf-8")[4:]
+
+    server.LINES["abc"] = ("0123456789", Counting())
+    c = TestClient(server.app)
+    plain = c.get("/tts/abc")
+    assert plain.status_code == 200 and plain.content == b"0123456789" and "content-range" not in plain.headers
+    assert c.get("/tts/abc", headers={"Range": "bytes=0-"}).status_code == 200          # "all of it": still the stream
+    probe = c.get("/tts/abc", headers={"Range": "bytes=0-1"})                           # Safari's first question
+    assert probe.status_code == 206 and probe.content == b"01" and probe.headers["content-range"] == "bytes 0-1/10"
+    assert probe.headers["accept-ranges"] == "bytes" and probe.headers["content-type"] == "audio/mpeg"
+    rest = c.get("/tts/abc", headers={"Range": "bytes=2-"})
+    assert rest.status_code == 206 and rest.content == b"23456789" and rest.headers["content-range"] == "bytes 2-9/10"
+    assert c.get("/tts/abc", headers={"Range": "bytes=-3"}).content == b"789"
+    assert c.get("/tts/abc", headers={"Range": "bytes=50-60"}).status_code == 416
+    assert Counting.calls == 3                                                          # the ranges share one synthesis
+    assert c.get("/tts/nope").status_code == 404

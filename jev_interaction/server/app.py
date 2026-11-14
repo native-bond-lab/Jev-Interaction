@@ -19,7 +19,7 @@ import time
 from collections import OrderedDict
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from jev_interaction.server import paths
 
@@ -37,6 +37,8 @@ RECORD = os.getenv("JEV_RECORD_CALLS", "1") != "0"     # call logs in runs/ for 
 app = FastAPI(title="Jev-Interaction", docs_url=None, redoc_url=None, openapi_url=None)   # a call page, not a public API to browse
 LINES: OrderedDict[str, tuple[str, object]] = OrderedDict()   # line id -> (text, synthesizer); the newest MAX_LINES
 MAX_LINES = 2000
+WHOLE: OrderedDict[str, asyncio.Task] = OrderedDict()         # line id -> its whole audio, for clients that ask in byte ranges
+MAX_WHOLE = 64
 MAX_CALLS = int(os.getenv("MAX_CONCURRENT_CALLS", "0"))     # 0 = no limit; set it for a public demo (e.g. a HF Space)
 MAX_CALL_S = float(os.getenv("MAX_CALL_SECONDS", "0"))      # 0 = no limit
 DAY_BUDGET_S = 60 * float(os.getenv("MAX_CALL_MINUTES_PER_DAY", "0"))   # 0 = no limit; all calls together, per UTC day
@@ -175,13 +177,51 @@ async def list_models(request: Request):
     return await S.models(str(body.get("base_url", "")), body.get("key") or None)
 
 
+async def _whole(synth, text: str) -> bytes:
+    return b"".join([chunk async for chunk in synth.audio(text)])
+
+
+def byte_range(header: str, size: int) -> tuple[int, int] | None:
+    """The first range of a Range header as (start, end) inside `size` bytes; None when it cannot be met."""
+    spec = header.strip().removeprefix("bytes=").split(",")[0].strip()
+    first, _, last = spec.partition("-")
+    try:
+        if not first:                                   # "-500": the last 500 bytes
+            start, end = max(0, size - int(last)), size - 1
+        else:
+            start, end = int(first), min(int(last), size - 1) if last else size - 1
+    except ValueError:
+        return None
+    return (start, end) if 0 <= start <= end < size else None
+
+
 @app.get("/tts/{line_id}")
-async def tts(line_id: str):
+async def tts(line_id: str, request: Request):
+    """A line's audio. Streamed as it is synthesized, so playing starts on the first chunk. A player that asks for byte
+    ranges instead (Safari and every iPhone browser probe with "bytes=0-1" and play nothing unless they get that part
+    back) is given the parts it asks for from the whole line, synthesized once."""
     found = LINES.get(line_id)
     if found is None:
         raise HTTPException(404)
     text, synth = found
-    return StreamingResponse(synth.audio(text), media_type=synth.media_type)
+    asked = request.headers.get("range", "").strip()
+    if not asked or asked == "bytes=0-":                # no range, or "all of it from the start": the stream
+        return StreamingResponse(synth.audio(text), media_type=synth.media_type)
+    if line_id not in WHOLE:
+        WHOLE[line_id] = asyncio.create_task(_whole(synth, text))
+        while len(WHOLE) > MAX_WHOLE:
+            WHOLE.popitem(last=False)
+    try:
+        body = await WHOLE[line_id]
+    except Exception:  # noqa: BLE001 - the synthesizer failed: not kept, so the next request tries again
+        WHOLE.pop(line_id, None)
+        raise HTTPException(502) from None
+    part = byte_range(asked, len(body))
+    if part is None:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{len(body)}"})
+    start, end = part
+    return Response(body[start:end + 1], status_code=206, media_type=synth.media_type,
+                    headers={"Content-Range": f"bytes {start}-{end}/{len(body)}", "Accept-Ranges": "bytes"})
 
 
 def same_origin(origin: str, host: str) -> bool:
@@ -308,10 +348,10 @@ async def call(ws: WebSocket):
 @app.post("/api/call-report")
 async def call_report(request: Request):
     """The page says how a call failed or dropped (a refused microphone, a socket that never opened or closed on its
-    own), so the server log shows the failures that never reached the call route. No words of the call, no identity."""
+    own, a line the browser would not play), so the server log shows the failures that never reached the call route. No words of the call, no identity."""
     try:
         body = json.loads((await request.body())[:400])
-        seen = {k: (str(body[k])[:40] if isinstance(body[k], str) else body[k]) for k in ("opened", "code", "seconds", "mic")
+        seen = {k: (str(body[k])[:40] if isinstance(body[k], str) else body[k]) for k in ("opened", "code", "seconds", "mic", "audio")
                 if isinstance(body.get(k), (bool, int, float, str))}
     except (ValueError, AttributeError):
         raise HTTPException(400, "Send JSON.") from None

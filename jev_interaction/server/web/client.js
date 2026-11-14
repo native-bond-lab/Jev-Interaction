@@ -30,6 +30,7 @@
       setup_chip: 'Set up', ready_chip: 'Ready', fun: 'Fun',
       err_file: 'Opened as a file, so there is no server to call. Run jev-interaction serve and open http://localhost:8080.',
       err_mic_insecure: 'The microphone needs https or localhost. Open this page at http://localhost:8080.',
+      err_audio: 'This browser would not play the voice. Try Safari or Chrome, with the phone not on silent.',
       err_mic_denied: 'The microphone is blocked. Allow it from the address bar, then call again.',
       err_mic_missing: 'No microphone found. Plug one in, then call again.',
       err_mic: 'Could not open the microphone.',
@@ -57,6 +58,7 @@
       setup_chip: '配置', ready_chip: '已就绪', fun: '趣味角色',
       err_file: '当前是直接打开的本地文件，没有通话服务。请运行 jev-interaction serve，然后打开 http://localhost:8080。',
       err_mic_insecure: '麦克风只能在 https 或 localhost 下使用，请通过 http://localhost:8080 打开本页。',
+      err_audio: '这个浏览器没能播放语音。请用 Safari 或 Chrome 打开，并确认手机没有静音。',
       err_mic_denied: '麦克风被拦截了。请在地址栏允许使用麦克风，然后再拨一次。',
       err_mic_missing: '没有找到麦克风，接上之后再拨一次。',
       err_mic: '无法打开麦克风。',
@@ -126,7 +128,25 @@
       }
       line.started = true; thinkingUntil = 0; send({ type: 'playback', state: 'playing' });
     })
-      .catch(() => { if (current === line) { current = null; playNext(); } });   // a line that cannot play must not jam the queue
+      .catch((e) => {
+        if (current !== line) return;
+        if (!line.whole) {                                     // this player would not take the stream: fetch the line whole
+          line.whole = true;                                   // and play that (once)
+          fetch(line.el.src).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+            .then((b) => { if (current !== line) return; line.el.src = URL.createObjectURL(b); startCurrent(); })
+            .catch(() => skipLine(line, e));
+          return;
+        }
+        skipLine(line, e);
+      });
+  }
+  function skipLine(line, e) {                                 // a line that cannot play must not jam the queue: its words
+    if (current !== line) return;                              // are shown, the page says why it was not heard
+    report({ audio: (e && e.name) || 'error' });
+    if (line.gen !== capGen) { capGen = line.gen; capSaid = ''; }
+    capSaid = joinLines(capSaid, line.text); agentCaption(capSaid);
+    showNotice(t('err_audio'), true);
+    current = null; playNext();
   }
   function heardSoFar(line) {
     const d = line.el.duration;
