@@ -15,6 +15,8 @@ short_description: Full-duplex voice, turn-taking judged by Jev
 End-to-end interactive instinct, from a cascade you can read.
 Source: https://github.com/native-bond-lab/Jev-Interaction
 
+🏆 Build of the Week at [TypeSafe](https://typesafe.ai).
+
 Calls need keys: add these as Space secrets (`push_hf_space.sh` sets the limits below as variables on the first push):
 
 | secret | value |
