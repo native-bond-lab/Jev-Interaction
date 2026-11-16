@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-11-16
+
+Highlights: a cookbook (stacks, parameters, role policies); listening as one Jev question, so the agent can say an
+item back or count what you asked it to; no clock pauses the agent's line; mid-call hand-over to another persona;
+Scribe v3 Live; a waiting line for public demos. Features marked experimental may change before 1.0.
+
+Breaking: the `hold` / `unhold` events and the page's paused state are gone; `listen` events carry `kind` `due` or
+`fits` instead of five kinds of sound; `Config(hold_after_ms=...)` and `hold_release_ms` are accepted with a warning.
 
 - **Cookbook** (`cookbook/`): recipes from the voice-call engine in our product. Stacks (the setups we recommend for
   each node, and why), parameters (presets, paces, every `Config` field, and what to change for what you hear) and role
@@ -79,12 +86,11 @@
 - The page shows one reply as one caption, however many lines it was written in, and fetches the next line while the
   one before it plays; the words appear as the voice reaches them, and a long
   reply rolls upward, its older lines fading out behind the top edge.
-- A hold is measured on voice over the line only (an earlier cough gave it a head start), lets go when no new words
-  follow, and words said over a line that carries on go into the call's record at once, for the responder and for Jev.
-- The page lists four personas per language: the companion (Kai / 江屿) and three working ones (support, tutor,
+- Words said over a line that carries on go into the call's record at once, for the responder and for Jev.
+- The page lists four personas per language: the companion (now Lyra / 小张) and three working ones (support, tutor,
   interviewer; `tutor_zh` and `interviewer_zh` are new). Vera, Mara, 阿乐 and 小言 stay in the package, unlisted.
 - The ear our product runs on: TEN VAD (`adapters.best_vad()`, the energy detector when `ten-vad` is not installed),
-  the bar raised while the agent's own line plays, a hold only after 400 ms of real voice, and the agent's own words
+  the bar raised while the agent's own line plays, voice counted only after 400 ms of it, and the agent's own words
   coming back through the microphone are dropped. A loud room no longer reads as the user talking without end.
 - The page: the orb in the middle is the call button (click to call, click to hang up) and beats with whoever is
   speaking; personas follow the page language; the simulated call is gone.

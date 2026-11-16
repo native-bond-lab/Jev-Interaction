@@ -600,7 +600,7 @@ authors of Full-Duplex-Bench, LiveKit eot-bench and TurnBench for open benchmark
 runs at scale on real calls with real users, with the same design of decisions, questions, paces and policies, and
 Jev judges every moment. Every benchmark number above was measured on that engine.
 
-**This repository: 0.x, alpha.** The decision layer is the tested part. The browser client is a
+**This repository: 0.2, alpha.** The decision layer is the tested part. The browser client is a
 minimal stand-in; bring your own VAD, recognizer, language model and voice through the protocols in
 [Swappable pieces](#swappable-pieces). Jev is a hosted API (`JEV_API_KEY`).
 

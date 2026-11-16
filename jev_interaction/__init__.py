@@ -13,4 +13,4 @@ from .session import Session
 
 __all__ = ["Session", "Profile", "Config", "Pace", "preset", "PRESETS", "JevClient", "Recorder",
            "Decision", "DECISIONS", "register", "Policy", "SamplePolicy", "ThresholdPolicy", "ArgmaxPolicy"]
-__version__ = "0.1.0"
+__version__ = "0.2.0"
