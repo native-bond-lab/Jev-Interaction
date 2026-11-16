@@ -50,8 +50,8 @@ class Turn(Decision):
 
     async def apply(self, s, answers, ctx):
         kind = P(answers, "kind")
-        if s._far() or (s._offer_elsewhere() and kind and max(kind, key=kind.get) == "elsewhere"):
-            await s._not_for_me("far" if s._far() else "jev")
+        if s._someone_else() or (s._offer_elsewhere() and kind and max(kind, key=kind.get) == "elsewhere"):
+            await s._not_for_me(s._someone_else() or "jev")
             return
         await s._update_pace(P(answers, "pace"))
         wait = P(answers, "wait")                                   # a failed judge: no wait, p(finished) 0, so the
@@ -84,9 +84,9 @@ class Turn(Decision):
         return False
 
     async def answer(self, s, kind: str = "spoke"):
-        """Answer what the user said, unless the voice was someone else's (Config.far_db)."""
-        if s._far():
-            await s._not_for_me("far")
+        """Answer what the user said, unless the voice was someone else's (Config.far_db, the voiceprint)."""
+        if s._someone_else():
+            await s._not_for_me(s._someone_else())
         elif s.judged and s.judged.get("who"):
             await s.hand_over(s.judged["who"])            # they asked for someone else: a word, then the other comes on
         else:

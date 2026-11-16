@@ -99,12 +99,29 @@ the words from the call's record.
 | `judge_turns` / `judge_turn_chars` | 8 / 300 | how much of the call Jev reads at each moment |
 | `safe_words` | ("red",) | stop everything, no judgement involved |
 
+### The caller's voiceprint
+
+On when the session has an embedder (`pip install "jev-interaction[voiceprint]"`; the server and the Docker image pick
+it up by themselves, `JEV_VOICEPRINT=0` turns it off). The print is learned from the words the agent answers, so it needs
+no enrollment step; a clear stranger is not answered and does not stop the agent's line; a doubtful voice is treated as
+if there were no print.
+
+| field | recommended | what it does |
+|---|---|---|
+| `voice_same` | 0.45 | similarity to the caller's print at or above this: the caller |
+| `voice_other` | 0.25 | at or below this: someone else (also a voice in between that is `far_db` quieter, 10 dB when unset) |
+| `voice_verdict_ms` | 1500 | a voice shorter than this is never called someone else |
+| `voice_enroll_ms` | 2000 | an answered utterance at least this long teaches the print |
+
+The print needs two answered utterances before it can call anyone a stranger, so a thin print never shuts the caller
+out. Every verdict is in the call log (`voice`, with the similarity), for tuning the two thresholds on your own calls.
+
 ### Tested knobs (off by default)
 
 | field | tested at | effect | trade-off |
 |---|---|---|---|
 | `not_for_me` | True | a "not said to me" choice in the turn and floor questions; side remarks and background voices are let pass | never offered before the first answer |
-| `far_db` | 10 | a voice this many dB under the caller's answered words is someone else's | a quiet caller can be dropped; pair it with a voiceprint |
+| `far_db` | 10 | a voice this many dB under the caller's answered words is someone else's | a quiet caller can be dropped; pair it with the voiceprint |
 
 ## Symptom → what to change
 
@@ -116,7 +133,7 @@ the words from the call's record.
 | the agent talks over a real interruption | `overlap_ask_ms` down | `yield_p` down, a `floor` threshold lower |
 | too many listening sounds | the manner: "listens mostly in silence" | `listen_gap_s` up, or a `listen` threshold |
 | a listening sound comes out as a whole sentence | `listen_max_words` down (3 was tested) | |
-| answers a voice in the background | `not_for_me=True` | `far_db=10` with a voiceprint |
+| answers a voice in the background | the voiceprint (`[voiceprint]` extra) | `not_for_me=True`, `far_db=10` |
 | "are you there?" too soon, or hangs up too soon | `check_min_quiet_s`, `hangup_min_quiet_s` up | the `quiet` policy to a threshold |
 
 Every decision is logged with the state Jev read and the probabilities it gave, so before changing a number, look at

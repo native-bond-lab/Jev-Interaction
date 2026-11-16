@@ -29,6 +29,8 @@ class Utterance:
     over_ask_at: int = 0             # the floor question is next asked on unclosed words when over_ms reaches this
     hearing: str = ""                # the words so far of the piece the recognizer has not closed yet, when it sends them
     levels: list[float] = field(default_factory=list)   # dB of each voiced frame
+    audio: bytearray = field(default_factory=bytearray)   # the last few seconds of its voiced frames, for the voiceprint
+    who: dict | None = None          # the voiceprint's verdict on it so far (label, sim, ...), None until judged
     # what the agent put in while the user talked on, a bare "mm" as much as a count the user asked for: (segments heard
     # by then, its words, the line the responder was given for it)
     asides: list[tuple[int, str, str]] = field(default_factory=list)

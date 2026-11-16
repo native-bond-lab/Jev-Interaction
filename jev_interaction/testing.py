@@ -70,6 +70,24 @@ class FakeVAD:
         return self.voice
 
 
+class FakeEmbedder:
+    """Speaker embeddings for tests: the voice is the clip's first byte, so callers pick it by filling frames with it.
+    Voices 1 and 2 are near each other (the same person); any other byte is a different person."""
+    ready = True
+
+    def warm(self) -> None:
+        pass
+
+    def embed(self, pcm: bytes):
+        import numpy as np
+        if len(pcm) < 800 * 32:
+            return None
+        v = np.zeros(8, dtype=np.float32)
+        v[0 if pcm[0] in (1, 2) else pcm[0] % 7 + 1] = 1.0
+        v[7] += 0.2 if pcm[0] == 2 else 0.0
+        return v / np.linalg.norm(v)
+
+
 class FakeSynthesizer:
     media_type = "audio/mpeg"
 
@@ -78,7 +96,7 @@ class FakeSynthesizer:
 
 
 def scripted_session(answers: dict | None = None, policies: dict | None = None, profile: Profile | None = None,
-                     send: Callable[[dict], Awaitable[None]] | None = None, **config) -> tuple[Session, list[dict], FakeJudge]:
+                     send: Callable[[dict], Awaitable[None]] | None = None, embedder=None, **config) -> tuple[Session, list[dict], FakeJudge]:
     """A session on fakes, plus the list its events land in and its judge. `config` overrides Config fields."""
     events: list[dict] = []
 
@@ -89,7 +107,8 @@ def scripted_session(answers: dict | None = None, policies: dict | None = None, 
     cfg = Config(policies={**Config().policies, **(policies or {})}, **{"opening_turns": 0, **config})
     judge = FakeJudge(answers)
     s = Session(profile or Profile("Mara Quinn", task="A companion who chats.", manner="Chatty listener."), send=collect,
-                judge=judge, recognizer=FakeRecognizer(), responder=FakeResponder(), vad=FakeVAD(), config=cfg)
+                judge=judge, recognizer=FakeRecognizer(), responder=FakeResponder(), vad=FakeVAD(), config=cfg,
+                embedder=embedder)
     return s, events, judge
 
 

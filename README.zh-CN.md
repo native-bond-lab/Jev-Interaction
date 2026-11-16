@@ -447,6 +447,7 @@ cfg = Config(overlap_ask_ms=1000, listen_max_words=3, not_for_me=True, far_db=10
 | 语音识别 | 流式，按段输出 | `ScribeRealtime`（ElevenLabs）、`ParaformerRealtime`（阿里云百炼） |
 | 大模型 | `lines(messages)`，逐句流式 | `OpenAICompatResponder` |
 | 语音合成 | `audio(text)`，流式字节 | `ElevenLabsTTS`、`CosyVoiceTTS`（阿里云百炼） |
+| 声纹（可选） | `embed(pcm)` 返回单位向量、`ready`、`warm()` | `EcapaEmbedder`（`[voiceprint]` 可选依赖）：通话中自动学会来电者的声音 |
 | 法官 | `ask(questions, state)` | `JevClient` |
 | 策略 | `choose(probs, allowed)`、`draw(p)` | 抽签、阈值、取最大 |
 
@@ -514,5 +515,6 @@ docs/                 架构图和基准图表
 | 会话和服务端 | 可用；测试和网页客户端都在用 |
 | 网页客户端 | 最简实现，用来试用 |
 | 基准测试脚本 | 还没放进本仓库（见路线图） |
+| 对外接口 | 清单见 [docs/stability.md](docs/stability.md)，1.0.0-beta 起冻结 |
 
 采用 Apache-2.0 许可证（见 [LICENSE](LICENSE)）。Jev-Interaction 是基于 Jev 的独立项目，与 TypeSafe 无关联、未获其背书。

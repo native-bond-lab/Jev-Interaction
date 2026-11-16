@@ -67,6 +67,12 @@ class Config:
                                        # benchmarks count 4+ words as a turn). Words, or characters where words have no
                                        # spaces (Chinese, Japanese, Korean)
 
+    # the caller's voiceprint (voiceprint.py), used when the session has an embedder (pip install "jev-interaction[voiceprint]")
+    voice_same: float = 0.45           # cosine to the caller's print at or above this: the caller
+    voice_other: float = 0.25          # at or below this: someone else, not answered (between: as if there were no print)
+    voice_verdict_ms: int = 1500       # a voice shorter than this is never called someone else
+    voice_enroll_ms: int = 2000        # an answered utterance at least this long teaches the print
+
     # tested knobs, off by default (README: "Tested knobs")
     not_for_me: bool = False           # a "not said to me" choice in the turn and floor questions; picked, the words are
                                        # someone else's and are not answered; never offered before the first answer

@@ -33,6 +33,7 @@ from .ledger import Ledger, Turn
 from .profile import Profile
 from .recorder import Recorder
 from .utterance import Utterance, frame_db, is_far
+from .voiceprint import Voiceprint
 
 SYSTEM_TEMPLATE = (__import__("pathlib").Path(__file__).parent / "prompts" / "system.md").read_text(encoding="utf-8")
 
@@ -40,7 +41,8 @@ SYSTEM_TEMPLATE = (__import__("pathlib").Path(__file__).parent / "prompts" / "sy
 class Session:
     def __init__(self, profile: Profile, *, send: Callable[[dict], Awaitable[None]], judge: JevClient, recognizer: Recognizer,
                  responder: Responder, vad: VAD, config: Config | None = None, recorder: Recorder | None = None,
-                 system_template: str = SYSTEM_TEMPLATE, speech: str | None = None, cast: dict[str, Profile] | None = None):
+                 system_template: str = SYSTEM_TEMPLATE, speech: str | None = None, cast: dict[str, Profile] | None = None,
+                 embedder=None):
         self.p, self.cfg, self.send_event = profile, config or Config(), send
         self.judge, self.asr, self.llm, self.vad = judge, recognizer, responder, vad
         self.rec = recorder or Recorder(None)
@@ -70,6 +72,8 @@ class Session:
         self.listen_last = 0.0
         self.reply_gaps: list[float] = []
         self.caller_levels: list[float] = []   # loudness of the utterances answered as the caller's (Config.far_db)
+        self.embedder = embedder                # speaker embeddings for the caller's voiceprint; None: no voiceprint
+        self.voiceprint = Voiceprint(self.cfg.voice_same, self.cfg.voice_other, self.cfg.far_db or 10.0, self.cfg.voice_verdict_ms)
         self.hanging_up = False
         self.busy: set[str] = set()              # decisions with a question out to Jev right now
         self._tasks: set[asyncio.Task] = set()
@@ -126,6 +130,7 @@ class Session:
                 self._open_utterance()
             self.utt.speech_ms += heard
             self.utt.levels.append(frame_db(pcm))
+            self._hear_voice(pcm, heard)
             self.silence_ms = 0
             if self.speaking:
                 self.utt.over_ms += heard         # only voice over the line counts, not what came before it
@@ -240,6 +245,54 @@ class Session:
         """This voice is Config.far_db or more under the caller's answered words: someone farther from the phone."""
         return is_far(self.utt, self.caller_levels, self.cfg.far_db)
 
+    def _someone_else(self) -> str | None:
+        """Why this voice is not the caller's, or None: "far" (Config.far_db) or "voice" (the voiceprint says so)."""
+        if self._far():
+            return "far"
+        if self.utt is not None and (self.utt.who or {}).get("label") == "other":
+            return "voice"
+        return None
+
+    # ------------------------------------------------------------------ voiceprint
+    VOICE_WINDOW = 4000 * 32                 # bytes of 16 kHz PCM16 kept per utterance: the last 4 s are embedded
+    VOICE_EVERY_MS = 1000                    # judged again each time this much more voice has come
+
+    def _hear_voice(self, pcm: bytes, heard: int) -> None:
+        """Keep the utterance's voice and, once there is enough of it, ask the voiceprint who it is (off the loop)."""
+        if self.embedder is None:
+            return
+        u = self.utt
+        u.audio += pcm
+        del u.audio[:-self.VOICE_WINDOW]
+        before = u.speech_ms - heard
+        mark = self.cfg.voice_verdict_ms
+        if before < mark <= u.speech_ms or (u.speech_ms > mark and before // self.VOICE_EVERY_MS != u.speech_ms // self.VOICE_EVERY_MS):
+            self._spawn(self._judge_voice(u))
+
+    async def _embed(self, u: Utterance):
+        if self.embedder is None or not self.embedder.ready:
+            return None
+        return await asyncio.to_thread(self.embedder.embed, bytes(u.audio))
+
+    async def _judge_voice(self, u: Utterance) -> None:
+        emb = await self._embed(u)
+        if emb is None:
+            return
+        who = self.voiceprint.judge(emb, u.level, u.speech_ms)
+        u.who = {**who, "emb": emb}
+        self.rec.write("voice", utt=u.id, **who)
+
+    async def _enroll(self, u: Utterance) -> None:
+        """An answered utterance teaches the caller's print, unless it was judged someone else's."""
+        if self.embedder is None or u.speech_ms < self.cfg.voice_enroll_ms or (u.who or {}).get("label") == "other":
+            return
+        emb = (u.who or {}).get("emb")
+        if emb is None:
+            emb = await self._embed(u)
+        if emb is not None:
+            self.voiceprint.add(u.id, emb, u.level)
+            self.rec.write("voice_enroll", utt=u.id, n=len(self.voiceprint.entries))
+
     async def _not_for_me(self, why: str):
         """The words were someone else's: not answered, not added to the history; the line goes on."""
         text = self.utt.text if self.utt else ""
@@ -345,6 +398,7 @@ class Session:
         if self.utt is not None and event.answers_user:
             if self.utt.level is not None:
                 self.caller_levels = (self.caller_levels + [self.utt.level])[-20:]
+            self._spawn(self._enroll(self.utt))
             text = self.utt.text
             self.ledger.close_open(self.p.short, line)
             await self.send(type="user", text=text, partial=False)

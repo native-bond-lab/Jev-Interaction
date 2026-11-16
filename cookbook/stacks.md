@@ -60,6 +60,17 @@ DASHSCOPE_TTS_VOICE=longxiaochun_v2
 CosyVoice does not perform audio tags, so the model writes plain words. Give each persona its own voice in its profile
 (`voices: {dashscope: longcheng_v2}`), see [role policies](role-policies.md#voice).
 
+## The caller's voiceprint
+
+```bash
+pip install "jev-interaction[voiceprint]"     # speechbrain + torch; CPU is enough, about 100 ms a clip
+```
+
+Recommended wherever people call from a room, a car or a speakerphone: other voices and the agent's own voice coming
+back are not answered. The model (ECAPA-TDNN, about 80 MB) downloads from Hugging Face on first use into
+`JEV_VOICEPRINT_CACHE`. The Docker image includes it (`--build-arg VOICEPRINT=0` leaves it out); `/api/health` says
+`voiceprint: ready`. Thresholds: [parameters](parameters.md#the-callers-voiceprint).
+
 ## Your own language model
 
 Any OpenAI-compatible chat endpoint works: OpenAI, DeepSeek, Qwen, Doubao, GLM, Kimi, OpenRouter, Groq, or a local

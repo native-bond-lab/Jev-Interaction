@@ -29,6 +29,28 @@ jobs:
           curl -sf localhost:8099/api/profiles | grep -q lyra
           curl -sf localhost:8099/ | grep -qi "<html"
 
+  package:                  # build the wheel and sdist, install the wheel in a clean venv, check it from outside the repo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build twine && python -m build && twine check --strict dist/*
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libc++1
+      - name: the wheel, installed alone, has every file it reads
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install "$(ls dist/*.whl)[server]"
+          version=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          count=$(ls jev_interaction/profiles/*.yaml | wc -l)
+          cp scripts/check_wheel.py "$RUNNER_TEMP/" && cd "$RUNNER_TEMP"
+          ./venv/bin/python check_wheel.py "$version" "$count"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
   lint:
     runs-on: ubuntu-latest
     steps:

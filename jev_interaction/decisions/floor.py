@@ -72,7 +72,7 @@ class Floor(Decision):
 
     async def apply(self, s, answers, ctx):
         probs = P(answers, "floor")
-        elsewhere = s._far() or (s._offer_elsewhere() and probs and max(probs, key=probs.get) == "elsewhere")
+        elsewhere = bool(s._someone_else()) or (s._offer_elsewhere() and probs and max(probs, key=probs.get) == "elsewhere")
         if ctx.get("early"):                                # on words not closed yet: only a user who needs the floor
             action = None if elsewhere else self.split_stop(s, probs, self.choose(s, answers, "floor", ctx) or "carry_on", ctx)
             if action == "yield":                           # stops the line now; the rest is decided when the words close
@@ -81,7 +81,7 @@ class Floor(Decision):
             return
         if elsewhere:
             await s.send(type="decision", what="floor", action="carry_on", probs=probs)
-            await s._not_for_me("far" if s._far() else "jev")
+            await s._not_for_me(s._someone_else() or "jev")
             return
         action = self.choose(s, answers, "floor", ctx) or "carry_on"
         if action == "elsewhere":                           # drawn but not the likeliest: not enough to treat as an aside

@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **The caller's voiceprint** (`pip install "jev-interaction[voiceprint]"`), the same check the call engine in our
+  product runs. Each stretch of voice gets a speaker embedding (ECAPA-TDNN on the CPU, `EcapaEmbedder`) and is compared
+  with a print learned from the words the agent answers, with no enrollment step. A clear stranger is not answered and
+  does not stop the agent's line (`not_for_me`, `why: "voice"`); a doubtful voice is treated as before; the print needs
+  two answered utterances before it can call anyone a stranger. Thresholds `voice_same`, `voice_other`,
+  `voice_verdict_ms`, `voice_enroll_ms`; any embedder fits the new `Embedder` protocol (`Session(embedder=...)`). The
+  server and the Docker image use it when installed (`JEV_VOICEPRINT=0` turns it off; `/api/health` shows `voiceprint`).
+- **Packaging checked.** CI builds the wheel and sdist, installs the wheel alone in a clean environment and checks,
+  from outside the repository, that every file the package reads is there (`scripts/check_wheel.py`); the 0.2.0 wheel
+  had shipped without the speech prompts. A tag `v*` publishes to PyPI by trusted publishing (`release.yml`), once the
+  publisher is set up on PyPI.
+- **The public surface is written down** (`docs/stability.md`) and listed in `tests/test_contract.py`: exports, `Session`
+  arguments, `Config` and `Pace` fields, adapter protocols, decision names, and the call protocol's messages, which must
+  match `docs/protocol.md`. From 1.0.0-beta it is frozen.
+
 ## 0.2.0 — 2026-11-16
 
 Highlights: a cookbook (stacks, parameters, role policies); listening as one Jev question, so the agent can say an

@@ -7,7 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends libc++1 && rm -
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY jev_interaction ./jev_interaction
-RUN pip install ".[server]"
+# The caller's voiceprint (speechbrain + CPU-only torch, ~1 GB more image): on by default, as in our product.
+# docker build --build-arg VOICEPRINT=0 . leaves it out; the call then runs without it.
+ARG VOICEPRINT=1
+RUN if [ "$VOICEPRINT" = "1" ]; then pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu \
+      && pip install ".[server,voiceprint]"; else pip install ".[server]"; fi
 EXPOSE 8080
 # /app is the working folder: .env, runs/ and your own profiles/ are read from here (see docker-compose.yml)
 CMD ["sh", "-c", "jev-interaction serve --host 0.0.0.0 --port ${PORT}"]

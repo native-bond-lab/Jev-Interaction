@@ -535,6 +535,7 @@ logged with the state Jev read and the probabilities it returned. What the trace
 | recognizer | streaming, closed segments | `ScribeRealtime` (ElevenLabs), `ParaformerRealtime` (Alibaba Cloud Bailian) |
 | responder | `lines(messages) -> async lines` | `OpenAICompatResponder` |
 | synthesizer | `audio(text) -> async bytes` | `ElevenLabsTTS`, `CosyVoiceTTS` (Alibaba Cloud Bailian) |
+| speaker embedder (optional) | `embed(pcm) -> unit vector`, `ready`, `warm()` | `EcapaEmbedder` (`[voiceprint]` extra): the caller's voiceprint, learned during the call |
 | judge | `ask(questions, state) -> probabilities` | `JevClient` |
 | policy | `choose(probs, allowed)`, `draw(p)` | `SamplePolicy`, `ThresholdPolicy`, `ArgmaxPolicy` |
 
@@ -613,6 +614,7 @@ minimal stand-in; bring your own VAD, recognizer, language model and voice throu
 | session and server | working; used by the tests and the browser client |
 | browser client | minimal, for trying it out |
 | benchmark harnesses | not in this repository yet (see the roadmap) |
+| public surface | written down in [docs/stability.md](docs/stability.md); frozen from 1.0.0-beta |
 
 Licensed under Apache-2.0 (see [LICENSE](LICENSE)). Jev-Interaction is an independent project built on Jev; it is not
 affiliated with or endorsed by TypeSafe.
