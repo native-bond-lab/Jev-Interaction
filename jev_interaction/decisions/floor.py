@@ -89,13 +89,14 @@ class Floor(Decision):
         action = self.split_stop(s, probs, action, ctx)
         await s.send(type="decision", what="floor", action=action, probs=probs)
         if action == "carry_on":
-            if s.speaking:                                  # said over a line that goes on: into the call's record at once
+            if s.speaking and s.utt is not None:            # said over a line that goes on: into the call's record at once
                 s.ledger.said_over(s.utt.text)              # (not a turn to answer); the next sound starts from nothing
                 s.utt, s.judged = None, None
-            else:
-                s.utt.over_ms = 0
+            elif s.utt is not None:
+                s.utt.over_ms = s.utt.over_ask_at = 0
         elif action == "finish_first":
-            s.utt.over_ms = 0
+            if s.utt is not None:
+                s.utt.over_ms = s.utt.over_ask_at = 0
             await s.send(type="finish_line", gen=s.gen)     # the queued lines are dropped; their turn comes after
         elif action == "yield":
             await s._stop_line()                            # the utterance goes on and is answered when it ends

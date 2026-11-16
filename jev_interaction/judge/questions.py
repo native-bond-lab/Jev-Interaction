@@ -15,7 +15,6 @@ agent's short name.
 from __future__ import annotations
 
 WAIT_MS = {"now": 0, "half_second": 500, "two_seconds": 2000, "hold": 4000}
-LISTEN_SOUNDS = ("due", "fits")          # the answers that mean the agent puts something in; what it is, the responder writes
 
 # what a real "no" is: about what the user wants to happen, never about tone or swearing
 REAL_NO = ("they want what is happening to end: they tell the agent to stop, quit or leave them alone, or say they do not "

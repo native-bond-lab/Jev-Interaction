@@ -110,7 +110,8 @@ cast: [concierge]
 When the caller asks for one of them and Jev is sure (the `who` decision, a threshold by default), the agent on the
 line says so in a few words and the other comes on with their own prompt, manner, policies and voice. The call stays
 one record: the new persona reads the other's lines as things heard, never as its own. Naming someone is not asking
-for them. Both files must be in a profiles folder so the id resolves. See
+for them. Both files must be in a profiles folder so the id resolves. In your own code, `Session(cast=...)` lists
+everyone who can be on the line, including the persona the call starts with, so the caller can be handed back. See
 [front_desk.yaml](profiles/front_desk.yaml) and [concierge.yaml](profiles/concierge.yaml).
 
 ## Voice

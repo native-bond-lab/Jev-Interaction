@@ -25,7 +25,7 @@ Homepage = "https://github.com/native-bond-lab/Jev-Interaction"
 include = ["jev_interaction*"]
 
 [tool.setuptools.package-data]
-jev_interaction = ["prompts/*.md", "profiles/*.yaml", "server/web/*", "py.typed"]
+jev_interaction = ["prompts/*.md", "prompts/speech/*.md", "profiles/*.yaml", "server/web/*", "py.typed"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -91,11 +91,11 @@
        What the user has said so far: 0.6 s ago "and then my manager pulls me into a meeting"
        Right now the user has been quiet for 0.4 s.
 
-提问   listen: continuer · feeling · echo · receipt · cue · quiet · answer_due
+提问   listen: due · fits · quiet · answer_due
 
-Jev    feeling 0.46 · quiet 0.27 · continuer 0.22 · answer_due 0.05
+Jev    fits 0.68 · quiet 0.27 · answer_due 0.05
 
-策略   陪伴 → 按概率抽签        →  "feeling"  →  角色说一句 "Oh no."，用户接着讲
+策略   陪伴 → 按概率抽签        →  "fits"  →  大模型写一句 "Oh no."，用户接着讲
        客服 → 阈值 0.8           →  没有选项过线  →  不出声
 ```
 
@@ -178,7 +178,7 @@ docker compose up             # 打开 http://localhost:8080
 | 音色 | ElevenLabs eleven_v4_turbo（音频标签） | CosyVoice v2，每个角色可配音色（纯文字） |
 | 需要的密钥 | Jev、xAI、ElevenLabs | Jev、一个百炼（DashScope）密钥 |
 
-**预设。** `JEV_PRESET=recommended`（默认）是我们产品现在用的时间参数；`tested` 在此基础上打开下文测过的旋钮；`default` 是库的默认值。代码里用 `jev_interaction.preset("recommended", language="zh")`（0.1 的旧名 `production` 仍可用）。每个参数的作用见 [cookbook/parameters.md](cookbook/parameters.md)。
+**预设。** `JEV_PRESET=recommended`（默认）是我们产品现在用的时间参数；`tested` 在此基础上打开下文测过的旋钮；`default` 是库的默认值。代码里用 `jev_interaction.preset("recommended", language="zh")`（旧名 `production` 仍可用）。每个参数的作用见 [cookbook/parameters.md](cookbook/parameters.md)。
 
 **Hugging Face Space。** `HF_TOKEN=... ./scripts/push_hf_space.sh <owner>/<space>` 会把本仓库发布成 Docker Space（[说明](deploy/huggingface/README.md)）；密钥放在 Space 的 secrets 里，首次发布会自动设好 `MAX_CONCURRENT_CALLS`、`MAX_CALL_SECONDS` 和每日总分钟数 `MAX_CALL_MINUTES_PER_DAY`，因为每通电话都按这些密钥计费。
 

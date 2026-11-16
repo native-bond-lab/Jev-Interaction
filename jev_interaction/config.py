@@ -73,12 +73,20 @@ class Config:
     far_db: float | None = None        # a voice this many dB under the caller's answered words is someone else's (tested at 10;
                                        # pair it with a voiceprint, or a quiet caller can be dropped)
 
-    hold_after_ms: int | None = None   # the 0.1 name of overlap_ask_ms (it paused the audio then; now it only asks)
+    # 0.1 names, accepted with a warning: hold_after_ms is now overlap_ask_ms (it paused the audio then; now it only
+    # asks), hold_release_ms has nothing left to do (the line is never paused)
+    hold_after_ms: int | None = None
+    hold_release_ms: int | None = None
 
     def __post_init__(self):
         if self.hold_after_ms is not None:
             warnings.warn("Config(hold_after_ms=...) is now overlap_ask_ms", DeprecationWarning, stacklevel=3)
-            self.overlap_ask_ms, self.hold_after_ms = self.hold_after_ms, None
+            if self.overlap_ask_ms == 400:                  # an overlap_ask_ms given alongside it wins
+                self.overlap_ask_ms = self.hold_after_ms
+            self.hold_after_ms = None
+        if self.hold_release_ms is not None:
+            warnings.warn("Config(hold_release_ms=...) is gone: the line is no longer paused", DeprecationWarning, stacklevel=3)
+            self.hold_release_ms = None
 
     def pace(self, name: str) -> Pace:
         return next(p for p in self.paces if p.name == name)

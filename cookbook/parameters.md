@@ -13,7 +13,7 @@ cfg = preset("recommended", language="en", overlap_ask_ms=600)
 | `tested` | `recommended` plus the knobs measured on the benchmarks (README, "All knobs together") |
 | `default` | the library defaults |
 
-`JEV_PRESET` sets it for the server; `production`, the 0.1 name of `recommended`, still works.
+`JEV_PRESET` sets it for the server; `production`, the earlier name of `recommended`, still works.
 
 Timing is only half of the behaviour. The other half is the persona's manner and policies, which Jev reads at every
 moment: see [role policies](role-policies.md). Change the profile first when the problem is one persona; change these

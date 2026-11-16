@@ -11,6 +11,13 @@
   `.env.example` no longer fills in any provider's model; the setups we recommend are at its bottom, on the setup page
   and in `cookbook/stacks.md`.
 - `Config(hold_after_ms=...)` is still accepted as the old name of `overlap_ask_ms`, with a deprecation warning.
+- Fixed: `turn_reask_ms` marks that are not multiples of a frame (e.g. 500) never fired; a `Config(policies=...)`
+  written without the newer `who` decision broke turn-taking when the persona had a `cast`; after "finish the
+  sentence" the next early floor question needed three times the voice; the speech prompts were missing from the
+  wheel. `Config(hold_release_ms=...)` is accepted (and ignored) with a warning.
+- Lyra and Kai no longer say their lab builds Jev (Jev is TypeSafe's); the lab is behind Jev-Interaction.
+- Known, experimental: a hand-over switches persona when the goodbye is written, not when it has played, so talking
+  over the goodbye does not keep the first persona; byte-range audio requests can synthesize a line twice.
 - The benchmark numbers in the README were measured on the 0.1 behaviour (the line paused after 400 ms of voice, five
   kinds of listening sound); the experimental changes below have not been re-measured yet.
 

@@ -17,7 +17,7 @@ ANSWERS = {
     "wait": {"now": 1.0, "half_second": 0, "two_seconds": 0, "hold": 0},
     "kind": {"reply": 0.9, "sound": 0.1},
     "pace": {"normal": 1.0, "patient": 0, "narrate": 0, "eager": 0},
-    "listen": {"continuer": 0, "feeling": 0, "echo": 0, "quiet": 1.0, "answer_due": 0},
+    "listen": {"due": 0, "fits": 0, "quiet": 1.0, "answer_due": 0},
 }
 
 

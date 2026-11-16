@@ -77,8 +77,9 @@ class Turn(Decision):
         if s.silence_ms >= pace.max_wait_ms + s.cfg.turn_last_ms:
             await self.answer(s, "trailed")   # a long silence after their words: the agent speaks, as a person does
             return True
-        if (j is None or j["drawn"]) and s.silence_ms in s.cfg.turn_reask_ms:   # also words nobody has judged yet (said
-                                                                                # over a line that then ended)
+        crossed = any(s.silence_ms - s.cfg.frame_ms < m <= s.silence_ms for m in s.cfg.turn_reask_ms)   # any mark, not only
+        if (j is None or j["drawn"]) and crossed:   # multiples of a frame; also words nobody has judged yet (said over a
+                                                 # line that then ended)
             s._spawn(self.ask(s, utt_id=s.utt.id))
         return False
 

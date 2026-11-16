@@ -28,7 +28,7 @@ def test_every_field_the_parameters_page_names_exists_and_every_timing_field_is_
                                                                      "patient", "narrate", "eager"}
     named |= {n for row in re.findall(r"^\| `(\w+)` / `(\w+)`", text, re.M) for n in row}
     assert named <= fields, named - fields
-    plumbing = {"language", "frame_ms", "sample_rate", "paces", "start_pace", "opening_turns", "policies", "hold_after_ms"}
+    plumbing = {"language", "frame_ms", "sample_rate", "paces", "start_pace", "opening_turns", "policies", "hold_after_ms", "hold_release_ms"}
     assert fields - plumbing <= named, (fields - plumbing) - named
 
 
@@ -47,3 +47,37 @@ def test_the_old_name_of_the_overlap_field_still_works():
         warnings.simplefilter("always")
         cfg = Config(hold_after_ms=1000)
     assert cfg.overlap_ask_ms == 1000 and cfg.hold_after_ms is None and w
+
+
+def test_the_0_1_hold_release_is_accepted_and_an_explicit_overlap_wins():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        assert Config(hold_release_ms=700).hold_release_ms is None
+        assert Config(hold_after_ms=600, overlap_ask_ms=1000).overlap_ask_ms == 1000
+
+
+async def test_re_ask_marks_that_are_not_multiples_of_a_frame_still_fire():
+    import asyncio
+    import time
+
+    from jev_interaction.decisions.turn import TURN
+    from jev_interaction.testing import scripted_session
+    from jev_interaction.utterance import Utterance
+    s, _, judge = scripted_session({"done": {"finished": 0.2, "continuing": 0.8}}, turn_reask_ms=(500, 1500))
+    s.utt = Utterance(1, time.monotonic(), [(0.0, "and then, um,")])
+    s.judged = {"finished": 0.2, "wait_ms": 0, "reply": 1.0, "drawn": True}
+    for ms in range(200, 1800, s.cfg.frame_ms):        # the quiet grows a frame at a time
+        s.silence_ms = ms
+        await TURN.on_tick(s, time.monotonic())
+        await asyncio.sleep(0.01)
+    assert len(judge.asked) == 2
+
+
+def test_a_0_1_policies_dict_keeps_the_defaults_of_newer_decisions():
+    from jev_interaction.policy import ThresholdPolicy
+    from jev_interaction.session import Session
+    from jev_interaction.testing import FakeJudge, FakeRecognizer, FakeResponder, FakeVAD
+    cfg = Config(policies={"end_of_turn": ThresholdPolicy(default=0.7)})
+    s = Session(Profile("Sam"), send=None, judge=FakeJudge({}), recognizer=FakeRecognizer(), responder=FakeResponder(),
+                vad=FakeVAD(), config=cfg)
+    assert "who" in s.policies and "listen" in s.policies and s.policies["end_of_turn"].default == 0.7

@@ -124,11 +124,11 @@ State   Phone call between the user and Mara.
         What the user has said so far: 0.6 s ago "and then my manager pulls me into a meeting"
         Right now the user has been quiet for 0.4 s.
 
-Asked   listen: continuer · feeling · echo · receipt · cue · quiet · answer_due
+Asked   listen: due · fits · quiet · answer_due
 
-Jev     feeling 0.46 · quiet 0.27 · continuer 0.22 · answer_due 0.05
+Jev     fits 0.68 · quiet 0.27 · answer_due 0.05
 
-Policy  companion → sample        →  "feeling"  →  the agent says "Oh no." and the caller goes on
+Policy  companion → sample        →  "fits"  →  the language model writes "Oh no." and the caller goes on
         support   → threshold 0.8 →  nothing clears the bar  →  silence
 ```
 
@@ -223,7 +223,7 @@ how to write for the voice you pick: voices that perform audio tags (ElevenLabs 
 
 **Presets.** `JEV_PRESET=recommended` (default) is the timing our product runs on today; `tested` adds the knobs
 measured below; `default` is the library defaults. In code: `jev_interaction.preset("recommended", language="en")`
-(`production`, the 0.1 name, still works). What each knob does: [cookbook/parameters.md](cookbook/parameters.md).
+(`production`, its earlier name, still works). What each knob does: [cookbook/parameters.md](cookbook/parameters.md).
 
 **Hugging Face Space.** `HF_TOKEN=... ./scripts/push_hf_space.sh <owner>/<space>` publishes this repository as a Docker
 Space ([card](deploy/huggingface/README.md)); add the keys as Space secrets and the push sets `MAX_CONCURRENT_CALLS`,

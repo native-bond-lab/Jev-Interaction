@@ -174,7 +174,7 @@ async def test_a_long_listening_sound_is_dropped():
 def test_presets_carry_recommended_and_tested_settings():
     from jev_interaction.presets import config
     prod = config("recommended")
-    assert config("production") == prod                                  # the 0.1 name
+    assert config("production") == prod                                  # its earlier name
     assert prod.quiet_marks_s[-1] == 240.0 and prod.overlap_ask_ms == 400 and not prod.not_for_me
     tested = config("tested", language="zh")
     assert tested.overlap_ask_ms == 1000 and tested.not_for_me and tested.far_db == 10.0 and tested.language == "zh"

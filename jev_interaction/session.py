@@ -49,7 +49,8 @@ class Session:
             speech = registry.speech_prompt()
         self._system = lambda p: system_template.format(name=p.name, profile=p.prompt or p.task, speech=speech)
         self.system = self._system(profile)
-        self.policies = {**self.cfg.policies, **profile.policies}   # a task type may bring its own policies
+        self.policies = {**Config().policies, **self.cfg.policies, **profile.policies}   # a task type may bring its own;
+        # a Config(policies=...) written before a decision existed keeps that decision's default
         self.cast = dict(cast or {})             # id -> profile: everyone who can be on this line (Session.hand_over)
         self.decisions: dict[str, Decision] = dict(DECISIONS)       # asked in this order on new words and on each tick
         self.ledger = Ledger()

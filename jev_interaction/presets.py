@@ -10,7 +10,7 @@ tested      recommended plus the knobs measured in the README ("All knobs togeth
 default     the library defaults
 
 Presets are timing only; providers are your choice (cookbook/stacks.md has the setups we recommend).
-`production` is the 0.1 name of `recommended` and still works.
+`production`, its earlier name, still works.
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ PRESETS: dict[str, dict] = {
         "opening_turns": 2,
     },
 }
-PRESETS["production"] = PRESETS["recommended"]     # the 0.1 name
+PRESETS["production"] = PRESETS["recommended"]     # its earlier name
 PRESETS["tested"] = {**PRESETS["recommended"], "overlap_ask_ms": 1000, "listen_max_words": 3, "not_for_me": True, "far_db": 10.0}
 
 
