@@ -69,7 +69,7 @@ async def test_re_ask_marks_that_are_not_multiples_of_a_frame_still_fire():
     for ms in range(200, 1800, s.cfg.frame_ms):        # the quiet grows a frame at a time
         s.silence_ms = ms
         await TURN.on_tick(s, time.monotonic())
-        await asyncio.sleep(0.01)
+        await asyncio.gather(*list(s._tasks))       # each question answered before the quiet grows on
     assert len(judge.asked) == 2
 
 
