@@ -1,6 +1,7 @@
-"""Everything a deployment tunes, in one object. Defaults are the companion-call settings the framework was built on."""
+"""Everything a deployment tunes, in one object. Defaults are the settings the framework was built on."""
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 
 from .policy import Policy, SamplePolicy, ThresholdPolicy
@@ -22,7 +23,7 @@ DEFAULT_PACES = [
     Pace("patient", "the user needs room: upset, venting, thinking aloud, tired; the agent says little and lets them go on",
          max_wait_ms=2500, yield_p=0.35),
     Pace("narrate", "the agent carries the call: a story, an explanation, a memory; the user mostly listens", leads=True),
-    Pace("eager", "the agent presses and holds the floor: a scene of control, a quarrel, heated teasing; short and fast",
+    Pace("eager", "the agent presses and holds the floor: a quarrel, a game, heated teasing; short and fast",
          max_wait_ms=1500, yield_p=0.6, leads=True, cut_in=True),
 ]
 
@@ -70,7 +71,14 @@ class Config:
     not_for_me: bool = False           # a "not said to me" choice in the turn and floor questions; picked, the words are
                                        # someone else's and are not answered; never offered before the first answer
     far_db: float | None = None        # a voice this many dB under the caller's answered words is someone else's (tested at 10;
-                                       # pair it with a voiceprint in production, or a quiet caller can be dropped)
+                                       # pair it with a voiceprint, or a quiet caller can be dropped)
+
+    hold_after_ms: int | None = None   # the 0.1 name of overlap_ask_ms (it paused the audio then; now it only asks)
+
+    def __post_init__(self):
+        if self.hold_after_ms is not None:
+            warnings.warn("Config(hold_after_ms=...) is now overlap_ask_ms", DeprecationWarning, stacklevel=3)
+            self.overlap_ask_ms, self.hold_after_ms = self.hold_after_ms, None
 
     def pace(self, name: str) -> Pace:
         return next(p for p in self.paces if p.name == name)

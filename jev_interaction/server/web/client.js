@@ -81,7 +81,7 @@
     { id: 'interviewer', name: 'Alex', title: 'Interviewer', title_zh: '面试官', accent: '#b9a2ff', language: 'en', group: 'task',
       tagline: 'Keeps to time, lets answers run, moves on firmly', tagline_zh: '把控时间，让你把话说完，再果断往下走' },
     { id: 'lyra', name: 'Lyra Vex', title: 'Companion', title_zh: '陪伴', accent: '#3ee0c8', language: 'en', group: 'task',
-      tagline: 'All four paces, every decision: the call we run in production', tagline_zh: '四种节奏、全部决策：我们线上在跑的那通电话' },
+      tagline: 'All four paces, every decision open', tagline_zh: '四种节奏，所有决策都放开' },
   ];
   let profiles = FALLBACK_PROFILES, selected = null, health = null, funOpen = false;
 

@@ -4,7 +4,7 @@
 
 **由“系统一”掌控的全双工语音交互。**<br>轮次交互是写出来的决策，而不是训练出来的模型。
 
-[English](README.md) · [任务配置](jev_interaction/profiles) · [决策题目](jev_interaction/judge/questions.py)
+[English](README.md) · [Cookbook](cookbook/README.zh-CN.md) · [任务配置](jev_interaction/profiles) · [决策题目](jev_interaction/judge/questions.py)
 
 [![tests](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml/badge.svg)](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml) ![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![license](https://img.shields.io/badge/license-Apache--2.0-blue) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
 <br>
@@ -17,6 +17,9 @@
 <img src="docs/cover.png" alt="Jev-Interaction — 全双工语音，可控的轮次交互" width="100%">
 
 > **基于 [Jev](https://typesafe.ai)。** 这里每一个轮次决策，都是 Jev 在几十毫秒内回答的一道题。没有 Jev，就没有这个项目。
+
+> **来自一个应用实验室。** Native Bond Lab 是一个由消费级语音产品驱动的应用实验室。这里开源的每一部分都来自我们的产品，
+> 已经在规模化的真实通话里稳定运行，不是演示代码。
 
 ![Jev-Interaction 架构](docs/architecture.svg)
 
@@ -103,10 +106,11 @@ Jev    feeling 0.46 · quiet 0.27 · continuer 0.22 · answer_due 0.05
 | 什么时候 | 题目 | 选项 |
 |---|---|---|
 | 用户停顿 | `turn` | 说完了 / 还要说 · 再等多久 · 要回话 / 只是个声音 · 当前节奏 |
-| 用户还在说 | `listen` | 接续的声 · 有感触的反应 · 重复关键词 · 复述刚报的那一样 · 用户交代过要标的地方 · 不出声 · 该回答了 |
+| 用户还在说 | `listen` | 用户在等的东西该给了 · 有个空当适合出一声 · 不出声 · 该回答了（Jev 选时机，大模型写内容） |
 | 两人同时说话 | `floor` | 继续 · 让路 · 说完这句 · 把话头拿回来 · 立刻接话 · 简短回应 |
 | 由角色主导时 | `cut_in` | 插话 · 让对方说完 |
 | 冷场 | `quiet` | 接着说 · 问问还在不在 · 等着 · 挂电话 |
+| 来电者要找别人 | `who` | 不换 · 换人接（实验性；角色配置里列了 `cast` 才有） |
 
 **节奏**（normal、patient、narrate、eager）表示谁掌握话头。各节奏的等待时间按 Jev 给的概率加权混合，不在最大的那个上硬切：Jev 判断"六成普通、四成耐心"时，等待时间就落在两者之间。
 
@@ -160,21 +164,21 @@ cp .env.example .env          # 手动填，或者留空，用页面上的设置
 docker compose up             # 打开 http://localhost:8080
 ```
 
-打开 <http://localhost:8080>。设置一次一个节点：法官（Jev）、大模型、语音识别、音色。粘贴密钥，页面会认出是哪家的；大模型从该服务自己的模型列表里选；每一步测试通过再往下走。设置保存在启动目录下的 `.env`。然后选一个角色，点中间的圆开始通话（再点一次挂断）。人声检测用的是 TEN VAD，和线上一致；戴耳机通话最干净。
+打开 <http://localhost:8080>。设置一次一个节点：法官（Jev）、大模型、语音识别、音色。粘贴密钥，页面会认出是哪家的；大模型从该服务自己的模型列表里选；每一步测试通过再往下走。设置保存在启动目录下的 `.env`。然后选一个角色，点中间的圆开始通话（再点一次挂断）。人声检测用的是 TEN VAD，和我们产品里用的一样；戴耳机通话最干净。
 
 **每个节点都由你选。** 大模型是任意兼容 OpenAI 接口的服务（xAI、OpenAI、DeepSeek、通义千问、豆包、智谱 GLM、Kimi、OpenRouter、Groq、本地 Ollama 或 vLLM）；识别和音色来自服务商注册表，第三方包也能注册自己的（[docs/adapters.md](docs/adapters.md)）。大模型会按你选的音色调整写法：能演绎音频标签的音色（ElevenLabs v3/v4）用带 `[laughs]`、`[whispers]` 的写法，其他音色只写说出口的话（`jev_interaction/prompts/speech/`）。
 
-**参考配置**，在设置页面和 `.env.example` 末尾提供，只有你选了才会用：
+**推荐配置**，在设置页面和 `.env.example` 末尾提供，只有你选了才会用（各自适合什么、怎么换掉其中一个节点：[cookbook/stacks.md](cookbook/stacks.md)）：
 
-| | 我们生产环境在用的 | 中国大陆可用的 |
+| | 推荐（海外），在我们产品的规模化通话里验证过 | 推荐（中国大陆） |
 |---|---|---|
 | 法官 | Jev | Jev（如果访问 `api.typesafe.ai` 慢，给这个进程设 `HTTPS_PROXY`） |
 | 大模型 | grok-4.3，关闭思考，温度 0.7 | 通过百炼调用 qwen-plus |
-| 语音识别 | ElevenLabs Scribe v2 realtime turbo | Paraformer realtime v2 |
+| 语音识别 | ElevenLabs Scribe v3 Live | Paraformer realtime v2 |
 | 音色 | ElevenLabs eleven_v4_turbo（音频标签） | CosyVoice v2，每个角色可配音色（纯文字） |
 | 需要的密钥 | Jev、xAI、ElevenLabs | Jev、一个百炼（DashScope）密钥 |
 
-**预设。** `JEV_PRESET=production`（默认）是生产引擎现在的时间参数；`tested` 在此基础上打开下文测过的旋钮；`default` 是库的默认值。代码里用 `jev_interaction.preset("production", language="zh")`。
+**预设。** `JEV_PRESET=recommended`（默认）是我们产品现在用的时间参数；`tested` 在此基础上打开下文测过的旋钮；`default` 是库的默认值。代码里用 `jev_interaction.preset("recommended", language="zh")`（0.1 的旧名 `production` 仍可用）。每个参数的作用见 [cookbook/parameters.md](cookbook/parameters.md)。
 
 **Hugging Face Space。** `HF_TOKEN=... ./scripts/push_hf_space.sh <owner>/<space>` 会把本仓库发布成 Docker Space（[说明](deploy/huggingface/README.md)）；密钥放在 Space 的 secrets 里，首次发布会自动设好 `MAX_CONCURRENT_CALLS`、`MAX_CALL_SECONDS` 和每日总分钟数 `MAX_CALL_MINUTES_PER_DAY`，因为每通电话都按这些密钥计费。
 
@@ -202,7 +206,7 @@ await session.on_audio(frame)          # 每 200 毫秒一帧 16 kHz PCM16
 await session.on_client({"type": "playback", "state": "idle"})
 ```
 
-发给客户端的事件：`line`、`listen`、`hold`、`unhold`、`stop`、`finish_line`、`hangup`，以及用于展示的 `user`、`pace`、`decision`。客户端发回：`playback` 和 `heard`。
+发给客户端的事件：`line`、`listen`、`stop`、`finish_line`、`persona`、`hangup`，以及用于展示的 `user`、`pace`、`decision`。客户端发回：`playback` 和 `heard`。
 
 ### 新增一个决策
 
@@ -254,19 +258,19 @@ config = Config(policies={**Config().policies, "laugh": SamplePolicy()})
 
 ```python
 from jev_interaction import Config
-cfg = Config(hold_after_ms=1000, listen_max_words=3, not_for_me=True, far_db=10)
+cfg = Config(overlap_ask_ms=1000, listen_max_words=3, not_for_me=True, far_db=10)
 ```
 
 | 字段 | 作用 | 量出来的效果 |
 |---|---|---|
-| `hold_after_ms=1000` | 用户声音持续 1 秒才暂停角色的播放（默认 0.4 秒） | 一声"嗯嗯"不再打断角色（停下延迟 0.36 秒 → 3.3 秒）；真插话时晚停约 0.6 秒 |
+| `overlap_ask_ms=1000` | 用户声音压着角色持续 1 秒才问让路题（默认 0.4 秒；测的时候叫 `hold_after_ms`，是暂停播放） | 一声"嗯嗯"不再打断角色（停下延迟 0.36 秒 → 3.3 秒）；真插话时晚停约 0.6 秒 |
 | `listen_max_words=3` | 超过这么多词的应声不出（默认 6） | 停顿被算作抢话的情况变少（Full-Duplex-Bench 把 4 个词以上算作接话） |
 | `not_for_me=True` | 轮次题和让路题加一个"不是对我说的"选项，通话第一句不提供 | 对旁人说的话、背景人声会被略过，不再回答 |
-| `far_db=10` | 比来电者回答过的话低这么多 dB 的声音，当成别人的 | 背景人声"接着说" 0.28 → 0.56；生产环境要和声纹一起用，否则说话轻的来电者可能被忽略 |
+| `far_db=10` | 比来电者回答过的话低这么多 dB 的声音，当成别人的 | 背景人声"接着说" 0.28 → 0.56；要和声纹一起用，否则说话轻的来电者可能被忽略 |
 
 ## 初步结果
 
-测的是这个框架所抽出的那套陪伴电话引擎（同一个决策层，识别和合成用 ElevenLabs），数据是 [Full-Duplex-Bench](https://github.com/DanielLin94144/Full-Duplex-Bench) v1.0，每类用固定随机种子抽 50 条。停顿两类用 gpt-4o-mini 当语言模型，插话用 grok-4.3。
+测的是我们产品里的语音通话引擎，按 0.1 版本的做法（同一个决策层，识别和合成用 ElevenLabs；0.1 之后实验性的应声和打断改动还没重测），数据是 [Full-Duplex-Bench](https://github.com/DanielLin94144/Full-Duplex-Bench) v1.0，每类用固定随机种子抽 50 条。停顿两类用 gpt-4o-mini 当语言模型，插话用 grok-4.3。
 
 | | 本引擎（样本数） | GPT-Realtime | Gemini 3.1 Flash Live（high / minimal） |
 |---|---|---|---|
@@ -455,7 +459,7 @@ jev_interaction/
   policy.py           抽签 · 阈值 · 取最大
   profile.py          任务配置
   config.py           节奏、时间参数、默认策略
-  presets.py          production · tested · default 预设
+  presets.py          recommended · tested · default 预设
   ledger.py           通话记录
   recorder.py         每个事件一行 JSON，供重放
   adapters/           VAD · 识别 · 大模型 · 合成；registry.py 是每个节点的服务商表
@@ -467,6 +471,7 @@ jev_interaction/
   cli.py              `jev-interaction serve` / `init` / `replay`
 scripts/setup.sh      一键本地部署（--china 走国内 PyPI 镜像）
 deploy/huggingface/   Hugging Face Space 说明；scripts/push_hf_space.sh 负责发布
+cookbook/             配置 · 参数 · 角色 policy：推荐做法，不是默认值
 docs/                 架构图和基准图表
 ```
 
@@ -474,7 +479,7 @@ docs/                 架构图和基准图表
 
 - 一句话写到句号就先送去合成，不等换行。
 - 在现有接口后面接第二路识别。
-- 在生产引擎里打开测过的旋钮（本仓库里已是 `Config` 选项），10 dB 规则要和声纹一起用（说话轻的真实来电者不能被当成别人）。
+- 在我们产品的引擎里打开测过的旋钮（本仓库里已是 `Config` 选项），10 dB 规则要和声纹一起用（说话轻的真实来电者不能被当成别人）。
 - v1.5 用固定的干净版本回答重新评（两次用同一个回答）。
 - 加一个小的声音轮次模型，作为 Jev 状态里的一条线索，用在纯节奏的基准上（eot-bench、TurnBench 说完了）。
 - TurnBench 跑完整 dev 集（38 段）定阈值，再提交隐藏测试集；更大规模的任务配置评测。
@@ -496,13 +501,13 @@ docs/                 架构图和基准图表
 
 ## 状态
 
-**已在生产环境运行。** 这个框架抽取自一套语音通话引擎，那套引擎已经在一家消费级应用公司的产品里稳定运行，面对真实用户、真实通话：决策、题目、节奏和策略的设计都一样，每个时刻都由 Jev 判断。上面所有的基准数字都是在那套引擎上测的。
+**规模化运行。** Native Bond Lab 是一个由消费级语音产品驱动的应用实验室。产品里的语音通话引擎面对真实用户、真实通话规模化运行，决策、题目、节奏和策略的设计都一样，每个时刻都由 Jev 判断。上面所有的基准数字都是在那套引擎上测的。
 
-**本仓库：0.1，alpha。** 决策层是测过的部分。网页客户端只是最简单的示例实现；VAD、语音识别、大模型和声音都可以按[可替换的部件](#可替换的部件)里的接口换成你自己的。Jev 是托管 API（`JEV_API_KEY`）。
+**本仓库：0.x，alpha。** 决策层是测过的部分。网页客户端只是最简单的示例实现；VAD、语音识别、大模型和声音都可以按[可替换的部件](#可替换的部件)里的接口换成你自己的。Jev 是托管 API（`JEV_API_KEY`）。
 
 | | |
 |---|---|
-| 决策层（题目、状态、策略、节奏、任务配置） | 测过，上游已在生产环境运行 |
+| 决策层（题目、状态、策略、节奏、任务配置） | 测过，已在我们产品里规模化运行 |
 | 会话和服务端 | 可用；测试和网页客户端都在用 |
 | 网页客户端 | 最简实现，用来试用 |
 | 基准测试脚本 | 还没放进本仓库（见路线图） |

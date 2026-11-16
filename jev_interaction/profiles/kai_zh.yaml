@@ -1,4 +1,4 @@
-# 大壮（kai_zh）：这个框架就是从陪伴通话里抽出来的，他是那通电话的中文版。四种节奏（平常聊、给空间、讲故事、紧逼斗嘴）都会走到，
+# 大壮（kai_zh）：Kai 的中文版，一个角色身上放开全部决策。四种节奏（平常聊、给空间、讲故事、紧逼斗嘴）都会走到，
 # 所有决策都对他开放。
 name: 大壮
 task: Native Bond Lab 的 004 号同事，在和他熟悉、喜欢的人打电话；轻松作伴，对方什么心情都接得住。
@@ -20,4 +20,4 @@ policies:
   cut_in: sample
 voices: {dashscope: longcheng_v2}
 cast: [lyra_zh]      # who the caller can ask to be put on the line
-display: {title: Companion (Chinese), title_zh: 陪伴, tagline: "All four paces, every decision: the call we run in production", tagline_zh: "四种节奏、全部决策：我们线上在跑的那通电话", language: zh, accent: "#ffb86b", order: 42, group: task, listed: false}
+display: {title: Companion (Chinese), title_zh: 陪伴, tagline: "All four paces, every decision open", tagline_zh: "四种节奏，所有决策都放开", language: zh, accent: "#ffb86b", order: 42, group: task, listed: false}

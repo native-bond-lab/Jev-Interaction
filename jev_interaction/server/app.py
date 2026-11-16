@@ -7,7 +7,7 @@ WebSocket /ws: first message {"type": "start", "profile": "companion", "language
 16 kHz frames and JSON client messages; events come back as JSON. The protocol is in docs/protocol.md.
 
 Providers come from the environment: ASR_PROVIDER / TTS_PROVIDER = elevenlabs (default) or dashscope (mainland China),
-any OpenAI-compatible LLM (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL), and JEV_PRESET = production (default) | tested | default.
+any OpenAI-compatible LLM (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL), and JEV_PRESET = recommended (default) | tested | default.
 """
 from __future__ import annotations
 
@@ -125,7 +125,7 @@ def profiles():
 def health():
     missing = registry.missing_settings()
     llm = f"{os.getenv('LLM_MODEL', '')} @ {os.getenv('LLM_BASE_URL', '')}" if os.getenv("LLM_BASE_URL") else None
-    return {"ready": not missing, "missing": missing, "preset": os.getenv("JEV_PRESET", "production"),
+    return {"ready": not missing, "missing": missing, "preset": os.getenv("JEV_PRESET", "recommended"),
             "vad": VAD_NAME,
             "providers": {"judge": os.getenv("JEV_MODEL", "jev-latest"), "llm": llm, "asr": registry.selected("asr"),
                           "tts": registry.selected("tts")}, "speech": registry.speech_style()}
@@ -278,7 +278,7 @@ async def call(ws: WebSocket):
             return
     profile = Profile.load(path)
     language = start.get("language") or (profile.extra.get("display") or {}).get("language", "en")
-    cfg = preset_config(os.getenv("JEV_PRESET", "production"), language=language)
+    cfg = preset_config(os.getenv("JEV_PRESET", "recommended"), language=language)
     synth = make_synthesizer(profile, pid)
     # who else can be put on this line (the persona's `cast`): the caller asks, Jev hears it, the session hands over
     cast = {pid: profile, **{c: Profile.load(paths.profiles()[c]) for c in profile.extra.get("cast") or [] if c in paths.profiles()}}

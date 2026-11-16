@@ -4,7 +4,7 @@
 
 **System-One-controlled full-duplex voice interaction.**<br>Turn-taking as decisions you write — not a model you train.
 
-[中文](README.zh-CN.md) · [Profiles](jev_interaction/profiles) · [Decisions](jev_interaction/judge/questions.py)
+[中文](README.zh-CN.md) · [Cookbook](cookbook) · [Profiles](jev_interaction/profiles) · [Decisions](jev_interaction/judge/questions.py)
 
 [![tests](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml/badge.svg)](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml) ![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![license](https://img.shields.io/badge/license-Apache--2.0-blue) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
 <br>
@@ -18,6 +18,9 @@
 
 > **Built on [Jev](https://typesafe.ai).** Every turn-taking decision here is a question Jev answers in tens of
 > milliseconds. Without it, none of this would work.
+
+> **From an applied lab.** Native Bond Lab is the applied research lab behind a consumer voice product. Everything in
+> this repository comes out of that product and runs at scale on real calls with real users, not in a demo.
 
 ![Jev-Interaction architecture](docs/architecture.svg)
 
@@ -136,10 +139,11 @@ The same question, the same kind of answer; the profile decides how it is read.
 | when | question | choices |
 |---|---|---|
 | the user pauses | `turn` | finished / continuing · how long to wait · reply / just a sound · which pace |
-| the user talks on | `listen` | continuer · feeling · echo · a piece said back · a mark the user asked for · quiet · an answer is due |
+| the user talks on | `listen` | something they are waiting for is due · a spot that fits a sound · quiet · an answer is due (Jev picks the moment, the language model the words) |
 | both talk at once | `floor` | carry on · yield · finish the sentence · take the floor back · react at once · short aside |
 | the agent leads | `cut_in` | cut in · let them finish |
 | the line is quiet | `quiet` | go on · check on them · wait · hang up |
+| the caller asks for someone else | `who` | stay · put them on (experimental; personas that list a `cast`) |
 
 **Paces** (normal, patient, narrate, eager) say who holds the floor. Their timing is blended by Jev's probabilities
 instead of switching at the most likely one, so a call that is "60% normal, 40% patient" waits in between.
@@ -198,7 +202,7 @@ docker compose up             # http://localhost:8080
 Open <http://localhost:8080>. Setup goes one node at a time: the judge (Jev), a language model, speech recognition, a
 voice. Paste a key and the page recognises whose it is; pick the language model from the endpoint's own model list; test
 each step before moving on. Settings are saved to `.env` in the folder you started from. Then pick a persona and click
-the orb to call (click it again to hang up). The voice detector is TEN VAD, the one production runs on; headphones still give the cleanest call.
+the orb to call (click it again to hang up). The voice detector is TEN VAD, the one our product runs on; headphones still give the cleanest call.
 
 **Every node is your choice.** The language model is any OpenAI-compatible endpoint (xAI, OpenAI, DeepSeek, Qwen,
 Doubao, GLM, Kimi, OpenRouter, Groq, a local Ollama or vLLM server); recognition and voice come from the provider
@@ -206,18 +210,20 @@ registry, and a third-party package can add its own ([docs/adapters.md](docs/ada
 how to write for the voice you pick: voices that perform audio tags (ElevenLabs v3/v4) get a style that uses
 `[laughs]`, `[whispers]`; others get plain spoken words (`jev_interaction/prompts/speech/`).
 
-**Reference setups**, offered on the setup page and at the bottom of `.env.example`, never applied unless you choose them:
+**Recommended setups**, offered on the setup page and at the bottom of `.env.example`, never applied unless you choose them
+(what each is good for, and how to swap one node: [cookbook/stacks.md](cookbook/stacks.md)):
 
-| | what we run in production | a mainland China setup |
+| | recommended (global), proven at scale in our product | recommended (mainland China) |
 |---|---|---|
 | judge | Jev | Jev (set `HTTPS_PROXY` if `api.typesafe.ai` is slow from your network) |
 | language model | grok-4.3, reasoning off, temperature 0.7 | qwen-plus via DashScope |
-| recognition | ElevenLabs Scribe v2 realtime turbo | Paraformer realtime v2 |
+| recognition | ElevenLabs Scribe v3 Live | Paraformer realtime v2 |
 | voice | ElevenLabs eleven_v4_turbo (audio tags) | CosyVoice v2, per-persona voices (plain words) |
 | keys | Jev, xAI, ElevenLabs | Jev, one DashScope key |
 
-**Presets.** `JEV_PRESET=production` (default) is the timing the production engine runs today; `tested` adds the knobs
-measured below; `default` is the library defaults. In code: `jev_interaction.preset("production", language="en")`.
+**Presets.** `JEV_PRESET=recommended` (default) is the timing our product runs on today; `tested` adds the knobs
+measured below; `default` is the library defaults. In code: `jev_interaction.preset("recommended", language="en")`
+(`production`, the 0.1 name, still works). What each knob does: [cookbook/parameters.md](cookbook/parameters.md).
 
 **Hugging Face Space.** `HF_TOKEN=... ./scripts/push_hf_space.sh <owner>/<space>` publishes this repository as a Docker
 Space ([card](deploy/huggingface/README.md)); add the keys as Space secrets and the push sets `MAX_CONCURRENT_CALLS`,
@@ -247,7 +253,7 @@ await session.on_audio(frame)          # 200 ms of 16 kHz PCM16, as it arrives
 await session.on_client({"type": "playback", "state": "idle"})
 ```
 
-Events to the client: `line`, `listen`, `hold`, `unhold`, `stop`, `finish_line`, `hangup`, plus `user`, `pace` and
+Events to the client: `line`, `listen`, `stop`, `finish_line`, `persona`, `hangup`, plus `user`, `pace` and
 `decision` for display. Client messages: `playback` and `heard`.
 
 ### Add a decision
@@ -303,20 +309,20 @@ The knobs measured in "All knobs together" below, as `Config` fields. Off by def
 
 ```python
 from jev_interaction import Config
-cfg = Config(hold_after_ms=1000, listen_max_words=3, not_for_me=True, far_db=10)
+cfg = Config(overlap_ask_ms=1000, listen_max_words=3, not_for_me=True, far_db=10)
 ```
 
 | field | what it does | measured effect |
 |---|---|---|
-| `hold_after_ms=1000` | pause the agent's audio only after 1 s of voice over it (default 400) | an "mm-hm" no longer stops the line (stop latency 0.36 s → 3.3 s); a real interruption stops about 0.6 s later |
+| `overlap_ask_ms=1000` | ask the floor question only after 1 s of voice over the agent (default 400; measured as `hold_after_ms`, which paused the audio) | an "mm-hm" no longer stops the line (stop latency 0.36 s → 3.3 s); a real interruption stops about 0.6 s later |
 | `listen_max_words=3` | drop listening sounds longer than this (default 6) | fewer pauses counted as taking the turn (Full-Duplex-Bench counts 4+ words as a turn) |
 | `not_for_me=True` | a "not said to me" choice in the turn and floor questions, never before the first answer | side remarks and background voices let pass instead of answered |
-| `far_db=10` | a voice this many dB under the caller's answered words is someone else's | background speech "resume" 0.28 → 0.56; pair it with a voiceprint in production, or a quiet caller can be dropped |
+| `far_db=10` | a voice this many dB under the caller's answered words is someone else's | background speech "resume" 0.28 → 0.56; pair it with a voiceprint, or a quiet caller can be dropped |
 
 ## Early results
 
-Measured on the companion-call engine this framework was extracted from (same decision layer, ElevenLabs Scribe and
-TTS) on [Full-Duplex-Bench](https://github.com/DanielLin94144/Full-Duplex-Bench) v1.0: 50 samples per set, drawn with a
+Measured on the voice-call engine in our product with the 0.1 behaviour (same decision layer, ElevenLabs Scribe and TTS;
+the experimental listening and overlap changes since 0.1 are not re-measured yet) on [Full-Duplex-Bench](https://github.com/DanielLin94144/Full-Duplex-Bench) v1.0: 50 samples per set, drawn with a
 fixed seed. The pause sets used gpt-4o-mini as the language model and the interruption set grok-4.3.
 
 | | this engine (n) | GPT-Realtime | Gemini 3.1 Flash Live (high / minimal) |
@@ -541,7 +547,7 @@ jev_interaction/
   policy.py           sample · threshold · argmax
   profile.py          task profiles
   config.py           paces, timings, default policies
-  presets.py          production · tested · default
+  presets.py          recommended · tested · default
   ledger.py           the call's history, for both readers
   recorder.py         one JSON line per event, for replay
   adapters/           VAD · recognizer · responder · synthesizer; registry.py lists the providers per node
@@ -553,6 +559,7 @@ jev_interaction/
   cli.py              `jev-interaction serve` / `init` / `replay`
 scripts/setup.sh      one-click local setup (--china: domestic PyPI mirror)
 deploy/huggingface/   Hugging Face Space card; scripts/push_hf_space.sh publishes it
+cookbook/             stacks · parameters · role policies: recipes, not defaults
 docs/                 architecture diagram and benchmark charts
 ```
 
@@ -560,7 +567,7 @@ docs/                 architecture diagram and benchmark charts
 
 - Send the first sentence to synthesis as soon as it ends, not at the line break.
 - A second recognizer behind the existing protocols.
-- Turn the tested knobs on in the production engine (here they are `Config` options), with a voiceprint beside the 10 dB rule (a quiet real caller must not become "someone else").
+- Turn the tested knobs on in our product's engine (here they are `Config` options), with a voiceprint beside the 10 dB rule (a quiet real caller must not become "someone else").
 - Judge v1.5 against a fixed clean answer (same reply in both runs).
 - A small audio turn model as one more line in Jev's state, for the pure-timing benchmarks (eot-bench, TurnBench EOT).
 - Full TurnBench dev (38 conversations) for thresholds, then the hidden test set; larger task-profile runs.
@@ -589,17 +596,17 @@ authors of Full-Duplex-Bench, LiveKit eot-bench and TurnBench for open benchmark
 
 ## Status
 
-**In production.** The voice-call engine this framework was extracted from runs stably in the product of a consumer
-application company, on real calls with real users: the same design of decisions, questions, paces and policies, with
-Jev judging every moment. Every benchmark number above was measured on that engine.
+**At scale.** Native Bond Lab is the applied lab behind a consumer voice product. The voice-call engine in that product
+runs at scale on real calls with real users, with the same design of decisions, questions, paces and policies, and
+Jev judges every moment. Every benchmark number above was measured on that engine.
 
-**This repository: 0.1, alpha.** The decision layer is the tested part. The browser client is a
+**This repository: 0.x, alpha.** The decision layer is the tested part. The browser client is a
 minimal stand-in; bring your own VAD, recognizer, language model and voice through the protocols in
 [Swappable pieces](#swappable-pieces). Jev is a hosted API (`JEV_API_KEY`).
 
 | | |
 |---|---|
-| decision layer (questions, state, policies, paces, profiles) | tested, in production upstream |
+| decision layer (questions, state, policies, paces, profiles) | tested, running at scale in our product |
 | session and server | working; used by the tests and the browser client |
 | browser client | minimal, for trying it out |
 | benchmark harnesses | not in this repository yet (see the roadmap) |

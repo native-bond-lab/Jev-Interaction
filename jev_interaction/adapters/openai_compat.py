@@ -1,7 +1,7 @@
 """Any OpenAI-compatible chat endpoint as the responder (xAI grok, OpenAI, vLLM, Ollama...). Lines are yielded as soon as
 a newline arrives, so synthesis of the first line starts while the model is still writing the rest.
 
-Reasoning is switched off by default where the provider has a switch, as the production engine does: a call cannot wait
+Reasoning is switched off by default where the provider has a switch, as our product's engine does: a call cannot wait
 for a model to think (grok-4.3 with reasoning on took ~8 s to its first word; off, well under a second). LLM_EXTRA_BODY
 (a JSON object) is merged into every request to override this or to pass anything else."""
 from __future__ import annotations

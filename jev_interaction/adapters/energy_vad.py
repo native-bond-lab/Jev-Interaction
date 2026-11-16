@@ -5,7 +5,7 @@ import numpy as np
 
 class EnergyVAD:
     """A frame is voice when enough 20 ms sub-frames rise well above the running noise floor. Good enough with headphones
-    in a quiet room, and what `best_vad()` falls back to; TenVAD (ten_vad.py) is the detector production runs on."""
+    in a quiet room, and what `best_vad()` falls back to; TenVAD (ten_vad.py) is the detector our product runs on."""
 
     def __init__(self, sample_rate: int = 16000, ratio: float = 3.0, floor: float = 0.012, min_voiced_ms: int = 60,
                  play_gain: float = 2.5):

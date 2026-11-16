@@ -2,12 +2,24 @@
 
 ## Unreleased
 
+- **Cookbook** (`cookbook/`): recipes from the voice-call engine in our product. Stacks (the setups we recommend for
+  each node, and why), parameters (presets, paces, every `Config` field, and what to change for what you hear) and role
+  policies (writing the manner Jev reads, choosing policies, listening with content, handing over). Example profiles: a
+  hotel front desk and concierge that hand over to each other, a bakery order line that says each item back. Tests keep
+  the cookbook in step with the code.
+- The preset `production` is now `recommended` (the old name still works). Provider choices are recommendations only:
+  `.env.example` no longer fills in any provider's model; the setups we recommend are at its bottom, on the setup page
+  and in `cookbook/stacks.md`.
+- `Config(hold_after_ms=...)` is still accepted as the old name of `overlap_ask_ms`, with a deprecation warning.
+- The benchmark numbers in the README were measured on the 0.1 behaviour (the line paused after 400 ms of voice, five
+  kinds of listening sound); the experimental changes below have not been re-measured yet.
+
 - Someone else can be put on the line mid-call (experimental). A persona lists who the caller may ask for (`cast:
   [vera]`); the question `who` then rides in the turn request, and when Jev is sure the caller is asking for one of
   them, the agent on the line says so in a few words and the other comes on: their prompt, manner, policies and voice
   (`persona` event; `Session.hand_over`, `Session(cast=...)`). The call stays one record that says who said what: the
   new agent reads the other's lines as things heard, "(Lyra: ...)", never as its own turns. Naming someone is not
-  asking for them. Lyra and Vera list each other.
+  asking for them. Lyra and Kai list each other.
 - Listening, one question (experimental). Everything the agent puts in while the user has the floor is one thing,
   a bare "mm" as much as a count the user asked for ("say a number every time I mention the cat") or an item of a list
   said back. Jev is asked only about the moment: `due` (the user is waiting for it and would miss it), `fits` (a spot
@@ -30,8 +42,8 @@
   `hold_release_ms` and the page's paused state are gone.
 - Words said over a line that ended before Jev judged them are asked about as the quiet grows, like any pause, rather
   than answered by the clock.
-- The companion on the page is now Lyra Vex (`lyra`, `lyra_zh`): a night-shift keeper of a reading room between
-  worlds, with a life of her own to tell stories from, the same four paces and every decision open. Kai and 江屿 stay
+- The companion on the page is now Lyra Vex (`lyra`, `lyra_zh`): an AI colleague at Native Bond Lab with things she
+  cares about, the same four paces and every decision open. Kai and 江屿 stay
   in the package, unlisted.
 - A reply that fails (the provider refuses, times out, drops the stream) or comes back with nothing a voice can say
   is asked for once more, so the user is not met with silence; a second miss is reported to the page
@@ -64,15 +76,14 @@
   follow, and words said over a line that carries on go into the call's record at once, for the responder and for Jev.
 - The page lists four personas per language: the companion (Kai / 江屿) and three working ones (support, tutor,
   interviewer; `tutor_zh` and `interviewer_zh` are new). Vera, Mara, 阿乐 and 小言 stay in the package, unlisted.
-- The ear production runs on: TEN VAD (`adapters.best_vad()`, the energy detector when `ten-vad` is not installed),
+- The ear our product runs on: TEN VAD (`adapters.best_vad()`, the energy detector when `ten-vad` is not installed),
   the bar raised while the agent's own line plays, a hold only after 400 ms of real voice, and the agent's own words
   coming back through the microphone are dropped. A loud room no longer reads as the user talking without end.
 - The page: the orb in the middle is the call button (click to call, click to hang up) and beats with whoever is
   speaking; personas follow the page language; the simulated call is gone.
-- Personas `kai` and `kai_zh`: the companion call this framework was extracted from, moving through all four paces with
-  every decision open.
+- Personas `kai` and `kai_zh`: one character moving through all four paces with every decision open.
 - Vendor-neutral setup. No recognition or voice provider is chosen for you; the language model needs an endpoint and a
-  model you pick. What we run in production is a reference setup you can copy from, not the default. A pasted key is
+  model you pick. The setup we recommend is one you can copy from, not the default. A pasted key is
   recognised by its shape; the endpoint's own model list is offered. `.env.china.example` is folded into `.env.example`
   as a commented reference.
 - The language model is told how to write for the chosen voice (`prompts/speech/`: audio tags for ElevenLabs v3/v4,
@@ -118,7 +129,7 @@ decisions that Jev answers in tens of milliseconds, on a cascade of any recogniz
 
 ### Measured
 
-On the production engine this framework was extracted from, zero-shot, across Full-Duplex-Bench v1.0 / v1.5, LiveKit
+On the voice-call engine in our product, zero-shot, across Full-Duplex-Bench v1.0 / v1.5, LiveKit
 eot-bench and TurnBench (16 metrics): first on 3, top three on 8 with the tested knobs. Leads on real-conversation
 pauses, relevance after an interruption, talking through an "mm-hm" and letting background speech pass; trails on
 pure audio timing and on speed after an interruption. Details and the reason behind each number are in the README.

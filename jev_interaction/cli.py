@@ -1,6 +1,6 @@
 """The `jev-interaction` command.
 
-    jev-interaction serve [--host 127.0.0.1] [--port 8080] [--preset production] [--home .]
+    jev-interaction serve [--host 127.0.0.1] [--port 8080] [--preset recommended] [--home .]
     jev-interaction init [--reference global|china]   write .env (empty, or a reference setup's values) and profiles/
     jev-interaction replay runs/*.jsonl --purpose floor [--edit my_questions.py]
 """
@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("serve", help="run the call server and its page")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=int(os.getenv("PORT", "8080")))
-    s.add_argument("--preset", help="production | tested | default (overrides JEV_PRESET)")
+    s.add_argument("--preset", help="recommended | tested | default (overrides JEV_PRESET)")
     s.add_argument("--home", help="working folder for .env, runs/ and profiles/ (default: here)")
     s.add_argument("--quiet", action="store_true")
     s.set_defaults(run=_serve)

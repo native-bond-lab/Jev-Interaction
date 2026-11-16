@@ -171,9 +171,10 @@ async def test_a_long_listening_sound_is_dropped():
     assert not any(e["type"] == "listen" for e in events) and not s.utt.asides      # not voiced, not in the record
 
 
-def test_presets_carry_production_and_tested_settings():
+def test_presets_carry_recommended_and_tested_settings():
     from jev_interaction.presets import config
-    prod = config("production")
+    prod = config("recommended")
+    assert config("production") == prod                                  # the 0.1 name
     assert prod.quiet_marks_s[-1] == 240.0 and prod.overlap_ask_ms == 400 and not prod.not_for_me
     tested = config("tested", language="zh")
     assert tested.overlap_ask_ms == 1000 and tested.not_for_me and tested.far_db == 10.0 and tested.language == "zh"

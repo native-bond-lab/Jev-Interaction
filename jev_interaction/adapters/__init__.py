@@ -1,6 +1,6 @@
 """Pluggable pieces. Each is a small protocol; swap any of them without touching the interaction layer.
 
-    VAD          voice / no voice per frame          TenVAD (what production runs), EnergyVAD (no extra package)
+    VAD          voice / no voice per frame          TenVAD (what our product runs), EnergyVAD (no extra package)
     Recognizer   closed segments of words            ScribeRealtime (ElevenLabs); any streaming ASR
     Responder    the agent's lines, streamed          OpenAICompatResponder (xAI, OpenAI, local servers)
     Synthesizer  audio for a line                     ElevenLabsTTS; any TTS

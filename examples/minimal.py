@@ -28,7 +28,7 @@ async def main():
 
     session = Session(Profile.load("support"), send=send, judge=FakeJudge(ANSWERS), recognizer=FakeRecognizer(),
                       responder=FakeResponder(["Sure, let me check that for you.", "What's the account number?"]),
-                      vad=FakeVAD(), config=preset("production", language="en", opening_turns=0))
+                      vad=FakeVAD(), config=preset("recommended", language="en", opening_turns=0))
     await session.on_segment(Segment("Hi, my internet keeps dropping."))
     await asyncio.sleep(0.05)              # the turn question is in flight
     session.silence_ms = 600               # the caller has gone quiet
