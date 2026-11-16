@@ -27,7 +27,7 @@ class CutIn(Decision):
         return {"cut": Q.cut_in(s.p.short)}
 
     def state(self, s, ctx):
-        return super().state(s, ctx) + S.user_turn(s.p.short, s.utt.segments, time.monotonic(), s.silence_ms, False)
+        return super().state(s, ctx) + S.user_turn(s.p.short, s.utt.segments, time.monotonic(), s.silence_ms, False, s.utt.asides)
 
     def current(self, s, ctx):
         return ctx["gen"] == s.gen and not s.speaking and not s.generating

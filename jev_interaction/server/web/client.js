@@ -1,5 +1,5 @@
 // The call page. Microphone -> 200 ms PCM16 16 kHz frames over a WebSocket; lines played in a queue; the server's
-// hold / unhold / stop / finish_line pause, resume and drop audio; playback state goes back to the server.
+// stop / finish_line drop audio; playback state goes back to the server. Nothing pauses a line: it plays until it is stopped.
 // Around that protocol: the island (island.js) shows who holds the floor, and chips show each decision Jev makes.
 (function () {
   'use strict';
@@ -25,11 +25,12 @@
       k_end_of_turn: 'end of turn', k_floor: 'floor', k_quiet: 'silence', k_not_for_me: 'addressee', k_pace: 'pace', k_listen: 'listening', k_hold: 'overlap',
       p_normal: 'normal', p_patient: 'patient', p_narrate: 'narrate', p_eager: 'eager',
       o_finished: 'finished', o_continuing: 'still talking', o_wait: 'wait', o_normal: 'normal', o_patient: 'patient', o_narrate: 'narrate', o_eager: 'eager',
-      l_continuer: 'go on', l_feeling: 'reaction', l_echo: 'echo',
+      l_due: 'asked for', l_fits: 'in passing',
       why_far: 'far from the microphone', why_jev: 'meant for someone else', quiet_for: 'quiet for',
       setup_chip: 'Set up', ready_chip: 'Ready', fun: 'Fun',
       err_file: 'Opened as a file, so there is no server to call. Run jev-interaction serve and open http://localhost:8080.',
       err_mic_insecure: 'The microphone needs https or localhost. Open this page at http://localhost:8080.',
+      err_audio: 'This browser would not play the voice. Try Safari or Chrome, with the phone not on silent.',
       err_mic_denied: 'The microphone is blocked. Allow it from the address bar, then call again.',
       err_mic_missing: 'No microphone found. Plug one in, then call again.',
       err_mic: 'Could not open the microphone.',
@@ -52,11 +53,12 @@
       k_end_of_turn: '话轮结束', k_floor: '话轮归属', k_quiet: '沉默', k_not_for_me: '说话对象', k_pace: '节奏', k_listen: '倾听', k_hold: '重叠',
       p_normal: '正常', p_patient: '耐心', p_narrate: '讲述', p_eager: '积极',
       o_finished: '说完了', o_continuing: '还在说', o_wait: '等', o_normal: '正常', o_patient: '耐心', o_narrate: '讲述', o_eager: '积极',
-      l_continuer: '嗯一声', l_feeling: '情绪回应', l_echo: '重复关键词',
+      l_due: '对方在等的', l_fits: '顺口一声',
       why_far: '声音离麦克风较远', why_jev: '在和别人说话', quiet_for: '已安静',
       setup_chip: '配置', ready_chip: '已就绪', fun: '趣味角色',
       err_file: '当前是直接打开的本地文件，没有通话服务。请运行 jev-interaction serve，然后打开 http://localhost:8080。',
       err_mic_insecure: '麦克风只能在 https 或 localhost 下使用，请通过 http://localhost:8080 打开本页。',
+      err_audio: '这个浏览器没能播放语音。请用 Safari 或 Chrome 打开，并确认手机没有静音。',
       err_mic_denied: '麦克风被拦截了。请在地址栏允许使用麦克风，然后再拨一次。',
       err_mic_missing: '没有找到麦克风，接上之后再拨一次。',
       err_mic: '无法打开麦克风。',
@@ -79,14 +81,14 @@
     { id: 'interviewer', name: 'Alex', title: 'Interviewer', title_zh: '面试官', accent: '#b9a2ff', language: 'en', group: 'task',
       tagline: 'Keeps to time, lets answers run, moves on firmly', tagline_zh: '把控时间，让你把话说完，再果断往下走' },
     { id: 'lyra', name: 'Lyra Vex', title: 'Companion', title_zh: '陪伴', accent: '#3ee0c8', language: 'en', group: 'task',
-      tagline: 'All four paces, every decision: the call we run in production', tagline_zh: '四种节奏、全部决策：我们线上在跑的那通电话' },
+      tagline: 'All four paces, every decision open', tagline_zh: '四种节奏，所有决策都放开' },
   ];
   let profiles = FALLBACK_PROFILES, selected = null, health = null, funOpen = false;
 
   // ---------- call state ----------
   const island = new window.JevIsland($('island'));
   let ws = null, ctx = null, proc = null, stream = null, analyser = null, analyserBuf = null;
-  let queue = [], current = null, held = false, listening = null;
+  let queue = [], current = null, listening = null, incoming = null, voices = [];
   let phase = 'idle', connecting = false, callStart = 0, pace = null;
   let waiting = null;                                          // in line for a free call: {ahead, wait_s}, as the server last said
   let micLevel = 0, lastPartialAt = 0, thinkingUntil = 0, yieldedUntil = 0, endedUntil = 0, shownState = '';
@@ -97,23 +99,50 @@
   }
 
   // ---------- playback (the queue the server steers) ----------
+  // A phone plays sound only from an audio element that was started inside a tap. So the tap that starts the call starts
+  // a handful of them on a moment of silence (`unlockVoices`), and every line and listening sound is then played on one
+  // of those, whichever is free.
+  function wire(el) {                                          // through the analyser, so the island follows the agent's voice
+    try { if (ctx && analyser) ctx.createMediaElementSource(el).connect(analyser); } catch (e) { /* plays directly; the island falls back to a synthetic level */ }
+  }
+  function silence() {                                         // a tenth of a second of it, as a WAV
+    const n = 800, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+    const w = (o, t) => { for (let i = 0; i < t.length; i++) b[o + i] = t.charCodeAt(i); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
+    b.fill(128, 44);
+    return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+  }
+  function unlockVoices() {
+    const hush = silence();
+    voices = Array.from({ length: 8 }, () => {
+      const el = new Audio(hush); el.preload = 'auto'; wire(el);
+      Promise.resolve(el.play()).then(() => { if (el.src === hush) el.pause(); }).catch(() => {});
+      return el;
+    });
+  }
   function makeAudio(m) {
-    const el = new Audio(m.audio); el.preload = 'auto';         // fetched while the line before it plays: one reply sounds like one
-    try {                                                      // route through an analyser so the island follows the agent's voice
-      if (ctx && analyser) ctx.createMediaElementSource(el).connect(analyser);
-    } catch (e) { /* plays directly; the island falls back to a synthetic level */ }
+    const used = new Set([current && current.el, listening, ...queue.map((l) => l.el)]);
+    let el = voices.find((v) => !used.has(v));
+    if (!el) { el = new Audio(); wire(el); }                   // more lines waiting than voices: a new one (a phone may refuse it)
+    el.onended = null; el.preload = 'auto'; el.src = m.audio;  // fetched while the line before it plays: one reply sounds like one
     return el;
   }
   function playNext() {
     if (current || !queue.length) { if (!current) { send({ type: 'playback', state: 'idle' }); fadeCaption('capAgent', 4000); } return; }
     current = queue.shift();
     current.el.onended = () => { agentCaption(capSaid); playedOf(current.gen).push(current.text); current = null; playNext(); };
-    if (!held) startCurrent();
+    startCurrent();
   }
   function startCurrent() {
     const line = current;
     Promise.resolve(line.el.play()).then(() => {
       if (current !== line) return;                            // dropped while play() was pending
+      if (incoming && line.gen >= incoming.gen) {              // someone else comes on the line with this reply
+        const accent = /^#[0-9a-f]{6}$/i.test(incoming.accent || '') ? incoming.accent : null;
+        if (accent) { document.documentElement.style.setProperty('--accent', accent); island.setAccent(accent); }
+        incoming = null;
+      }
       if (!line.started) {                                     // only caption a line once it starts, not again on resume
         if (line.gen !== capGen) { capGen = line.gen; capSaid = ''; $('capAgent').scrollTop = 0; }
         line.before = capSaid; capSaid = joinLines(capSaid, line.text);
@@ -121,7 +150,25 @@
       }
       line.started = true; thinkingUntil = 0; send({ type: 'playback', state: 'playing' });
     })
-      .catch(() => { if (current === line) { current = null; playNext(); } });   // a line that cannot play must not jam the queue
+      .catch((e) => {
+        if (current !== line) return;
+        if (!line.whole) {                                     // this player would not take the stream: fetch the line whole
+          line.whole = true;                                   // and play that (once)
+          fetch(line.el.src).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
+            .then((b) => { if (current !== line) return; line.el.src = URL.createObjectURL(b); startCurrent(); })
+            .catch(() => skipLine(line, e));
+          return;
+        }
+        skipLine(line, e);
+      });
+  }
+  function skipLine(line, e) {                                 // a line that cannot play must not jam the queue: its words
+    if (current !== line) return;                              // are shown, the page says why it was not heard
+    report({ audio: (e && e.name) || 'error' });
+    if (line.gen !== capGen) { capGen = line.gen; capSaid = ''; }
+    capSaid = joinLines(capSaid, line.text); agentCaption(capSaid);
+    showNotice(t('err_audio'), true);
+    current = null; playNext();
   }
   function heardSoFar(line) {
     const d = line.el.duration;
@@ -150,26 +197,17 @@
         if (m.partial) { lastPartialAt = performance.now(); thinkingUntil = 0; }
         else { thinkingUntil = performance.now() + 9000; fadeCaption('capUser', 6000); }
         break;
-      case 'hold':
-        held = true; if (current) current.el.pause();
-        $('capAgent').classList.add('dim'); note({ tone: 'hold', kind: 'hold', label: t('d_hold') });
-        break;
-      case 'unhold':
-        held = false; $('capAgent').classList.remove('dim');
-        if (current) startCurrent();
-        break;
       case 'stop': {
         const before = current ? current.before : '';
         const part = current && current.gen === lineGen ? heardSoFar(current) : '';
         const heard = stopAll();
         // the whole reply as it was heard: its finished lines and the part of the one that was playing ('' = none of it)
         if (lineGen !== null) send({ type: 'heard', gen: lineGen, text: [...playedOf(lineGen), part].filter(Boolean).join('\n') });
-        held = false;
-        $('capAgent').classList.remove('dim');
         if (heard) agentCaption(joinLines(before, heard) + ' —'); fadeCaption('capAgent', 1800); capGen = null;
         yieldedUntil = performance.now() + 900; thinkingUntil = 0;
         break;
       }
+      case 'persona': incoming = m; note({ tone: 'pace', kind: 'pace', label: `→ ${m.name}` }); break;
       case 'finish_line': queue.forEach((l) => l.el.pause()); queue = []; break;
       case 'decision': onDecision(m); break;
       case 'pace':
@@ -297,7 +335,6 @@
     if (connecting) return 'connecting';
     if (waiting) return 'waiting';
     if (now < yieldedUntil) return 'yielded';
-    if (current && held) return 'held';
     if (current && current.started && !current.el.paused) return 'speaking';
     if (now - lastPartialAt < 900 || micLevel > .2) return 'talking';
     if (now < thinkingUntil || current) return 'thinking';
@@ -325,7 +362,7 @@
     $('call').setAttribute('aria-pressed', String(p === 'call')); $('callLabel').textContent = t(p === 'call' ? 'hang_up' : 'call');
   }
   function resetCall() {
-    queue = []; current = null; held = false; listening = null; pace = null; logN = 0; capGen = null; capSaid = ''; waiting = null; lineGen = null; played = { gen: null, texts: [] };
+    queue = []; current = null; listening = null; incoming = null; pace = null; logN = 0; capGen = null; capSaid = ''; waiting = null; lineGen = null; played = { gen: null, texts: [] };
     micLevel = 0; lastPartialAt = 0; thinkingUntil = 0; yieldedUntil = 0;
     $('log').textContent = ''; $('logEmpty').hidden = false; $('logCount').hidden = true; $('chips').textContent = '';
     setCaption('capAgent', ''); setCaption('capUser', ''); $('capAgent').classList.remove('dim');
@@ -338,6 +375,13 @@
     if (health && health.ready === false) { window.JevSettings.open(); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { showNotice(t('err_mic_insecure'), true); return; }
     resetCall(); setPhase('call'); connecting = true; callStart = 0;
+    // the audio context is made and started here, inside the tap: on an iPhone one made later (after the microphone
+    // prompt) stays suspended, and then nothing is heard from the microphone and nothing sent
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    wake();
+    ctx.onstatechange = wake;
+    analyser = ctx.createAnalyser(); analyser.fftSize = 512; analyserBuf = new Uint8Array(analyser.fftSize); analyser.connect(ctx.destination);
+    unlockVoices();
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     } catch (e) {
@@ -347,11 +391,10 @@
       return;
     }
     if (phase !== 'call') { stream.getTracks().forEach((tr) => tr.stop()); stream = null; return; }   // hung up while the prompt was open
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
-    analyser = ctx.createAnalyser(); analyser.fftSize = 512; analyserBuf = new Uint8Array(analyser.fftSize); analyser.connect(ctx.destination);
+    wake();
     const src = ctx.createMediaStreamSource(stream);
     proc = ctx.createScriptProcessor(4096, 1, 1);
-    const ratio = ctx.sampleRate / 16000; let buf = [];
+    const ratio = ctx.sampleRate / 16000; let buf = [], frames = 0;
     const sock = ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
     proc.onaudioprocess = (e) => {
       const x = e.inputBuffer.getChannelData(0);
@@ -360,13 +403,19 @@
       for (let i = 0; i < x.length; i += ratio) buf.push(Math.max(-1, Math.min(1, x[Math.floor(i)])));
       while (buf.length >= 3200) {                              // 200 ms at 16 kHz
         const frame = new Int16Array(buf.splice(0, 3200).map((v) => v * 32767));
-        if (sock.readyState === 1 && !waiting) sock.send(frame.buffer);     // nobody is listening while in line
+        if (sock.readyState === 1 && !waiting) { sock.send(frame.buffer); frames++; }   // nobody is listening while in line
       }
     };
     src.connect(proc); proc.connect(ctx.destination);
     let opened = false;
+    const ears = () => {                                       // is the microphone reaching the server? for the server's log
+      const tr = stream && stream.getAudioTracks()[0];
+      return { ctx: ctx ? ctx.state : 'none', frames, rate: ctx ? ctx.sampleRate : 0, muted: !!(tr && tr.muted) };
+    };
     sock.onopen = () => {
       opened = true; connecting = false; callStart = performance.now();
+      setTimeout(() => { if (ws === sock) report({ at: 5, ...ears() }); }, 5000);
+      setTimeout(() => { if (ws === sock) report({ at: 20, ...ears() }); }, 20000);
       sock.send(JSON.stringify({ type: 'start', profile: selected.id, language: selected.language || 'en' }));   // the persona speaks its own language; the toggle is for the page
     };
     sock.onmessage = (e) => { if (typeof e.data === 'string' && ws === sock) onEvent(JSON.parse(e.data)); };
@@ -381,14 +430,21 @@
   // how a call failed, for the server's log (the failures that never reach it otherwise); nothing about who or what was said
   function report(o) { try { navigator.sendBeacon('api/call-report', new Blob([JSON.stringify(o)], { type: 'application/json' })); } catch (e) { /* no beacon */ } }
 
+  // a suspended or (iPhone) interrupted audio context is started again: at the tap, when its state changes, and on any
+  // touch during a call
+  function wake() { if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {}); }
+  document.addEventListener('pointerdown', wake, true);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+
   function endCall() {
     if (phase !== 'call') return;
     stopAll(); if (listening) listening.pause();
     const sock = ws; ws = null; if (sock) { try { sock.close(); } catch (e) { /* already closed */ } }
     if (proc) { proc.onaudioprocess = null; proc.disconnect(); proc = null; }
     if (stream) { stream.getTracks().forEach((tr) => tr.stop()); stream = null; }
+    voices.forEach((el) => { el.onended = null; el.pause(); }); voices = [];
     if (ctx) { ctx.close().catch(() => {}); ctx = null; analyser = null; }
-    connecting = false; waiting = null; micLevel = 0; held = false; endedUntil = performance.now() + 900;
+    connecting = false; waiting = null; micLevel = 0; endedUntil = performance.now() + 900;
     setPhase('idle'); fadeCaption('capAgent', 0); fadeCaption('capUser', 0);
   }
 

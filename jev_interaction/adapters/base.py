@@ -7,7 +7,9 @@ from typing import Protocol
 
 @dataclass
 class Segment:
-    """Words the recognizer closed after a short pause."""
+    """Words the recognizer closed after a short pause; or, with `final` False, the words so far of the piece the user
+    is in the middle of (a recognizer that has them may send them; the session only uses them while the user talks over
+    the agent's line, to ask Jev before the pause comes)."""
     text: str
     final: bool = True
 

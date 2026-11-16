@@ -25,9 +25,13 @@ class Utterance:
     segments: list[tuple[float, str]] = field(default_factory=list)
     speech_ms: int = 0
     over: bool = False               # began while the agent was speaking
-    over_ms: int = 0                 # voice over the agent's line since it last went on: what a hold is measured on
-    held_at: int = 0                 # how many segments there were when the line was put on hold
+    over_ms: int = 0                 # voice over the agent's line since it last went on
+    over_ask_at: int = 0             # the floor question is next asked on unclosed words when over_ms reaches this
+    hearing: str = ""                # the words so far of the piece the recognizer has not closed yet, when it sends them
     levels: list[float] = field(default_factory=list)   # dB of each voiced frame
+    # what the agent put in while the user talked on, a bare "mm" as much as a count the user asked for: (segments heard
+    # by then, its words, the line the responder was given for it)
+    asides: list[tuple[int, str, str]] = field(default_factory=list)
 
     @property
     def level(self) -> float | None:
@@ -40,6 +44,29 @@ class Utterance:
     @property
     def text(self) -> str:
         return " ".join(x for _, x in self.segments)
+
+    @property
+    def heard(self) -> str:
+        """Everything made out so far: the closed words and the piece still being said."""
+        return (self.text + " " + self.hearing).strip()
+
+    def with_asides(self, name: str) -> str:
+        """The words with what the agent put in at the place it came ("... the vase, [Lyra: one] water everywhere ..."):
+        the turn as one text, for Jev's recent turns."""
+        out = []
+        for i, (_, words) in enumerate(self.segments, 1):
+            out.append(words)
+            out += [f"[{name}: {said}]" for at, said, _ in self.asides if at == i]
+        return " ".join(out)
+
+    def exchanges(self) -> tuple[list[tuple[str, str, str]], str]:
+        """The turn as it went, for the responder: (the user's words up to there, what the agent put in, the line it
+        was given), one for each aside in order, then the words since the last one."""
+        done, start = [], 0
+        for at, said, line in sorted(self.asides, key=lambda a: a[0]):
+            done.append((" ".join(x for _, x in self.segments[start:at]), said, line))
+            start = max(start, at)
+        return done, " ".join(x for _, x in self.segments[start:])
 
 
 def is_far(utt: Utterance | None, caller_levels: list[float], far_db: float | None) -> bool:

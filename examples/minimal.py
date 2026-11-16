@@ -17,7 +17,7 @@ ANSWERS = {
     "wait": {"now": 1.0, "half_second": 0, "two_seconds": 0, "hold": 0},
     "kind": {"reply": 0.9, "sound": 0.1},
     "pace": {"normal": 1.0, "patient": 0, "narrate": 0, "eager": 0},
-    "listen": {"continuer": 0, "feeling": 0, "echo": 0, "quiet": 1.0, "answer_due": 0},
+    "listen": {"due": 0, "fits": 0, "quiet": 1.0, "answer_due": 0},
 }
 
 
@@ -28,7 +28,7 @@ async def main():
 
     session = Session(Profile.load("support"), send=send, judge=FakeJudge(ANSWERS), recognizer=FakeRecognizer(),
                       responder=FakeResponder(["Sure, let me check that for you.", "What's the account number?"]),
-                      vad=FakeVAD(), config=preset("production", language="en", opening_turns=0))
+                      vad=FakeVAD(), config=preset("recommended", language="en", opening_turns=0))
     await session.on_segment(Segment("Hi, my internet keeps dropping."))
     await asyncio.sleep(0.05)              # the turn question is in flight
     session.silence_ms = 600               # the caller has gone quiet

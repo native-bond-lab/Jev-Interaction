@@ -6,15 +6,15 @@ agent's short name.
 
     when                                   question    choices
     the user pauses while talking          turn        done (finished / continuing), wait, kind (reply / sound), pace
-                                           listen      continuer / feeling / echo / quiet / answer_due
+                                           listen      due / fits / quiet / answer_due
     both talk at once                      floor       carry_on / yield / finish_first / overrule / jump_in / aside
     the user talks, the agent leads        cut_in      cut_in / let_finish
     quiet since the agent's last line      quiet       go_on / check / wait / hang_up
+    someone else can be put on the line    who         stay / one of the others (rides in the turn request)
 """
 from __future__ import annotations
 
 WAIT_MS = {"now": 0, "half_second": 500, "two_seconds": 2000, "hold": 4000}
-LISTEN_KINDS = ("continuer", "feeling", "echo")
 
 # what a real "no" is: about what the user wants to happen, never about tone or swearing
 REAL_NO = ("they want what is happening to end: they tell the agent to stop, quit or leave them alone, or say they do not "
@@ -42,15 +42,36 @@ def turn(name: str, pace: str, paces: dict[str, str], opening: bool = False) -> 
 
 
 def listen(name: str) -> dict:
+    """Only the moment is asked: whether something from the agent belongs here. What it is (a sound, a word said back,
+    a count the user asked for) is the responder's to write from the same record."""
     return {"type": "choice", "instructions": (
-        f"The user is talking and {name} is listening. If {name} lets something slip in right now, the way people on the phone "
-        f"show they are there, what kind of thing would it be, given what the user is saying and who {name} is? Or does what "
-        "the user just said call for an answer, so that a listening sound would be wrong?"), "criteria": {
-        "continuer": "a bare continuer that only says 'go on': mm, mm-hm, uh-huh, yeah, a breath",
-        "feeling": "a short reaction to what they are telling: sympathy, surprise, a laugh, warmth",
-        "echo": "picking up the one word that matters as a question, so they say more about it",
-        "quiet": f"{name} stays silent here: they are in full flow, or {name} is the kind who listens without a sound",
+        f"The user has the floor and {name} is listening. People on the phone let things slip in while the other talks: a "
+        "sound that says go on, a reaction, a word of theirs picked up, a piece said back, something the other asked them "
+        f"to say when a certain thing comes up. Is this a moment for {name} to put something in, given what the user has "
+        f"just said, what they asked for earlier in the call, what {name} has already put in, and who {name} is? Or does "
+        "what the user just said call for an answer, so that slipping something in would be wrong?"), "criteria": {
+        "due": (f"something from {name} is expected right here and would be missed: earlier in the call they asked {name} to "
+                "say something each time a certain thing comes up while they talk (count it, call it out, mark it) and it has "
+                "just come up in their last words (the words that make the request are not a case of it), or they are "
+                "handing something over piece by piece (items of a list, a "
+                f"number in groups, an address, steps) and a piece has just landed; {name} has not put anything in for it yet"),
+        "fits": (f"a spot where a listener like {name} might let a small sound or a word slip in to show they are there; "
+                 "nothing is lost without it"),
+        "quiet": (f"{name} stays silent here: they are in full flow, {name} has only just put something in, they asked "
+                  f"{name} to say nothing else while they talk, or {name} is the kind who listens without a sound"),
         "answer_due": "they have asked something or are waiting for a reply: an answer, when they finish"}}
+
+
+def who(name: str, cast: dict[str, tuple[str, str]]) -> dict:
+    """`cast`: the others who can be put on this line, id -> (name, what they are for)."""
+    listed = "; ".join(f"{n} ({task})" for n, task in cast.values())
+    criteria = {"stay": (f"the user is talking with {name} and wants to go on with {name}; naming or talking about someone "
+                         "else is not asking for them")}
+    for pid, (n, _) in cast.items():
+        criteria[pid] = f"the user asks for {n} to come on the line now, in {name}'s place"
+    return {"type": "choice", "instructions": (
+        f"{name} is on the line. Others can be put on it in {name}'s place: {listed}. In what the user has just said, are "
+        f"they asking for one of them now?"), "criteria": criteria}
 
 
 def floor_criteria(name: str, *, finish: bool, overrule: bool, aside: bool, jump: bool) -> dict:

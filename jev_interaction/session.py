@@ -11,8 +11,8 @@ question is in judge/questions.py and whose answer goes through the policy confi
     the agent leads        cut_in   -> talk over the user now?
     quiet on the line      quiet    -> go on / check on them / wait / hang up
 
-Events to the client: line {id, text, audio}, listen {id, text, audio}, hold, unhold, stop, finish_line, hangup,
-user {text}, pace {pace, probs}, decision {...}. Client messages: playback {state: playing | idle}, heard {gen, text}.
+Events to the client: line {id, text, audio}, listen {id, text, audio}, stop, finish_line, hangup,
+user {text}, pace {pace, probs}, persona {id, name, gen}, decision {...}. Client messages: playback {state: playing | idle}, heard {gen, text}.
 """
 from __future__ import annotations
 
@@ -40,29 +40,30 @@ SYSTEM_TEMPLATE = (__import__("pathlib").Path(__file__).parent / "prompts" / "sy
 class Session:
     def __init__(self, profile: Profile, *, send: Callable[[dict], Awaitable[None]], judge: JevClient, recognizer: Recognizer,
                  responder: Responder, vad: VAD, config: Config | None = None, recorder: Recorder | None = None,
-                 system_template: str = SYSTEM_TEMPLATE, speech: str | None = None):
+                 system_template: str = SYSTEM_TEMPLATE, speech: str | None = None, cast: dict[str, Profile] | None = None):
         self.p, self.cfg, self.send_event = profile, config or Config(), send
         self.judge, self.asr, self.llm, self.vad = judge, recognizer, responder, vad
         self.rec = recorder or Recorder(None)
         if speech is None:                       # how to write for the voice in use: the synthesizer's speaking style
             from .adapters import registry
             speech = registry.speech_prompt()
-        self.system = system_template.format(name=profile.name, profile=profile.prompt or profile.task, speech=speech)
-        self.policies = {**self.cfg.policies, **profile.policies}   # a task type may bring its own policies
+        self._system = lambda p: system_template.format(name=p.name, profile=p.prompt or p.task, speech=speech)
+        self.system = self._system(profile)
+        self.policies = {**Config().policies, **self.cfg.policies, **profile.policies}   # a task type may bring its own;
+        # a Config(policies=...) written before a decision existed keeps that decision's default
+        self.cast = dict(cast or {})             # id -> profile: everyone who can be on this line (Session.hand_over)
         self.decisions: dict[str, Decision] = dict(DECISIONS)       # asked in this order on new words and on each tick
         self.ledger = Ledger()
         self.lines: dict[str, str] = {}          # line id -> text, fetched by the client from the TTS route
         self.replies: dict[int, Turn] = {}       # gen -> the agent's turn in the record, for the client's `heard`
         self.pace, self.pace_probs, self.transition = self.cfg.start_pace, {}, None
         self.user_turns = 0
-        self.utt: Utterance | None = None
         self.utt_seq = 0
         self.silence_ms = 0
         self.judged: dict | None = None          # the latest turn answer for the open utterance
         self.speaking = False                    # the client is playing a line of the agent's
         self.generating = False
         self.gen = 0
-        self.held = False
         self.idle_since = time.monotonic()
         self.quiet_marks: list[float] = []
         self.spoke_into_quiet = 0
@@ -127,21 +128,12 @@ class Session:
             self.utt.levels.append(frame_db(pcm))
             self.silence_ms = 0
             if self.speaking:
-                self.utt.over_ms += heard         # only voice over the line counts toward a hold, not what came before it
-            if self.speaking and not self.held and self.utt.over_ms >= self.cfg.hold_after_ms:
-                self.held = True                  # the user comes first: the agent's audio pauses until the words decide
-                self.utt.held_at = len(self.utt.segments)
-                await self.send(type="hold", gen=self.gen)
+                self.utt.over_ms += heard         # only voice over the line counts, not what came before it
+                self._over()
         elif self.utt is not None:
             self.silence_ms += step
-            if self.held and len(self.utt.segments) <= self.utt.held_at and self.silence_ms >= self.cfg.hold_release_ms:
-                self.held = False                 # a breath or a laugh over the line, no new words: the line goes on
-                self.utt.over_ms = 0
-                await self.send(type="unhold", gen=self.gen)
-                if not self.utt.segments:
-                    self.utt = None
-            elif not self.held and not self.utt.segments and self.silence_ms >= self.cfg.sound_close_ms:
-                self.utt = None                   # a sound and nothing after it: nobody's turn, and no head start on a hold
+            if not self.utt.heard and self.silence_ms >= self.cfg.sound_close_ms:
+                self.utt = None                   # a sound and nothing after it: nobody's turn
 
     async def on_client(self, msg: dict):
         if msg.get("type") == "playback":
@@ -170,19 +162,37 @@ class Session:
         text = seg.text.strip()
         if not text:
             return
-        if any(re.search(rf"\b{re.escape(w)}\b", text, re.I) for w in self.cfg.safe_words):
+        if seg.final and any(re.search(rf"\b{re.escape(w)}\b", text, re.I) for w in self.cfg.safe_words):
             await self.safe_word(text)
             return
         if self.speaking and self._own_words(text):
-            self.rec.write("echo", text=text)       # the agent's own line, back through the microphone: nobody said it
+            if seg.final:
+                self.rec.write("echo", text=text)   # the agent's own line, back through the microphone: nobody said it
+            return
+        if not seg.final:                         # the words so far of a piece still being said: only an overlap uses them
+            if self.utt is not None:
+                self.utt.hearing = text
+                self._over()
             return
         if self.utt is None:
             self._open_utterance()
             self.utt.speech_ms = max(self.utt.speech_ms, 400)
+        self.utt.hearing = ""
         self.utt.segments.append((time.monotonic(), text))
         await self.send(type="user", text=self.utt.text, partial=True)
         for d in list(self.decisions.values()):
             d.on_words(self)                      # floor while the agent speaks; turn (and cut_in) while it is quiet
+
+    def _over(self):
+        """The user's voice has been going over the agent's line for a while (Config.overlap_ask_ms, and each time as
+        much again) and words have been made out that the recognizer has not closed: they go to the floor question now.
+        Nothing happens to the line until Jev answers; a sound without words asks nothing and the line plays on."""
+        u = self.utt
+        if (u is None or not self.speaking or not u.hearing or "floor" in self.busy
+                or u.over_ms < max(u.over_ask_at, self.cfg.overlap_ask_ms)):
+            return
+        u.over_ask_at = u.over_ms + self.cfg.overlap_ask_ms
+        self._spawn(self.ask("floor", gen=self.gen, early=True, closed=len(u.segments)))
 
     def _own_words(self, text: str) -> bool:
         """The recognizer heard words of the agent's own recent lines (a speaker next to the microphone)."""
@@ -235,9 +245,6 @@ class Session:
         text = self.utt.text if self.utt else ""
         self.rec.write("not_for_me", why=why, text=text, level=self.utt.level if self.utt else None)
         await self.send(type="decision", what="not_for_me", why=why, text=text)
-        if self.held:
-            self.held = False
-            await self.send(type="unhold", gen=self.gen)
         self.utt, self.judged = None, None
 
     # ------------------------------------------------------------------ judgements
@@ -291,34 +298,64 @@ class Session:
         self.quiet_marks = [m * random.uniform(1 - j, 1 + j) for m in self.cfg.quiet_marks_s]
 
     # ------------------------------------------------------------------ speaking
-    def data_line(self, kind: str, quiet_s: float = 0.0, listen: str = "", event: str | None = None) -> str:
+    def data_line(self, kind: str, quiet_s: float = 0.0, listen: str = "", who: str = "") -> str:
         """The bracketed line the responder reads before it speaks (speaking.py has the wording for each kind)."""
         pace = self.pace + (f" (just changed from {self.transition[0]})" if self.transition else "")
         if kind != "listen":
             self.transition = None
         last = self.ledger.last_agent()
-        event = event or speaking.event_text(kind, last=last.text if last else "", quiet_s=quiet_s, listen=listen)
+        event = speaking.event_text(kind, last=last.text if last else "", quiet_s=quiet_s, listen=listen, who=who)
         return speaking.data_line(pace, event, self.cfg.language)
 
-    async def respond(self, kind: str, quiet_s: float = 0.0):
+    @property
+    def utt(self) -> Utterance | None:
+        """The user's turn in progress. It lives in the ledger, with the rest of the call (Ledger.open)."""
+        return self.ledger.open
+
+    @utt.setter
+    def utt(self, value: Utterance | None):
+        self.ledger.open = value
+
+    def others(self) -> dict[str, Profile]:
+        """Who else can be put on the line right now: the cast without the one on it."""
+        return {pid: p for pid, p in self.cast.items() if p is not self.p}
+
+    async def hand_over(self, pid: str):
+        """The user asked for someone else in the cast. The one on the line says so in a few words; then the other is
+        on it: their prompt for the responder, their manner for Jev, their policies, and (the transport's part, told by
+        the `persona` event) their voice. The record stays one record and says who said what (ledger.py)."""
+        new, old, gen = self.cast[pid], self.p, self.gen + 1
+        await self.respond("hand_over", who=new.short)
+        if self.gen != gen or self.closed:        # the user spoke over the goodbye: they are still talking to this one
+            return
+        self.p, self.system = new, self._system(new)
+        self.policies = {**self.cfg.policies, **new.policies}
+        self.pace, self.pace_probs, self.transition = self.cfg.start_pace, {}, None
+        self.rec.write("persona", id=pid, name=new.name)
+        await self.send(type="persona", id=pid, name=new.name, gen=self.gen + 1,
+                        accent=(new.extra.get("display") or {}).get("accent"))
+        await self.respond("take_over", who=old.short)
+
+    async def respond(self, kind: str, quiet_s: float = 0.0, who: str = ""):
         self.gen += 1
         gen = self.gen
         self.generating = True
-        line = self.data_line(kind, quiet_s)
+        line = self.data_line(kind, quiet_s, who=who)
         event = speaking.EVENTS.get(kind, speaking.UNKNOWN)
         if self.utt is not None and event.answers_user:
             if self.utt.level is not None:
                 self.caller_levels = (self.caller_levels + [self.utt.level])[-20:]
-            self.ledger.user(self.utt.text, line)
-            await self.send(type="user", text=self.utt.text, partial=False)
+            text = self.utt.text
+            self.ledger.close_open(self.p.short, line)
+            await self.send(type="user", text=text, partial=False)
             self.user_turns += 1
             self.spoke_into_quiet = 0
             self.utt = None
             self.judged = None
         else:
-            self.ledger.user("", line)
-        messages = [{"role": "system", "content": self.system}, *self.ledger.messages()]
-        turn = self.ledger.agent("")
+            self.ledger.user("", line, who=self.p.short)
+        messages = [{"role": "system", "content": self.system}, *self.ledger.messages(self.p.short)]
+        turn = self.ledger.agent("", who=self.p.short)
         self.replies[gen] = turn
         self.rec.write("respond", gen=gen, kind=kind, data_line=line)
         try:
@@ -352,29 +389,35 @@ class Session:
                     self.speaking = False
                     self.idle_since = time.monotonic()
 
-    async def listen_in(self, kind: str, inviting: bool = False):
-        """A listening sound while the user talks on. Voiced beside the line queue and never added to the history."""
-        if self.speaking or self.generating or time.monotonic() - self.listen_last < self.cfg.listen_gap_s:
-            return                                # one at a time, spaced out, whichever decision asked for it
+    async def listen_in(self, why: str = "fits"):
+        """What the agent lets slip in while the user talks on. Jev chose the moment (`why`: "due", the user is waiting
+        for it, or "fits", it could as well be left out) and the event line says which; the words are the responder's,
+        from the same record as every line, and may be none. Voiced beside the line queue and kept in the turn's record
+        where it came, as the agent's own words."""
+        utt = self.utt
+        if utt is None or self.speaking or self.generating or time.monotonic() - self.listen_last < self.cfg.listen_min_gap_s:
+            return                                # one at a time, never run together
         self.listen_last = time.monotonic()
-        turn = self.data_line("listen", listen=kind, event=speaking.LISTEN_INVITING if inviting else None)
-        messages = [{"role": "system", "content": self.system}, *self.ledger.messages(),
-                    {"role": "user", "content": turn + "\n" + (self.utt.text if self.utt else "")}]
+        at, line = len(utt.segments), self.data_line("listen", listen=why)
+        # the turn so far as it went: what was put in before is the agent's own turn, then the user's words since
+        before, heard = self.ledger.open_messages()
+        messages = [{"role": "system", "content": self.system}, *self.ledger.messages(self.p.short), *before,
+                    {"role": "user", "content": (line + "\n" + heard).strip()}]
         text = ""
-        async for line in self.llm.lines(messages, max_tokens=14):
-            text = line
+        async for said in self.llm.lines(messages, max_tokens=14):
+            text = said
             break
-        limit = min(self.cfg.listen_max_words, self.cfg.listen_kind_words.get("invite" if inviting else kind, self.cfg.listen_max_words))
-        if not speaking.has_voice(text) or speaking.units(text) > limit or self.speaking or self.generating:
+        if (not speaking.has_voice(text) or speaking.units(text) > self.cfg.listen_max_words or self.speaking
+                or self.generating or self.utt is not utt):
             return
         line_id = uuid.uuid4().hex
         self.lines[line_id] = text
-        await self.send(type="listen", id=line_id, text=text, kind=kind, audio=f"/tts/{line_id}")
+        utt.asides.append((at, text, line))
+        await self.send(type="listen", id=line_id, text=text, kind=why, audio=f"/tts/{line_id}")
 
     async def _stop_line(self):
         self.gen += 1
-        self.generating = self.held = False
-        self.speaking = False
+        self.generating = self.speaking = False
         last = self.ledger.last_agent()
         if last:
             last.cut = True

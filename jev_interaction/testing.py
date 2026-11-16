@@ -36,6 +36,10 @@ class FakeRecognizer:
     def say(self, text: str) -> None:
         self.q.put_nowait(Segment(text))
 
+    def hear(self, text: str) -> None:
+        """The words so far of a piece the user is still saying (a recognizer's partial result)."""
+        self.q.put_nowait(Segment(text, final=False))
+
     async def connect(self) -> None: ...
     async def send(self, pcm: bytes) -> None: ...
 

@@ -26,17 +26,19 @@ def units(text: str) -> int:
 
 
 LANGUAGES = {"en": "English", "zh": "Chinese", "ja": "Japanese"}
+# what is put in while listening: the event says which moment Jev saw (as every event does), the words are the
+# responder's, from the record. Nothing of the user's is quoted and nothing is said about what to say.
 LISTEN_EVENTS = {
-    "continuer": "they are still talking; a bare listening sound that only says go on, a word at most, or nothing",
-    "feeling": "they are still talking and it lands on you: a few words that show how (oh no; really?; a laugh), not an answer",
-    "echo": "they are still talking; say back the one word of theirs that matters, as a question, nothing else",
+    "due": ("it is still their turn and they will go on; what they are waiting to hear from you has just come up in "
+            "their words: say it, as they asked, a few words at most; or nothing"),
+    "fits": ("it is still their turn and they will go on; a spot where you might let a small sound or a word slip in to "
+             "show you are there, a few words at most, not an answer; or nothing"),
 }
-LISTEN_INVITING = "they may not have finished; a questioning sound that invites them on (mm?), or nothing"
 
 
 @dataclass(frozen=True)
 class Event:
-    text: str                   # may use {last} (the agent's last line) and {quiet_s} (seconds of quiet)
+    text: str                   # may use {last} (the agent's last line), {quiet_s} (seconds of quiet), {who} (the other)
     answers_user: bool = False  # the line answers the open utterance, which then goes into the history as the user's turn
     max_tokens: int = 160       # 60 for the lines that must be a few words
 
@@ -44,6 +46,8 @@ class Event:
 EVENTS: dict[str, Event] = {
     "pickup": Event("the call was just picked up"),
     "spoke": Event("they spoke", answers_user=True),
+    "trailed": Event("they said this and have now been silent for {quiet_s:.0f} s; it is not clear they had finished",
+                     answers_user=True),
     "cut_in": Event("they are still talking and you cut in", answers_user=True),
     "overrule": Event('they cut in while you were saying "{last}"; take the floor back', answers_user=True, max_tokens=60),
     "aside": Event("they chimed in while you were telling something; answer in a word, then the story waits",
@@ -53,6 +57,11 @@ EVENTS: dict[str, Event] = {
     "lead": Event("they have been quiet for {quiet_s:.0f} s since your last line"),
     "check": Event("they have been quiet for {quiet_s:.0f} s; you check on them", max_tokens=60),
     "hangup": Event("they have been quiet for {quiet_s:.0f} s and you are ending the call"),
+    "hand_over": Event("they asked for {who}; tell them in a few words that you are putting {who} on, nothing more: you "
+                       "are off the line after this", answers_user=True, max_tokens=60),
+    "take_over": Event("you have just been put on this call: the user was talking with {who} and asked for you, so {who} "
+                       "is off the line and the user is the one you are talking to now; the call so far is above. Come "
+                       "on the line in your own way, a line or two"),
     "safe_word": Event("the safe word: everything stops; step out in one or two calm lines and ask if they are all right"),
 }
 UNKNOWN = Event("")             # a kind nobody registered: its name is the event text, and it is an ordinary line
@@ -63,12 +72,12 @@ def event(kind: str, text: str, *, answers_user: bool = False, max_tokens: int =
     EVENTS[kind] = Event(text, answers_user, max_tokens)
 
 
-def event_text(kind: str, *, last: str = "", quiet_s: float = 0.0, listen: str = "") -> str:
+def event_text(kind: str, *, last: str = "", quiet_s: float = 0.0, listen: str = "", who: str = "") -> str:
     if kind == "listen":
-        return LISTEN_EVENTS.get(listen, LISTEN_EVENTS["continuer"])
+        return LISTEN_EVENTS.get(listen, LISTEN_EVENTS["fits"])
     if kind not in EVENTS:
         return kind
-    return EVENTS[kind].text.format(last=last, quiet_s=quiet_s)
+    return EVENTS[kind].text.format(last=last, quiet_s=quiet_s, who=who)
 
 
 def data_line(pace: str, event: str, language: str) -> str:

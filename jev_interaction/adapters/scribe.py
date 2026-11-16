@@ -30,8 +30,9 @@ class ScribeRealtime:
         try:
             async for raw in self.ws:
                 m = json.loads(raw)
-                if m.get("message_type") == "committed_transcript" and (m.get("text") or "").strip():
-                    await self.queue.put(Segment(m["text"].strip()))
+                kind, text = m.get("message_type"), (m.get("text") or "").strip()
+                if text and kind in ("committed_transcript", "partial_transcript"):
+                    await self.queue.put(Segment(text, final=kind == "committed_transcript"))
         finally:
             await self.queue.put(None)
 

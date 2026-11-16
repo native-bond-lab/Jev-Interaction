@@ -1,6 +1,7 @@
-"""Everything a deployment tunes, in one object. Defaults are the companion-call settings the framework was built on."""
+"""Everything a deployment tunes, in one object. Defaults are the settings the framework was built on."""
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 
 from .policy import Policy, SamplePolicy, ThresholdPolicy
@@ -22,7 +23,7 @@ DEFAULT_PACES = [
     Pace("patient", "the user needs room: upset, venting, thinking aloud, tired; the agent says little and lets them go on",
          max_wait_ms=2500, yield_p=0.35),
     Pace("narrate", "the agent carries the call: a story, an explanation, a memory; the user mostly listens", leads=True),
-    Pace("eager", "the agent presses and holds the floor: a scene of control, a quarrel, heated teasing; short and fast",
+    Pace("eager", "the agent presses and holds the floor: a quarrel, a game, heated teasing; short and fast",
          max_wait_ms=1500, yield_p=0.6, leads=True, cut_in=True),
 ]
 
@@ -40,14 +41,19 @@ class Config:
     policies: dict[str, Policy] = field(default_factory=lambda: {
         "end_of_turn": SamplePolicy(), "listen": SamplePolicy(),
         "floor": ThresholdPolicy(fallback="carry_on"),   # yield's threshold comes from the (blended) pace
-        "cut_in": SamplePolicy(), "quiet": SamplePolicy()})
+        "cut_in": SamplePolicy(), "quiet": SamplePolicy(),
+        "who": ThresholdPolicy(fallback="stay")})        # someone else is put on the line only when Jev is sure
 
     voice_min_ms: int = 60             # a frame with this much voice in it is the user making sound
-    hold_after_ms: int = 400           # the user talks over the agent this long: its audio pauses (user first, every pace);
-                                       # tested at 1000: an "mm-hm" no longer pauses the line, a real interruption stops ~0.6 s later
+    overlap_ask_ms: int = 400          # the user talks over the agent this long: the words so far, closed or not, go to the
+                                       # floor question (and again each time as much voice has passed). The line plays on
+                                       # until Jev says the user needs the floor: no clock pauses it
     sound_close_ms: int = 1500         # a sound with no words behind it is over after this much quiet (a cough, a breath)
-    hold_release_ms: int = 700         # held, the user quiet again with no words: the line goes on
-    listen_gap_s: float = 3.0          # at least this long between two listening sounds
+    listen_gap_s: float = 3.0          # at least this long between two listening sounds that could as well be left out
+    listen_min_gap_s: float = 1.0      # and no two things put in closer than this, whatever they are: they would run together
+    listen_due_min: float = 0.5        # what the user is waiting for is put in when Jev is this sure, never left to a draw
+    turn_reask_ms: tuple = (1000, 2000, 4000)   # quiet after words not judged finished: the turn question is asked again
+    turn_last_ms: int = 4000           # ... and this far past the pace's longest wait the agent speaks anyway
     listen_finished_max: float = 0.65  # no listening sound once Jev is this sure the user has finished
     quiet_marks_s: tuple = (1.5, 4.0, 10.0, 25.0, 60.0, 120.0)   # when the quiet question is asked (jittered)
     quiet_jitter: float = 0.3
@@ -57,16 +63,30 @@ class Config:
     judge_turns: int = 8               # recent turns in every Jev state
     judge_turn_chars: int = 300
     safe_words: tuple = ("red",)       # stop everything, no judgement involved
-    listen_max_words: int = 6          # a longer listening sound is dropped (tested at 3: benchmarks count 4+ words as a turn)
-    listen_kind_words: dict = field(default_factory=lambda: {"invite": 2, "continuer": 3, "echo": 6, "feeling": 8})
-                                       # and each kind has its own length ("mm?" is not a sentence); the smaller limit holds.
-                                       # Words, or characters where words have no spaces (Chinese, Japanese, Korean)
+    listen_max_words: int = 6          # anything longer put in while listening is dropped: it would be a turn (tested at 3:
+                                       # benchmarks count 4+ words as a turn). Words, or characters where words have no
+                                       # spaces (Chinese, Japanese, Korean)
 
     # tested knobs, off by default (README: "Tested knobs")
     not_for_me: bool = False           # a "not said to me" choice in the turn and floor questions; picked, the words are
                                        # someone else's and are not answered; never offered before the first answer
     far_db: float | None = None        # a voice this many dB under the caller's answered words is someone else's (tested at 10;
-                                       # pair it with a voiceprint in production, or a quiet caller can be dropped)
+                                       # pair it with a voiceprint, or a quiet caller can be dropped)
+
+    # 0.1 names, accepted with a warning: hold_after_ms is now overlap_ask_ms (it paused the audio then; now it only
+    # asks), hold_release_ms has nothing left to do (the line is never paused)
+    hold_after_ms: int | None = None
+    hold_release_ms: int | None = None
+
+    def __post_init__(self):
+        if self.hold_after_ms is not None:
+            warnings.warn("Config(hold_after_ms=...) is now overlap_ask_ms", DeprecationWarning, stacklevel=3)
+            if self.overlap_ask_ms == 400:                  # an overlap_ask_ms given alongside it wins
+                self.overlap_ask_ms = self.hold_after_ms
+            self.hold_after_ms = None
+        if self.hold_release_ms is not None:
+            warnings.warn("Config(hold_release_ms=...) is gone: the line is no longer paused", DeprecationWarning, stacklevel=3)
+            self.hold_release_ms = None
 
     def pace(self, name: str) -> Pace:
         return next(p for p in self.paces if p.name == name)

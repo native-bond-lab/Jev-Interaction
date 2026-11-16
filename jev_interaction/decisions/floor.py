@@ -1,7 +1,10 @@
 """Both talk at once: carry on, yield, finish the sentence, take the floor back, react, or answer in a word.
 
-Asked on every segment of words heard while the agent is speaking or about to. Which choices are offered depends on the
-pace (judge/questions.py: floor_criteria). A judge that fails leaves the agent carrying on, with the hold released.
+Asked on every segment of words heard while the agent is speaking or about to, and earlier, on the words so far, once
+the user's voice has been over the line for Config.overlap_ask_ms (`Session._over`): asked early, only "the user needs
+the floor" does anything (the line stops); every other answer waits for the words to close. No clock touches the line:
+it plays until Jev says stop. Which choices are offered depends on the pace (judge/questions.py: floor_criteria). A
+judge that fails leaves the agent carrying on.
 """
 from __future__ import annotations
 
@@ -22,8 +25,14 @@ class Floor(Decision):
         if s.speaking or s.generating:
             s._spawn(self.ask(s, gen=s.gen))
 
+    async def ask(self, s, **ctx):
+        await super().ask(s, **ctx)
+        if (ctx.get("early") and s.utt is not None and len(s.utt.segments) > ctx.get("closed", 0)
+                and (s.speaking or s.generating)):
+            await super().ask(s, gen=s.gen)       # the words closed while Jev was reading them unclosed: asked as they stand
+
     def ready(self, s, ctx):
-        return s.utt is not None and bool(s.utt.segments)
+        return s.utt is not None and bool(s.utt.heard)
 
     def questions(self, s, ctx):
         pace = ctx["pace"] = s.params()
@@ -36,7 +45,7 @@ class Floor(Decision):
 
     def state(self, s, ctx):
         line = s.ledger.last_agent().text if s.ledger.last_agent() else ""
-        return super().state(s, ctx) + S.overlap(s.p.short, line, s.utt.text, s.utt.speech_ms)
+        return super().state(s, ctx) + S.overlap(s.p.short, line, s.utt.heard, s.utt.speech_ms)
 
     def allowed(self, s, ctx):
         return ctx["criteria"]                    # the choices this pace was offered
@@ -63,7 +72,14 @@ class Floor(Decision):
 
     async def apply(self, s, answers, ctx):
         probs = P(answers, "floor")
-        if s._far() or (s._offer_elsewhere() and probs and max(probs, key=probs.get) == "elsewhere"):
+        elsewhere = s._far() or (s._offer_elsewhere() and probs and max(probs, key=probs.get) == "elsewhere")
+        if ctx.get("early"):                                # on words not closed yet: only a user who needs the floor
+            action = None if elsewhere else self.split_stop(s, probs, self.choose(s, answers, "floor", ctx) or "carry_on", ctx)
+            if action == "yield":                           # stops the line now; the rest is decided when the words close
+                await s.send(type="decision", what="floor", action=action, early=True, probs=probs)
+                await s._stop_line()
+            return
+        if elsewhere:
             await s.send(type="decision", what="floor", action="carry_on", probs=probs)
             await s._not_for_me("far" if s._far() else "jev")
             return
@@ -73,17 +89,14 @@ class Floor(Decision):
         action = self.split_stop(s, probs, action, ctx)
         await s.send(type="decision", what="floor", action=action, probs=probs)
         if action == "carry_on":
-            s.held = False
-            await s.send(type="unhold", gen=s.gen)
-            if s.speaking:                                  # said over a line that goes on: into the call's record at once
+            if s.speaking and s.utt is not None:            # said over a line that goes on: into the call's record at once
                 s.ledger.said_over(s.utt.text)              # (not a turn to answer); the next sound starts from nothing
                 s.utt, s.judged = None, None
-            else:
-                s.utt.over_ms = 0
+            elif s.utt is not None:
+                s.utt.over_ms = s.utt.over_ask_at = 0
         elif action == "finish_first":
-            s.held = False
-            s.utt.over_ms = 0
-            await s.send(type="unhold", gen=s.gen)
+            if s.utt is not None:
+                s.utt.over_ms = s.utt.over_ask_at = 0
             await s.send(type="finish_line", gen=s.gen)     # the queued lines are dropped; their turn comes after
         elif action == "yield":
             await s._stop_line()                            # the utterance goes on and is answered when it ends

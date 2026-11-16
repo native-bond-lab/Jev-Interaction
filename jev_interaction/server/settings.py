@@ -2,7 +2,7 @@
 
 GET  /api/settings          the setup steps (judge, language model, recognition, synthesis): each step's providers, their
                             fields and what is still missing; secrets come back only as set / not set. Plus reference
-                            setups (what we run) to copy from, never applied unless asked.
+                            setups (the ones we recommend) to copy from, never applied unless asked.
 POST /api/settings          {"values": {NAME: value}} -> written to .env (0600) and applied to this process at once
 POST /api/settings/test     {"node": "judge" | "llm" | "asr" | "tts"} -> a live call with the saved values
 POST /api/settings/detect   {"node": "llm" | "asr" | "tts", "key": "..."} -> whose key it looks like (nothing is sent)
@@ -27,23 +27,23 @@ def env_path() -> pathlib.Path:
     return ENV_FILE or paths.env_file()
 
 
-# Reference setups: what we run, offered to copy from and never applied by default. .env.example carries the same
+# Reference setups: the ones we recommend, offered to copy from and never applied by default. .env.example carries the same
 # values as comments; a test keeps them in step.
 REFERENCES = [
-    {"id": "global", "title": "What we run in production", "title_zh": "我们生产环境在用的组合",
-     "note": "xAI grok-4.3 with reasoning off, ElevenLabs Scribe v2 realtime and eleven_v4_turbo. Keys: Jev, xAI, ElevenLabs.",
-     "note_zh": "xAI grok-4.3（关闭思考）、ElevenLabs Scribe v2 实时识别和 eleven_v4_turbo 合成。需要 Jev、xAI、ElevenLabs 三把密钥。"},
-    {"id": "china", "title": "A mainland China setup", "title_zh": "中国大陆可用的组合",
+    {"id": "global", "title": "Recommended (global)", "title_zh": "推荐组合（海外）",
+     "note": "Proven at scale in our product: xAI grok-4.3 with reasoning off, ElevenLabs Scribe v3 Live and eleven_v4_turbo. Keys: Jev, xAI, ElevenLabs.",
+     "note_zh": "在我们产品的规模化通话里验证过：xAI grok-4.3（关闭思考）、ElevenLabs Scribe v3 Live 实时识别和 eleven_v4_turbo 合成。需要 Jev、xAI、ElevenLabs 三把密钥。"},
+    {"id": "china", "title": "Recommended (mainland China)", "title_zh": "推荐组合（中国大陆）",
      "note": "Qwen, Paraformer and CosyVoice on Alibaba Cloud Bailian. Keys: Jev and one DashScope key.",
      "note_zh": "阿里云百炼上的通义千问、Paraformer 和 CosyVoice。需要 Jev 和一把百炼密钥。"},
 ]
 TEMPLATES = {
     "global": {"JEV_MODEL": "jev-latest", "LLM_BASE_URL": "https://api.x.ai/v1", "LLM_MODEL": "grok-4.3", "LLM_TEMPERATURE": "0.7",
                "ASR_PROVIDER": "elevenlabs", "TTS_PROVIDER": "elevenlabs", "ELEVENLABS_ASR_MODEL": "scribe_v3_live",
-               "ELEVENLABS_TTS_MODEL": "eleven_v4_turbo", "JEV_PRESET": "production"},
+               "ELEVENLABS_TTS_MODEL": "eleven_v4_turbo", "JEV_PRESET": "recommended"},
     "china": {"JEV_MODEL": "jev-latest", "LLM_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1", "LLM_MODEL": "qwen-plus",
               "ASR_PROVIDER": "dashscope", "TTS_PROVIDER": "dashscope", "DASHSCOPE_ASR_MODEL": "paraformer-realtime-v2",
-              "DASHSCOPE_TTS_MODEL": "cosyvoice-v2", "DASHSCOPE_TTS_VOICE": "longxiaochun_v2", "JEV_PRESET": "production"},
+              "DASHSCOPE_TTS_MODEL": "cosyvoice-v2", "DASHSCOPE_TTS_VOICE": "longxiaochun_v2", "JEV_PRESET": "recommended"},
 }
 
 from jev_interaction.adapters import registry as R  # noqa: E402
@@ -52,7 +52,7 @@ for _r in REFERENCES:
     _r["values"] = TEMPLATES[_r["id"]]
 
 TIMING = {"id": "timing", "title": "Timing preset", "title_zh": "时间参数预设", "fields": [
-    {"name": "JEV_PRESET", "label": "Preset", "label_zh": "预设", "default": "production", "options": ["production", "tested", "default"]}]}
+    {"name": "JEV_PRESET", "label": "Preset", "label_zh": "预设", "default": "recommended", "options": ["recommended", "tested", "default"]}]}
 
 
 def build_nodes() -> list[dict]:

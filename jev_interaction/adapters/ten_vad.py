@@ -1,8 +1,8 @@
-"""TEN VAD (Agora, numpy only): the neural voice detector our production calls run on. `pip install ten-vad`
+"""TEN VAD (Agora, numpy only): the neural voice detector our product's calls run on. `pip install ten-vad`
 (on Linux it needs libc++: `apt-get install libc++1`).
 
 A loud room, a keyboard, the agent's own voice coming back off a speaker all clear an energy bar; a neural detector asks
-whether it is a voice. While the agent's line is playing the bar is raised a little more, as in production, so its own
+whether it is a voice. While the agent's line is playing the bar is raised a little more, as in our product, so its own
 echo does not pause it.
 """
 from __future__ import annotations

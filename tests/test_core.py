@@ -30,7 +30,7 @@ def test_profile_reaches_the_judge_header():
 def test_questions_offer_choices_by_pace():
     c = Q.floor_criteria("Mara", finish=True, overrule=False, aside=False, jump=True)
     assert set(c) == {"carry_on", "yield", "finish_first", "jump_in"}
-    assert set(Q.listen("Mara")["criteria"]) == {"continuer", "feeling", "echo", "quiet", "answer_due"}
+    assert set(Q.listen("Mara")["criteria"]) == {"due", "fits", "quiet", "answer_due"}
 
 
 from jev_interaction.testing import FakeASR, FakeJudge, FakeLLM, FakeVAD, scripted_session  # noqa: E402,F401
@@ -42,7 +42,7 @@ def make(answers, policies=None):
 
 TURN = {"done": {"finished": 0.9, "continuing": 0.1}, "wait": {"now": 1.0, "half_second": 0, "two_seconds": 0, "hold": 0},
         "kind": {"reply": 0.9, "sound": 0.1}, "pace": {"normal": 0.6, "patient": 0.4, "narrate": 0, "eager": 0},
-        "listen": {"continuer": 0, "feeling": 0, "echo": 0, "quiet": 1.0, "answer_due": 0}}
+        "listen": {"due": 0, "fits": 0, "quiet": 1.0, "answer_due": 0}}
 
 
 async def test_a_finished_turn_is_answered_and_the_pace_timing_is_blended():
@@ -57,18 +57,54 @@ async def test_a_finished_turn_is_answered_and_the_pace_timing_is_blended():
     assert s.params().max_wait_ms == int(0.6 * 1200 + 0.4 * 2500)
 
 
-async def test_talking_over_the_agent_holds_then_the_floor_question_decides():
+async def test_talking_over_the_agent_never_pauses_the_line_and_the_floor_question_decides():
     s, events, _ = make({"floor": {"carry_on": 0.1, "yield": 0.8, "finish_first": 0.1, "jump_in": 0.0}})
     s.speaking = True
     s.ledger.agent("So the thing about my morning is")
     s.vad.voice = True
     for _ in range(3):
         await s.on_audio(b"\x00" * 6400)
-    assert any(e["type"] == "hold" for e in events)
+    assert not any(e["type"] in ("hold", "stop") for e in events)        # a voice over the line: no clock touches it
     await s.on_segment(Segment("Wait, can I ask something?"))
     await asyncio.sleep(0.05)
     assert any(e["type"] == "stop" for e in events)
     assert s.ledger.last_agent().cut
+
+
+async def test_words_not_yet_closed_are_put_to_jev_once_the_voice_has_been_over_the_line_a_while():
+    s, events, judge = make({"floor": {"carry_on": 0.9, "yield": 0.1, "finish_first": 0.0, "jump_in": 0.0}})
+    s.speaking = True
+    s.ledger.agent("So the thing about my morning is")
+    s.vad.voice = True
+    await s.on_audio(b"\x00" * 6400)
+    await s.on_segment(Segment("wait", final=False))                     # 200 ms over the line: too soon to ask
+    await asyncio.sleep(0.05)
+    assert not judge.asked
+    await s.on_audio(b"\x00" * 6400)                                    # 400 ms, and there are words: Jev is asked
+    await asyncio.sleep(0.05)
+    assert len(judge.asked) == 1 and 'the user is saying: "wait"' in judge.asked[0][1]
+    assert not any(e["type"] in ("stop", "decision") for e in events) and s.utt is not None   # "carry on": nothing happens
+    await s.on_segment(Segment("wait can I", final=False))               # more words, but not yet as much voice again
+    await asyncio.sleep(0.05)
+    assert len(judge.asked) == 1
+    judge.answers = {"floor": {"carry_on": 0.1, "yield": 0.8, "finish_first": 0.1, "jump_in": 0.0}}
+    for _ in range(2):
+        await s.on_audio(b"\x00" * 6400)
+    await asyncio.sleep(0.05)
+    assert len(judge.asked) == 2 and any(e["type"] == "stop" for e in events)   # the user needs the floor: the line stops
+    assert s.utt is not None and not s.utt.segments                      # before the recognizer has closed a word
+    stop = [e for e in events if e["type"] == "decision"][-1]
+    assert stop["action"] == "yield" and stop["early"]
+
+
+async def test_a_sound_over_the_line_with_no_words_asks_nothing():
+    s, events, judge = make({"floor": {"carry_on": 0.1, "yield": 0.9}})
+    s.speaking = True
+    s.ledger.agent("So the thing about my morning is")
+    s.vad.voice = True
+    for _ in range(5):
+        await s.on_audio(b"\x00" * 6400)                                # a laugh, a second long
+    assert not judge.asked and not events
 
 
 async def test_a_quiet_line_may_be_picked_up_and_hang_up_is_never_first():
@@ -129,17 +165,19 @@ async def test_a_long_listening_sound_is_dropped():
     s, events, _ = make(TURN)
     s.cfg.listen_max_words = 3
     s.llm.out = ["Oh yeah? What do you have in mind?"]
-    s.utt = None
-    await s.listen_in("feeling")
-    assert not any(e["type"] == "listen" for e in events)
+    s._open_utterance()
+    s.utt.segments.append((0.0, "so I was thinking,"))
+    await s.listen_in()
+    assert not any(e["type"] == "listen" for e in events) and not s.utt.asides      # not voiced, not in the record
 
 
-def test_presets_carry_production_and_tested_settings():
+def test_presets_carry_recommended_and_tested_settings():
     from jev_interaction.presets import config
-    prod = config("production")
-    assert prod.quiet_marks_s[-1] == 240.0 and prod.hold_after_ms == 400 and not prod.not_for_me
+    prod = config("recommended")
+    assert config("production") == prod                                  # its earlier name
+    assert prod.quiet_marks_s[-1] == 240.0 and prod.overlap_ask_ms == 400 and not prod.not_for_me
     tested = config("tested", language="zh")
-    assert tested.hold_after_ms == 1000 and tested.not_for_me and tested.far_db == 10.0 and tested.language == "zh"
+    assert tested.overlap_ask_ms == 1000 and tested.not_for_me and tested.far_db == 10.0 and tested.language == "zh"
     with pytest.raises(KeyError):
         config("nope")
 
@@ -173,7 +211,7 @@ def test_reasoning_is_switched_off_where_the_provider_has_a_switch():
     assert no_reasoning("https://api.openai.com/v1") == {} and no_reasoning("http://localhost:11434/v1") == {}
 
 
-async def test_a_failing_judge_never_leaves_the_line_held():
+async def test_a_failing_judge_leaves_the_line_playing():
     class BrokenJudge:
         async def ask(self, questions, state):
             raise RuntimeError("judge down")
@@ -184,10 +222,9 @@ async def test_a_failing_judge_never_leaves_the_line_held():
     s.vad.voice = True
     for _ in range(3):
         await s.on_audio(b"\x00" * 6400)
-    assert s.held
     await s.on_segment(Segment("Wait, what?"))
     await asyncio.sleep(0.05)
-    assert not s.held and any(e["type"] == "unhold" for e in events)
+    assert not any(e["type"] == "stop" for e in events)
     assert any(e["type"] == "error" and e["what"] == "judge" for e in events)
 
 
@@ -343,9 +380,7 @@ async def test_a_detector_that_measures_voice_is_asked_how_much_and_told_when_th
     for _ in range(4):
         await s.on_audio(b"\x00" * 6400)
     assert s.vad.asked == [True] * 4
-    assert s.utt.speech_ms == 320 and not any(e["type"] == "hold" for e in events)   # 400 ms of real voice, not two frames
-    await s.on_audio(b"\x00" * 6400)
-    assert any(e["type"] == "hold" for e in events)
+    assert s.utt.speech_ms == 320 and s.utt.over_ms == 320               # the voice in the frames, not the frames
 
 
 def test_the_energy_detector_raises_its_bar_while_the_line_plays():
@@ -356,16 +391,14 @@ def test_the_energy_detector_raises_its_bar_while_the_line_plays():
     assert EnergyVAD().voiced_ms(tone) == 200 and EnergyVAD().voiced_ms(tone, playing=True) == 0
 
 
-async def test_a_sound_before_the_line_gives_no_head_start_on_a_hold():
+async def test_a_sound_before_the_line_does_not_count_as_voice_over_it():
     s, events, _ = make({})
     s.vad.voice = True
     for _ in range(3):
         await s.on_audio(b"\x00" * 6400)                                # a cough while nobody is speaking
     s.speaking = True                                                    # the agent's line starts
     await s.on_audio(b"\x00" * 6400)
-    assert not any(e["type"] == "hold" for e in events)                  # 200 ms over the line, not 800
-    await s.on_audio(b"\x00" * 6400)
-    assert any(e["type"] == "hold" for e in events)
+    assert s.utt.over_ms == 200                                          # 200 ms over the line, not 800
 
 
 async def test_a_wordless_sound_is_over_after_a_quiet_stretch():
@@ -378,7 +411,7 @@ async def test_a_wordless_sound_is_over_after_a_quiet_stretch():
     assert s.utt is None
 
 
-async def test_after_carry_on_the_next_sound_holds_afresh_and_lets_go_without_words():
+async def test_words_over_a_line_that_goes_on_are_in_the_record_at_once():
     s, events, _ = make({"floor": {"carry_on": 0.9, "yield": 0.1, "finish_first": 0.0, "jump_in": 0.0}})
     s.speaking = True
     s.ledger.agent("So there I was, forty seconds of dead air")
@@ -387,20 +420,15 @@ async def test_after_carry_on_the_next_sound_holds_afresh_and_lets_go_without_wo
         await s.on_audio(b"\x00" * 6400)
     await s.on_segment(Segment("no way"))
     await asyncio.sleep(0.05)
-    assert [e["type"] for e in events if e["type"] in ("hold", "unhold")] == ["hold", "unhold"]
+    assert not any(e["type"] in ("hold", "unhold", "stop") for e in events)
     assert s.utt is None and s.ledger.turns[-1].over                     # in the record at once; the story goes on
     assert s.ledger.messages()[-1] == {"role": "user", "content": "(over you: no way)"}
     assert "who went on): no way" in s.ledger.recent_text("Mara", 8, 300)
     s.ledger.user("so what happened", "[event]")
     assert s.ledger.messages()[-1]["content"] == "(over you: no way)\n[event]\nso what happened"
     s.ledger.turns.pop()
-    await s.on_audio(b"\x00" * 6400)                                    # a laugh a little later
-    assert [e["type"] for e in events if e["type"] in ("hold", "unhold")] == ["hold", "unhold"]
-    await s.on_audio(b"\x00" * 6400)
-    s.vad.voice = False
-    for _ in range(4):
-        await s.on_audio(b"\x00" * 6400)
-    assert [e["type"] for e in events if e["type"] in ("hold", "unhold")] == ["hold", "unhold", "hold", "unhold"]
+    await s.on_audio(b"\x00" * 6400)                                    # a laugh a little later: a new sound, from nothing
+    assert s.utt is not None and s.utt.over_ms == 200
 
 
 async def test_a_caller_waits_in_line_until_a_call_ends_and_is_told_where_they_stand(monkeypatch):
@@ -451,18 +479,15 @@ def test_a_line_of_tags_alone_has_no_voice():
 @pytest.mark.asyncio
 async def test_a_listening_sound_is_measured_in_characters_where_words_have_no_spaces():
     s, events, _ = scripted_session()
-    s.cfg.listen_max_words = 8
+    s._open_utterance()
+    s.utt.segments.append((0.0, "我小时候住在海边，"))
     s.llm.out = ["那时候大概十一二岁吧，我也记不清了。"]      # one "word" to str.split, a whole sentence to the ear
-    await s.listen_in("continuer")
-    assert not any(e["type"] == "listen" for e in events)
-    s.llm.out = ["嗯，我在听。慢慢讲。"]                     # inside the overall limit, too long for a bare "go on"
-    s.listen_last = 0
-    await s.listen_in("continuer")
+    await s.listen_in()
     assert not any(e["type"] == "listen" for e in events)
     s.llm.out = ["嗯？"]
     s.listen_last = 0
-    await s.listen_in("continuer")
-    await s.listen_in("continuer", inviting=True)      # right behind the first: not voiced, sounds are spaced out
+    await s.listen_in()
+    await s.listen_in()                                # right behind the first: not voiced, they would run together
     assert [e["text"] for e in events if e["type"] == "listen"] == ["嗯？"]
 
 
@@ -523,3 +548,155 @@ async def test_a_reply_that_fails_or_says_nothing_is_asked_for_once_more():
     s.llm = Flaky([["Hi."]])
     await s.respond("commit")
     assert s.llm.calls == 1                                 # a reply that came is not asked for again
+
+
+@pytest.mark.asyncio
+async def test_jev_picks_the_moment_and_the_responder_the_words_of_what_is_put_in():
+    import time
+
+    from jev_interaction.decisions.listen import LISTEN
+    from jev_interaction.utterance import Utterance
+    s, events, _ = scripted_session(policies={"listen": ThresholdPolicy(default=0.5)})
+    said = lambda: [(e["kind"], e["text"]) for e in events if e["type"] == "listen"]  # noqa: E731
+    due = {"listen": {"probabilities": {"due": 0.9, "quiet": 0.1}}}
+    fits = {"listen": {"probabilities": {"fits": 0.9, "quiet": 0.1}}}
+    s.utt = Utterance(1, time.monotonic(), [(0.0, "two cartons of milk,")])
+    s.llm.out = ["Two cartons of milk."]
+    await LISTEN.apply(s, due, {})
+    await asyncio.sleep(0.05)
+    assert said() == [("due", "Two cartons of milk.")]
+    asked = s.llm.seen[-1][-1]["content"]                  # the event says which moment it is; none of their words quoted
+    assert asked.endswith("two cartons of milk,") and "waiting to hear from you" in asked and '"two cartons' not in asked
+    assert f'and {s.p.short} put in: "Two cartons of milk."' in LISTEN.state(s, {})    # Jev reads what was put in
+    assert s.ledger.open is s.utt                          # one record: the turn in progress is part of the call
+
+    s.listen_last = time.monotonic() - 1.5                 # asked again about the same words as the quiet grows: it came
+    await LISTEN.apply(s, due, {})                         # up once, however sure Jev is the second time
+    await asyncio.sleep(0.05)
+    assert len(said()) == 1
+
+    s.utt.segments.append((0.0, "a dozen eggs,"))          # the next piece, well inside the gap optional sounds keep
+    s.listen_last = time.monotonic() - 1.5
+    s.llm.out = ["A dozen eggs."]
+    assert LISTEN.ready(s, {})
+    await LISTEN.apply(s, due, {})
+    await asyncio.sleep(0.05)
+    assert said()[-1] == ("due", "A dozen eggs.")
+    assert s.llm.seen[-1][-1]["content"].endswith("a dozen eggs,")   # the words since, not the list so far
+
+    s.utt.segments.append((0.0, "and, um,"))
+    s.listen_last = time.monotonic() - 1.5
+    s.llm.out = ["Mm."]
+    await LISTEN.apply(s, fits, {})                        # a sound that could be left out still waits its three seconds
+    await asyncio.sleep(0.05)
+    assert len(said()) == 2
+    s.listen_last = time.monotonic() - 3.5
+    await LISTEN.apply(s, fits, {})
+    await asyncio.sleep(0.05)
+    assert said()[-1] == ("fits", "Mm.")                   # and a bare "mm" is in the record like anything else put in
+    s.utt.segments.append((0.0, "that's all."))
+    s.listen_last = time.monotonic() - 3.5
+    s.llm.out = [""]
+    await LISTEN.apply(s, fits, {})                        # the responder may write nothing: then nothing is put in
+    await asyncio.sleep(0.05)
+    assert len(said()) == 3
+    s.llm.out = ["Got it."]
+    await s.respond("spoke")                               # the turn's record has what was put in, where it came
+    name = s.p.short
+    assert s.ledger.turns[-2].text == (f"two cartons of milk, [{name}: Two cartons of milk.] a dozen eggs, "
+                                       f"[{name}: A dozen eggs.] and, um, [{name}: Mm.] that's all.")
+    said_by = [(m["role"], m["content"].split("\n")[-1]) for m in s.llm.seen[-1][-7:]]   # the agent's words are its own turns
+    assert said_by == [("user", "two cartons of milk,"), ("assistant", "Two cartons of milk."), ("user", "a dozen eggs,"),
+                       ("assistant", "A dozen eggs."), ("user", "and, um,"), ("assistant", "Mm."), ("user", "that's all.")]
+
+
+@pytest.mark.asyncio
+async def test_a_silence_after_unfinished_words_stays_the_users_until_jev_is_sure_or_it_has_gone_on_long():
+    import time
+
+    from jev_interaction.decisions.turn import TURN as TURN_DECISION
+    from jev_interaction.utterance import Utterance
+    s, _, judge = scripted_session({"done": {"finished": 0.2, "continuing": 0.8}},
+                                   policies={"end_of_turn": ThresholdPolicy(default=0.5)})
+    s.utt = Utterance(1, time.monotonic(), [(0.0, "and it pushed my cup off too.")])
+    s.judged = {"finished": 0.2, "wait_ms": 0, "reply": 1.0, "drawn": True}
+    asked = len(s.llm.seen)
+    s.silence_ms = s.cfg.pace("normal").max_wait_ms + 1000         # past the longest wait: no clock hands her the turn
+    assert not await TURN_DECISION.on_tick(s, time.monotonic())
+    assert len(s.llm.seen) == asked and s.utt is not None
+    s.silence_ms = s.cfg.turn_reask_ms[-1]                         # the quiet grows: Jev is asked again, the listen
+    await TURN_DECISION.on_tick(s, time.monotonic())               # question with it
+    await asyncio.sleep(0.05)
+    assert "listen" in judge.asked[-1][0] and "quiet for 4.0 s" in judge.asked[-1][1]
+    s.silence_ms = s.cfg.pace("normal").max_wait_ms + s.cfg.turn_last_ms
+    assert await TURN_DECISION.on_tick(s, time.monotonic())        # a long silence: she speaks, and her line is told why
+    assert "silent for" in s.llm.seen[-1][-1]["content"] and s.utt is None
+
+
+@pytest.mark.asyncio
+async def test_someone_else_is_put_on_the_line_when_the_user_asks_for_them():
+    lyra = Profile(name="Lyra Vex", task="a companion", prompt="You are Lyra.", manner="Chatty listener.")
+    vera = Profile(name="Vera", task="a speaking coach", prompt="You are Vera.", manner="Few words.",
+                   policies={"quiet": ArgmaxPolicy()}, extra={"display": {"accent": "#e5e7eb"}})
+    answers = {**TURN, "who": {"stay": 0.1, "vera": 0.9}}
+    s, events, judge = scripted_session(answers, profile=lyra, policies={"end_of_turn": ThresholdPolicy(default=0.5)})
+    s.cast = {"lyra": lyra, "vera": vera}
+    await s.respond("pickup")
+    s.speaking = False                                               # her greeting has played
+    s.llm.out = ["Sure, one second."]
+    s._open_utterance()
+    s.utt.segments.append((0.0, "Can you put Vera on? I have a talk tomorrow."))
+    from jev_interaction.decisions.turn import TURN as TURN_DECISION
+    await TURN_DECISION.ask(s, utt_id=s.utt.id)
+    assert "who" in judge.asked[-1][0] and s.judged["who"] == "vera"
+    s.silence_ms = 200
+    assert await TURN_DECISION.on_tick(s, 0.0)                       # the turn is taken: a word from Lyra, then Vera is on
+    assert s.p is vera and "You are Vera." in s.system and isinstance(s.policies["quiet"], ArgmaxPolicy)
+    kinds = [(e["type"], e.get("id") or e.get("name")) for e in events if e["type"] in ("line", "persona")]
+    assert [k for k, _ in kinds][-3:] == ["line", "persona", "line"]   # her goodbye in her voice, then the other's first line
+    persona = next(e for e in events if e["type"] == "persona")
+    assert persona["id"] == "vera" and persona["gen"] == s.gen and persona["accent"] == "#e5e7eb"
+    leaving, arriving = s.llm.seen[-2], s.llm.seen[-1]
+    assert "You are Lyra." in leaving[0]["content"] and "putting Vera on" in leaving[-1]["content"]
+    assert "You are Vera." in arriving[0]["content"] and "was talking with Lyra and asked for you" in arriving[-1]["content"]
+    assert not any(m["role"] == "assistant" for m in arriving)       # nothing Lyra said is Vera's own turn
+    assert "(Lyra: Sure, one second.)" in arriving[-1]["content"] and "Can you put Vera on?" in arriving[-1]["content"]
+    assert "Lyra: Sure, one second." in s.ledger.recent_text("Vera", 8, 300)   # and Jev reads who said what
+    assert set(s.others()) == {"lyra"}                               # she can be asked back
+
+    s2, _, judge2 = scripted_session({**TURN, "who": {"stay": 0.9, "vera": 0.1}}, profile=lyra)
+    assert not s2.others()                                           # no cast: the question is not asked at all
+    s2._open_utterance()
+    s2.utt.segments.append((0.0, "Vera told me the same thing yesterday."))
+    await TURN_DECISION.ask(s2, utt_id=s2.utt.id)
+    assert "who" not in judge2.asked[-1][0] and s2.judged["who"] is None
+
+
+def test_a_player_that_asks_for_byte_ranges_gets_them_and_the_others_get_the_stream():
+    from fastapi.testclient import TestClient
+
+    from jev_interaction.server import app as server
+    from jev_interaction.testing import FakeSynthesizer
+
+    class Counting(FakeSynthesizer):
+        calls = 0
+
+        async def audio(self, text):
+            Counting.calls += 1
+            yield text.encode("utf-8")[:4]
+            yield text.encode("utf-8")[4:]
+
+    server.LINES["abc"] = ("0123456789", Counting())
+    c = TestClient(server.app)
+    plain = c.get("/tts/abc")
+    assert plain.status_code == 200 and plain.content == b"0123456789" and "content-range" not in plain.headers
+    assert c.get("/tts/abc", headers={"Range": "bytes=0-"}).status_code == 200          # "all of it": still the stream
+    probe = c.get("/tts/abc", headers={"Range": "bytes=0-1"})                           # Safari's first question
+    assert probe.status_code == 206 and probe.content == b"01" and probe.headers["content-range"] == "bytes 0-1/10"
+    assert probe.headers["accept-ranges"] == "bytes" and probe.headers["content-type"] == "audio/mpeg"
+    rest = c.get("/tts/abc", headers={"Range": "bytes=2-"})
+    assert rest.status_code == 206 and rest.content == b"23456789" and rest.headers["content-range"] == "bytes 2-9/10"
+    assert c.get("/tts/abc", headers={"Range": "bytes=-3"}).content == b"789"
+    assert c.get("/tts/abc", headers={"Range": "bytes=50-60"}).status_code == 416
+    assert Counting.calls == 3                                                          # the ranges share one synthesis
+    assert c.get("/tts/nope").status_code == 404
