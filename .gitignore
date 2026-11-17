@@ -1,8 +1,13 @@
 __pycache__/
 *.pyc
 .env
+/.local/
 runs/
 .venv/
+/.test-tmp/
+/.pytest_cache/
+/.ruff_cache/
+/experiments/
 *.egg-info/
 uv.lock
 .claude/

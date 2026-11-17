@@ -237,6 +237,16 @@ def _cosyvoice(voice: str | None = None, **_):
     return CosyVoiceTTS(voice=voice)
 
 
+def _doubao_asr(language="zh", **_):
+    from .doubao_asr import DoubaoRealtime
+    return DoubaoRealtime(language=language)
+
+
+def _doubao_tts(voice=None, **_):
+    from .doubao_tts import DoubaoTTS
+    return DoubaoTTS(voice=voice)
+
+
 def _openai_compat(**options):
     from .openai_compat import OpenAICompatResponder
     return OpenAICompatResponder(**options)
@@ -245,6 +255,11 @@ def _openai_compat(**options):
 def _jev(**options):
     from ..judge import JevClient
     return JevClient(**options)
+
+
+def _judge_key_required():
+    from ..judge.client import JEV_URL, public_endpoint
+    return not public_endpoint(os.getenv("JEV_URL") or JEV_URL)
 
 
 def _local_llm() -> bool:
@@ -262,7 +277,8 @@ ELEVEN = {"docs": "elevenlabs.io/app/settings/api-keys", "key_pattern": r"^sk_[0
 DASHSCOPE = {"docs": "bailian.console.aliyun.com", "key_pattern": r"^sk-[0-9a-f]{20,}$"}
 
 register("judge", "jev", _jev, [
-    Setting("JEV_API_KEY", "Jev API key", "Jev 密钥", secret=True, required=True),
+    Setting("JEV_API_KEY", "Jev API key", "Jev 密钥", secret=True, required=_judge_key_required),
+    Setting("JEV_URL", "Jev API endpoint", "Jev 接口地址", default="https://api.typesafe.ai/v1/systemone"),
     Setting("JEV_MODEL", "Model", "模型", default="jev-latest")], label="Jev", docs="console.typesafe.ai")
 register("llm", "openai-compatible", _openai_compat, [
     Setting("LLM_BASE_URL", "Endpoint (OpenAI-compatible)", "接口地址（兼容 OpenAI）", required=True),
@@ -280,3 +296,30 @@ register("tts", "elevenlabs", _eleven_tts, [
 register("tts", "dashscope", _cosyvoice, [
     DASHSCOPE_KEY, Setting("DASHSCOPE_TTS_VOICE", "Voice", "音色", default="longxiaochun_v2"),
     Setting("DASHSCOPE_TTS_MODEL", "Model", "模型", default="cosyvoice-v2")], label="CosyVoice (Alibaba Cloud Bailian)", **DASHSCOPE)
+
+# Optional measurement stack. The existing provider defaults and recommended stacks are unchanged.
+def _doubao_auth(kind):
+    node_key = f"DOUBAO_{kind.upper()}_API_KEY"
+
+    def has_key():
+        return bool(os.getenv(node_key) or os.getenv("DOUBAO_API_KEY"))
+
+    return [
+        Setting("DOUBAO_API_KEY", "Shared voice API key", "豆包语音共用 API Key", secret=True,
+                required=lambda: not has_key() and not (os.getenv("DOUBAO_APP_ID") and os.getenv("DOUBAO_ACCESS_TOKEN"))),
+        Setting(node_key, "Node-specific voice API key (optional)", "此节点单独的 API Key（可选）", secret=True),
+        Setting("DOUBAO_APP_ID", "App ID (legacy console)", "App ID（旧版控制台）",
+                required=lambda: not has_key() and bool(os.getenv("DOUBAO_ACCESS_TOKEN"))),
+        Setting("DOUBAO_ACCESS_TOKEN", "Access token (legacy console)", "Access Token（旧版控制台）", secret=True,
+                required=lambda: not has_key() and bool(os.getenv("DOUBAO_APP_ID"))),
+    ]
+
+
+register("asr", "doubao", _doubao_asr, [*_doubao_auth("asr"),
+    Setting("DOUBAO_ASR_RESOURCE_ID", "Streaming ASR resource ID", "流式识别资源 ID", required=True),
+    Setting("DOUBAO_ASR_SILENCE_MS", "Finalization silence (ms)", "分句判停静音（毫秒）", default="400")],
+    label="Doubao Voice ASR", docs="console.volcengine.com/speech/app")
+register("tts", "doubao", _doubao_tts, [*_doubao_auth("tts"),
+    Setting("DOUBAO_TTS_RESOURCE_ID", "TTS resource ID", "合成资源 ID", required=True),
+    Setting("DOUBAO_TTS_VOICE", "Voice ID", "音色 ID", required=True)],
+    label="Doubao Voice TTS", docs="console.volcengine.com/speech/app")

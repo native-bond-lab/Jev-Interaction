@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+- Add optional Doubao streaming ASR/TTS adapters and explicit Jev endpoint configuration, including keyless access
+  to the exact public Amigos endpoint. Provider defaults remain unchanged; keys stay in local configuration.
+- Retain Jev idle HTTP connections for 60 seconds instead of HTTPX's default 5 seconds, preserving the existing
+  100-connection/20-idle pool bounds and all question, timeout, retry and decision behavior. Optional constructor
+  argument `keepalive_expiry=5` restores the prior idle expiry. `tools/compare_judge_keepalive.py --live` compares
+  identical synthetic requests after equal idle gaps and records TCP creation separately from provider time.
+- Prewarm ElevenLabs TTS during ASR setup with one bounded same-origin model-metadata GET, using the actual synthesis
+  pool. `ELEVENLABS_TTS_PREWARM=0` disables it. No placeholder synthesis is sent. Formal speech cancels an unfinished
+  warmup rather than waiting for it; call close cancels it and releases the pool. Record sanitized warmup outcomes
+  and elapsed time. `tools/compare_tts_prewarm.py --live` compares fresh cold/prewarmed pools in randomized pairs,
+  separately reporting setup/warmup time, first-audio time and actual TCP creation; optional `--lead-ms` gives both
+  arms the same setup window. This component experiment does not measure device playback.
+- Pool ElevenLabs TTS connections per call/voice (`ELEVENLABS_TTS_REUSE_CONNECTION=0` disables reuse). Start the first
+  eligible line's synthesis before its browser GET (`TTS_PREFETCH=0` disables early start). Playback, full retries and
+  byte ranges share one provider stream. Each call bounds audio storage at 32 lines / 8 MiB, 2 MiB per line, with two
+  concurrent syntheses and a 120-second idle-entry expiry. Interrupts, cache eviction and call close release streams;
+  all old/current persona pools close on call end. Custom synthesizers may optionally implement `aclose()`.
+  Record eligible-text-to-TTS and eligible-text-to-first-audio timing. Live warm TTS checks are available
+  through `tools/compare_voice_latency.py --live --tts --tts-reuse`.
+- Preserve original ASR -> Jev -> LLM -> TTS behavior: newline segmentation, original decisions and awaited response
+  scheduling remain unchanged. Source fixtures guard the original decision and scheduling behavior.
+- Reuse LLM connections within a call and close the optional client with the session. After SSE `[DONE]`, drain the
+  bounded HTTP tail so sockets return to the pool. Forward ElevenLabs chunks without accumulating 4096 bytes locally;
+  the original buffering remains selectable. Stage observations and safe model/configuration identities distinguish
+  component first-byte timings from browser playback. Error and cancellation samples remain visible.
+- Prefer AudioWorklet capture while keeping 200 ms PCM16 input; use a 1024-frame ScriptProcessor fallback. Release
+  media sources, abort fallback downloads and revoke owned blob URLs on stop/end. Real local browser tests cover
+  PCM frames, playback acknowledgements, interruption, subsequent playback and hangup in both capture modes.
 - **The caller's voiceprint** (`pip install "jev-interaction[voiceprint]"`), the same check the call engine in our
   product runs. Each stretch of voice gets a speaker embedding (ECAPA-TDNN on the CPU, `EcapaEmbedder`) and is compared
   with a print learned from the words the agent answers, with no enrollment step. A clear stranger is not answered and

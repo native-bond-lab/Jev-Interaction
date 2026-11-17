@@ -1,8 +1,20 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Protocol
+
+
+@asynccontextmanager
+async def closing_stream(iterator):
+    """Release a provider's stream on early exit; custom AsyncIterators need not implement optional aclose()."""
+    try:
+        yield iterator
+    finally:
+        close = getattr(iterator, "aclose", None)
+        if close is not None:
+            await close()
 
 
 @dataclass

@@ -93,6 +93,7 @@
   let waiting = null;                                          // in line for a free call: {ahead, wait_s}, as the server last said
   let micLevel = 0, lastPartialAt = 0, thinkingUntil = 0, yieldedUntil = 0, endedUntil = 0, shownState = '';
   let capTimers = {};
+  const audioResources = new window.JevAudioResources();
 
   function send(o) {
     if (ws && ws.readyState === 1) ws.send(JSON.stringify(o));
@@ -115,23 +116,29 @@
   }
   function unlockVoices() {
     const hush = silence();
+    const unlocking = [];
     voices = Array.from({ length: 8 }, () => {
       const el = new Audio(hush); el.preload = 'auto'; wire(el);
-      Promise.resolve(el.play()).then(() => { if (el.src === hush) el.pause(); }).catch(() => {});
+      unlocking.push(Promise.resolve(el.play()).then(() => { if (el.src === hush) el.pause(); }).catch(() => {}));
       return el;
     });
+    Promise.allSettled(unlocking).then(() => URL.revokeObjectURL(hush));
   }
   function makeAudio(m) {
     const used = new Set([current && current.el, listening, ...queue.map((l) => l.el)]);
     let el = voices.find((v) => !used.has(v));
     if (!el) { el = new Audio(); wire(el); }                   // more lines waiting than voices: a new one (a phone may refuse it)
-    el.onended = null; el.preload = 'auto'; el.src = m.audio;  // fetched while the line before it plays: one reply sounds like one
+    el.preload = 'auto'; audioResources.assign(el, m.audio); // fetched while the line before it plays
     return el;
   }
   function playNext() {
     if (current || !queue.length) { if (!current) { send({ type: 'playback', state: 'idle' }); fadeCaption('capAgent', 4000); } return; }
     current = queue.shift();
-    current.el.onended = () => { agentCaption(capSaid); playedOf(current.gen).push(current.text); current = null; playNext(); };
+    const line = current;
+    line.el.onended = () => {
+      if (current !== line) return;
+      agentCaption(capSaid); playedOf(line.gen).push(line.text); audioResources.release(line.el); current = null; playNext();
+    };
     startCurrent();
   }
   function startCurrent() {
@@ -148,14 +155,16 @@
         line.before = capSaid; capSaid = joinLines(capSaid, line.text);
         line.shown = 0; agentCaption(line.before, line.text);
       }
-      line.started = true; thinkingUntil = 0; send({ type: 'playback', state: 'playing' });
+      line.started = true; thinkingUntil = 0;
+      send({ type: 'playback', state: 'playing', id: line.id, gen: line.gen,
+             client_receive_to_play_ms: Math.round(performance.now() - line.receivedAt) });
     })
       .catch((e) => {
         if (current !== line) return;
         if (!line.whole) {                                     // this player would not take the stream: fetch the line whole
           line.whole = true;                                   // and play that (once)
-          fetch(line.el.src).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))))
-            .then((b) => { if (current !== line) return; line.el.src = URL.createObjectURL(b); startCurrent(); })
+          audioResources.whole(line.el, audioResources.entries.get(line.el))
+            .then((ready) => { if (current !== line || !ready) return; startCurrent(); })
             .catch(() => skipLine(line, e));
           return;
         }
@@ -168,7 +177,7 @@
     if (line.gen !== capGen) { capGen = line.gen; capSaid = ''; }
     capSaid = joinLines(capSaid, line.text); agentCaption(capSaid);
     showNotice(t('err_audio'), true);
-    current = null; playNext();
+    audioResources.release(line.el); current = null; playNext();
   }
   function heardSoFar(line) {
     const d = line.el.duration;
@@ -179,17 +188,22 @@
   function playedOf(gen) { if (played.gen !== gen) played = { gen, texts: [] }; return played.texts; }
   function stopAll() {
     const heard = current ? heardSoFar(current) : '';
-    if (current) { current.el.onended = null; current.el.pause(); }
-    queue.forEach((l) => l.el.pause()); queue = []; current = null;
+    if (current) audioResources.release(current.el);
+    queue.forEach((l) => audioResources.release(l.el)); queue = []; current = null;
+    audioResources.release(listening); listening = null;
     return heard;
   }
 
   function onEvent(m) {
     switch (m.type) {
-      case 'line': lineGen = m.gen; queue.push({ el: makeAudio(m), text: m.text || '', gen: m.gen }); playNext(); break;
+      case 'line': lineGen = m.gen; queue.push({ id: m.id, receivedAt: performance.now(), el: makeAudio(m), text: m.text || '', gen: m.gen }); playNext(); break;
       case 'listen':
-        if (listening) listening.pause();
-        if (m.audio) { listening = makeAudio(m); Promise.resolve(listening.play()).catch(() => {}); }
+        audioResources.release(listening); listening = null;
+        if (m.audio) {
+          const el = listening = makeAudio(m);
+          el.onended = () => { if (listening === el) { audioResources.release(el); listening = null; } };
+          Promise.resolve(el.play()).catch(() => { if (listening === el) { audioResources.release(el); listening = null; } });
+        }
         note({ tone: 'info', kind: 'listen', label: m.text ? `“${m.text}”` : t('d_listen'), detail: m.kind && has('l_' + m.kind) ? t('l_' + m.kind) : m.kind });
         break;
       case 'user':
@@ -208,7 +222,7 @@
         break;
       }
       case 'persona': incoming = m; note({ tone: 'pace', kind: 'pace', label: `→ ${m.name}` }); break;
-      case 'finish_line': queue.forEach((l) => l.el.pause()); queue = []; break;
+      case 'finish_line': queue.forEach((l) => audioResources.release(l.el)); queue = []; break;
       case 'decision': onDecision(m); break;
       case 'pace':
         pace = m.pace;
@@ -377,14 +391,18 @@
     resetCall(); setPhase('call'); connecting = true; callStart = 0;
     // the audio context is made and started here, inside the tap: on an iPhone one made later (after the microphone
     // prompt) stays suspended, and then nothing is heard from the microphone and nothing sent
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+    const callContext = ctx;
     wake();
     ctx.onstatechange = wake;
     analyser = ctx.createAnalyser(); analyser.fftSize = 512; analyserBuf = new Uint8Array(analyser.fftSize); analyser.connect(ctx.destination);
     unlockVoices();
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const captured = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      if (ctx !== callContext) { captured.getTracks().forEach((tr) => tr.stop()); return; }
+      stream = captured;
     } catch (e) {
+      if (ctx !== callContext) return;
       endCall();
       report({ mic: e.name });
       showNotice(t(e.name === 'NotAllowedError' || e.name === 'SecurityError' ? 'err_mic_denied' : e.name === 'NotFoundError' ? 'err_mic_missing' : 'err_mic'), true);
@@ -393,24 +411,25 @@
     if (phase !== 'call') { stream.getTracks().forEach((tr) => tr.stop()); stream = null; return; }   // hung up while the prompt was open
     wake();
     const src = ctx.createMediaStreamSource(stream);
-    proc = ctx.createScriptProcessor(4096, 1, 1);
-    const ratio = ctx.sampleRate / 16000; let buf = [], frames = 0;
+    let frames = 0, captureMode = 'pending';
     const sock = ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
-    proc.onaudioprocess = (e) => {
-      const x = e.inputBuffer.getChannelData(0);
-      let sum = 0; for (let i = 0; i < x.length; i++) sum += x[i] * x[i];
-      micLevel = Math.min(1, Math.sqrt(sum / x.length) * 7);
-      for (let i = 0; i < x.length; i += ratio) buf.push(Math.max(-1, Math.min(1, x[Math.floor(i)])));
-      while (buf.length >= 3200) {                              // 200 ms at 16 kHz
-        const frame = new Int16Array(buf.splice(0, 3200).map((v) => v * 32767));
-        if (sock.readyState === 1 && !waiting) { sock.send(frame.buffer); frames++; }   // nobody is listening while in line
-      }
-    };
-    src.connect(proc); proc.connect(ctx.destination);
+    // Keep 200 ms frames/decision timing; remove the large main-thread callback and carry resampling phase.
+    const capture = window.JevMicrophone.connect(callContext, src, (pcm, level) => {
+      if (ctx !== callContext) return;
+      micLevel = level;
+      if (sock.readyState === 1 && !waiting) { sock.send(pcm); frames++; }
+    }, params.get('mic') !== 'script');
+    capture.then((input) => {
+      if (ctx !== callContext) input.close();
+      else { proc = input; captureMode = input.mode; report({ capture: captureMode, rate: callContext.sampleRate }); }
+    }).catch((e) => {
+      if (ctx !== callContext) return;
+      report({ mic: e.name }); endCall(); showNotice(t('err_mic'), true);
+    });
     let opened = false;
     const ears = () => {                                       // is the microphone reaching the server? for the server's log
       const tr = stream && stream.getAudioTracks()[0];
-      return { ctx: ctx ? ctx.state : 'none', frames, rate: ctx ? ctx.sampleRate : 0, muted: !!(tr && tr.muted) };
+      return { ctx: ctx ? ctx.state : 'none', capture: captureMode, frames, rate: ctx ? ctx.sampleRate : 0, muted: !!(tr && tr.muted) };
     };
     sock.onopen = () => {
       opened = true; connecting = false; callStart = performance.now();
@@ -438,11 +457,11 @@
 
   function endCall() {
     if (phase !== 'call') return;
-    stopAll(); if (listening) listening.pause();
+    stopAll();
     const sock = ws; ws = null; if (sock) { try { sock.close(); } catch (e) { /* already closed */ } }
-    if (proc) { proc.onaudioprocess = null; proc.disconnect(); proc = null; }
+    if (proc) { proc.close(); proc = null; }
     if (stream) { stream.getTracks().forEach((tr) => tr.stop()); stream = null; }
-    voices.forEach((el) => { el.onended = null; el.pause(); }); voices = [];
+    voices.forEach((el) => audioResources.release(el)); voices = [];
     if (ctx) { ctx.close().catch(() => {}); ctx = null; analyser = null; }
     connecting = false; waiting = null; micLevel = 0; endedUntil = performance.now() + 900;
     setPhase('idle'); fadeCaption('capAgent', 0); fadeCaption('capUser', 0);

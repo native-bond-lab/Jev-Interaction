@@ -220,15 +220,35 @@ async def test(node: str, make_recognizer, make_synthesizer) -> dict:
             finally:
                 await client.aclose()
         elif node == "llm":
+            from jev_interaction.adapters.base import closing_stream
+
+            client = R.create("llm")
+
             async def first_line():
-                async for _ in R.create("llm").lines([{"role": "user", "content": "Say hi in two words."}], 16):
-                    return
-            await asyncio.wait_for(first_line(), 20)
+                async with closing_stream(client.lines([{"role": "user", "content": "Say hi in two words."}], 16)) as stream:
+                    async for _ in stream:
+                        return
+            try:
+                await asyncio.wait_for(first_line(), 20)
+            finally:
+                close = getattr(client, "aclose", None)
+                if close is not None:
+                    await close()
         elif node == "tts":
+            from jev_interaction.adapters.base import closing_stream
+
+            synth = make_synthesizer(Profile(name="test"))
+
             async def first_chunk():
-                async for _ in make_synthesizer(Profile(name="test")).audio("Hi."):
-                    return
-            await asyncio.wait_for(first_chunk(), 20)
+                async with closing_stream(synth.audio("Hi.")) as stream:
+                    async for _ in stream:
+                        return
+            try:
+                await asyncio.wait_for(first_chunk(), 20)
+            finally:
+                close = getattr(synth, "aclose", None)
+                if close is not None:
+                    await close()
         elif node == "asr":
             if R.selected("asr") == "elevenlabs":
                 import httpx  # the realtime socket accepts a bad key at connect time: check the key itself

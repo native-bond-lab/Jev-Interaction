@@ -24,11 +24,12 @@ import uuid
 from collections.abc import Awaitable, Callable
 
 from . import speaking
-from .adapters.base import VAD, Recognizer, Responder, Segment
+from .adapters.base import VAD, Recognizer, Responder, Segment, closing_stream
 from .config import Config, Pace
 from .decisions import DECISIONS, Decision
 from .judge import JevClient
 from .judge.client import probs as P
+from .latency import CallTimings, latency_scope
 from .ledger import Ledger, Turn
 from .profile import Profile
 from .recorder import Recorder
@@ -46,6 +47,7 @@ class Session:
         self.p, self.cfg, self.send_event = profile, config or Config(), send
         self.judge, self.asr, self.llm, self.vad = judge, recognizer, responder, vad
         self.rec = recorder or Recorder(None)
+        self.timings = CallTimings(self.rec)
         if speech is None:                       # how to write for the voice in use: the synthesizer's speaking style
             from .adapters import registry
             speech = registry.speech_prompt()
@@ -95,9 +97,16 @@ class Session:
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        await self.asr.close()
-        self.rec.write("end", ledger=[t.__dict__ for t in self.ledger.turns])
-        self.rec.close()
+        try:
+            await self.asr.close()
+        finally:
+            try:
+                close_llm = getattr(self.llm, "aclose", None)
+                if close_llm is not None:
+                    await close_llm()
+            finally:
+                self.rec.write("end", ledger=[t.__dict__ for t in self.ledger.turns])
+                self.rec.close()
 
     def _spawn(self, coro):
         t = asyncio.get_running_loop().create_task(coro)
@@ -117,6 +126,7 @@ class Session:
 
     # ------------------------------------------------------------------ inputs
     async def on_audio(self, pcm: bytes):
+        received_at = time.monotonic()
         await self.asr.send(pcm)
         step = self.cfg.frame_ms
         if hasattr(self.vad, "voiced_ms"):       # how much of the frame is voice, the bar raised while the agent's line plays
@@ -128,6 +138,7 @@ class Session:
         if voiced:
             if self.utt is None:
                 self._open_utterance()
+            self.timings.voice(received_at)
             self.utt.speech_ms += heard
             self.utt.levels.append(frame_db(pcm))
             self._hear_voice(pcm, heard)
@@ -143,6 +154,8 @@ class Session:
     async def on_client(self, msg: dict):
         if msg.get("type") == "playback":
             self.speaking = msg.get("state") == "playing"
+            if self.speaking:
+                self.timings.playback(msg)
             if not self.speaking and not self.generating:
                 self.idle_since = time.monotonic()
                 self._reset_quiet()
@@ -183,6 +196,7 @@ class Session:
             self._open_utterance()
             self.utt.speech_ms = max(self.utt.speech_ms, 400)
         self.utt.hearing = ""
+        self.timings.asr_final(self.utt.id)
         self.utt.segments.append((time.monotonic(), text))
         await self.send(type="user", text=self.utt.text, partial=True)
         for d in list(self.decisions.values()):
@@ -210,6 +224,7 @@ class Session:
         if not self.speaking and not self.generating and self.ledger.last_is_agent() and 0 < now - self.idle_since < 60:
             self.reply_gaps = (self.reply_gaps + [now - self.idle_since])[-20:]
         self.utt_seq += 1
+        self.timings.open_utterance()
         self.utt = Utterance(self.utt_seq, now, over=self.speaking)
         self.judged = None
         self.silence_ms = 0
@@ -395,6 +410,7 @@ class Session:
         self.generating = True
         line = self.data_line(kind, quiet_s, who=who)
         event = speaking.EVENTS.get(kind, speaking.UNKNOWN)
+        self.timings.reply(gen, kind, event.answers_user)
         if self.utt is not None and event.answers_user:
             if self.utt.level is not None:
                 self.caller_levels = (self.caller_levels + [self.utt.level])[-20:]
@@ -412,36 +428,39 @@ class Session:
         turn = self.ledger.agent("", who=self.p.short)
         self.replies[gen] = turn
         self.rec.write("respond", gen=gen, kind=kind, data_line=line)
-        try:
-            for attempt in (1, 2):                    # a reply that fails or comes back with nothing to say is asked for
-                error = ""                            # once more: the user spoke and must not be met with silence
-                try:
-                    async for text in self.llm.lines(messages, max_tokens=event.max_tokens):
-                        if gen != self.gen:
-                            break
-                        if not speaking.has_voice(text):  # a tag with no word or sound beside it cannot be voiced: not said
-                            self.rec.write("unvoiced", gen=gen, text=text)
-                            continue
-                        line_id = uuid.uuid4().hex
-                        self.lines[line_id] = text
-                        turn.text = (turn.text + "\n" + text).strip()
-                        self.speaking = True          # on its way to the client: counts as speaking until it reports idle
-                        await self.send(type="line", gen=gen, id=line_id, text=text, audio=f"/tts/{line_id}")
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:  # noqa: BLE001 - the provider refused, timed out or dropped the stream
-                    error = f"{type(exc).__name__}: {str(exc)[:160]}"
-                if turn.text or gen != self.gen:
-                    break
-                self.rec.write("no_reply", gen=gen, kind=kind, attempt=attempt, error=error)
-                if attempt == 2:                      # twice nothing: the page is told, the quiet question takes it from here
-                    await self.send(type="error", what="responder", text=error or "the model wrote nothing")
-        finally:
-            if gen == self.gen:
-                self.generating = False
-                if not turn.text:
-                    self.speaking = False
-                    self.idle_since = time.monotonic()
+        with latency_scope(self.rec, gen=gen, kind=kind):
+            try:
+                for attempt in (1, 2):                    # a reply that fails or comes back with nothing to say is asked for
+                    error = ""                            # once more: the user spoke and must not be met with silence
+                    try:
+                        async with closing_stream(self.llm.lines(messages, max_tokens=event.max_tokens)) as stream:
+                            async for text in stream:
+                                if gen != self.gen:
+                                    break
+                                if not speaking.has_voice(text):  # a tag with no word or sound beside it cannot be voiced: not said
+                                    self.rec.write("unvoiced", gen=gen, text=text)
+                                    continue
+                                line_id = uuid.uuid4().hex
+                                self.lines[line_id] = text
+                                turn.text = (turn.text + "\n" + text).strip()
+                                self.speaking = True          # on its way to the client: counts as speaking until it reports idle
+                                self.timings.line(gen, line_id)
+                                await self.send(type="line", gen=gen, id=line_id, text=text, audio=f"/tts/{line_id}")
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:  # noqa: BLE001 - the provider refused, timed out or dropped the stream
+                        error = f"{type(exc).__name__}: {str(exc)[:160]}"
+                    if turn.text or gen != self.gen:
+                        break
+                    self.rec.write("no_reply", gen=gen, kind=kind, attempt=attempt, error=error)
+                    if attempt == 2:                      # twice nothing: the page is told, the quiet question takes it from here
+                        await self.send(type="error", what="responder", text=error or "the model wrote nothing")
+            finally:
+                if gen == self.gen:
+                    self.generating = False
+                    if not turn.text:
+                        self.speaking = False
+                        self.idle_since = time.monotonic()
 
     async def listen_in(self, why: str = "fits"):
         """What the agent lets slip in while the user talks on. Jev chose the moment (`why`: "due", the user is waiting
@@ -458,9 +477,10 @@ class Session:
         messages = [{"role": "system", "content": self.system}, *self.ledger.messages(self.p.short), *before,
                     {"role": "user", "content": (line + "\n" + heard).strip()}]
         text = ""
-        async for said in self.llm.lines(messages, max_tokens=14):
-            text = said
-            break
+        async with closing_stream(self.llm.lines(messages, max_tokens=14)) as stream:
+            async for said in stream:
+                text = said
+                break
         if (not speaking.has_voice(text) or speaking.units(text) > self.cfg.listen_max_words or self.speaking
                 or self.generating or self.utt is not utt):
             return

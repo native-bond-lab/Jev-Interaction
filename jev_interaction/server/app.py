@@ -28,8 +28,11 @@ paths.load_env()
 from jev_interaction import Profile  # noqa: E402  (after .env, so adapters read the keys)
 from jev_interaction import preset as preset_config  # noqa: E402
 from jev_interaction.adapters import best_embedder, best_vad, registry  # noqa: E402
+from jev_interaction.latency import TimedSynthesizer, latency_scope  # noqa: E402
 from jev_interaction.recorder import Recorder  # noqa: E402
 from jev_interaction.server import settings as S  # noqa: E402
+from jev_interaction.server.audio import AudioGone, AudioLine, CallAudio  # noqa: E402
+from jev_interaction.server.latency_config import snapshot as latency_config  # noqa: E402
 from jev_interaction.session import Session  # noqa: E402
 
 WEB = paths.WEB
@@ -103,6 +106,13 @@ def make_synthesizer(profile: Profile, persona: str | None = None):
     voices = profile.extra.get("voices") or {}
     voice = voice_overrides().get(persona or "") or voices.get(registry.selected("tts"))
     return registry.create("tts", voice=voice)
+
+
+def _warm_synth(synth, recorder):
+    start = getattr(synth, "start_warmup", None)
+    if start is not None:
+        with latency_scope(recorder, node="tts"):
+            start()
 
 
 def profile_card(pid: str, path) -> dict:
@@ -189,6 +199,13 @@ async def _whole(synth, text: str) -> bytes:
     return b"".join([chunk async for chunk in synth.audio(text)])
 
 
+def _drop_audio(line_id):
+    LINES.pop(line_id, None)
+    task = WHOLE.pop(line_id, None)
+    if task is not None and not task.done():
+        task.cancel()
+
+
 def byte_range(header: str, size: int) -> tuple[int, int] | None:
     """The first range of a Range header as (start, end) inside `size` bytes; None when it cannot be met."""
     spec = header.strip().removeprefix("bytes=").split(",")[0].strip()
@@ -215,20 +232,32 @@ async def tts(line_id: str, request: Request):
     asked = request.headers.get("range", "").strip()
     if not asked or asked == "bytes=0-":                # no range, or "all of it from the start": the stream
         return StreamingResponse(synth.audio(text), media_type=synth.media_type)
+    if isinstance(synth, AudioLine):
+        try:
+            body = await synth.whole()
+        except AudioGone:
+            raise HTTPException(410) from None
+        except Exception:  # noqa: BLE001 - a failed synthesis is shared; a range retry never bills it again
+            raise HTTPException(502) from None
+        return _range_response(asked, body, synth.media_type)
     if line_id not in WHOLE:
         WHOLE[line_id] = asyncio.create_task(_whole(synth, text))
         while len(WHOLE) > MAX_WHOLE:
             WHOLE.popitem(last=False)
     try:
-        body = await WHOLE[line_id]
+        body = await asyncio.shield(WHOLE[line_id])
     except Exception:  # noqa: BLE001 - the synthesizer failed: not kept, so the next request tries again
         WHOLE.pop(line_id, None)
         raise HTTPException(502) from None
+    return _range_response(asked, body, synth.media_type)
+
+
+def _range_response(asked, body, media_type):
     part = byte_range(asked, len(body))
     if part is None:
         return Response(status_code=416, headers={"Content-Range": f"bytes */{len(body)}"})
     start, end = part
-    return Response(body[start:end + 1], status_code=206, media_type=synth.media_type,
+    return Response(body[start:end + 1], status_code=206, media_type=media_type,
                     headers={"Content-Range": f"bytes {start}-{end}/{len(body)}", "Accept-Ranges": "bytes"})
 
 
@@ -288,17 +317,35 @@ async def call(ws: WebSocket):
     language = start.get("language") or (profile.extra.get("display") or {}).get("language", "en")
     cfg = preset_config(os.getenv("JEV_PRESET", "recommended"), language=language)
     synth = make_synthesizer(profile, pid)
+    synths = {pid: synth}
+    audio = CallAudio(_drop_audio, prefetch=os.getenv("TTS_PREFETCH", "1") != "0")
+    playing_id = None
     # who else can be put on this line (the persona's `cast`): the caller asks, Jev hears it, the session hands over
     cast = {pid: profile, **{c: Profile.load(paths.profiles()[c]) for c in profile.extra.get("cast") or [] if c in paths.profiles()}}
 
     async def send(event: dict):
         nonlocal synth
         if event.get("type") == "persona":       # someone else is on the line from here: their voice for the lines after
-            synth = make_synthesizer(cast[event["id"]], event["id"])
+            persona = event["id"]
+            if persona not in synths:
+                synths[persona] = make_synthesizer(cast[persona], persona)
+                _warm_synth(synths[persona], session.rec)
+            synth = synths[persona]
+        if event.get("type") == "stop":
+            audio.cancel_before(event["gen"])
+        elif event.get("type") == "finish_line":
+            audio.finish_line(event["gen"], playing_id)
         if event.get("type") in ("line", "listen"):
-            LINES[event["id"]] = (event["text"], synth)
+            ready_at = session.timings.lines.get(event["id"], {}).get("at", time.monotonic())
+            timed = TimedSynthesizer(synth, session.rec, event["id"], event.get("gen"), ready_at=ready_at)
+            line = audio.add(event["id"], event["text"], timed, event.get("gen", session.gen))
+            LINES[event["id"]] = (event["text"], line)
             while len(LINES) > MAX_LINES:
-                LINES.popitem(last=False)
+                old_id, (_, old_synth) = LINES.popitem(last=False)
+                if isinstance(old_synth, AudioLine):
+                    old_synth.owner.drop(old_id)
+                else:
+                    _drop_audio(old_id)
         await ws.send_text(json.dumps(event, ensure_ascii=False))
 
     ACTIVE["calls"] += 1       # the line is this caller's from here: nothing awaits between the check above and here
@@ -312,6 +359,8 @@ async def call(ws: WebSocket):
         session = Session(profile, send=send, judge=judge, recognizer=make_recognizer(language),
                           responder=registry.create("llm"), vad=best_vad(), config=cfg, cast=cast, embedder=EMBEDDER,
                           recorder=Recorder(paths.runs_dir() / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl" if RECORD else None))
+        _warm_synth(synth, session.rec)
+        session.rec.write("latency_config", **latency_config())
         try:
             await session.start()
         except Exception as exc:  # noqa: BLE001 - e.g. the recognizer refused the key: tell the page, end the call
@@ -333,7 +382,10 @@ async def call(ws: WebSocket):
             if msg.get("bytes"):
                 await session.on_audio(msg["bytes"])
             elif msg.get("text"):
-                await session.on_client(json.loads(msg["text"]))
+                event = json.loads(msg["text"])
+                if event.get("type") == "playback":
+                    playing_id = event.get("id") if event.get("state") == "playing" else None
+                await session.on_client(event)
     except WebSocketDisconnect:
         pass
     except Exception as exc:  # noqa: BLE001 - named in the log, then raised as before
@@ -349,8 +401,19 @@ async def call(ws: WebSocket):
             if session is not None:
                 await session.close()
         finally:
-            if judge is not None:
-                await judge.aclose()
+            try:
+                await audio.close()
+            finally:
+                # Queued old-persona lines retain their voice until this call ends, then all pools close.
+                for used in synths.values():
+                    close = getattr(used, "aclose", None)
+                    if close is not None:
+                        try:
+                            await close()
+                        except Exception as exc:  # noqa: BLE001 - one failed cleanup must not skip the other resources
+                            LOG.warning("TTS close failed: %s", type(exc).__name__)
+                if judge is not None:
+                    await judge.aclose()
 
 
 @app.post("/api/call-report")
@@ -360,7 +423,7 @@ async def call_report(request: Request):
     server: the audio context's state and the frames sent), so the server log shows the failures that never reached the call route. No words of the call, no identity."""
     try:
         body = json.loads((await request.body())[:400])
-        seen = {k: (str(body[k])[:40] if isinstance(body[k], str) else body[k]) for k in ("opened", "code", "seconds", "mic", "audio", "at", "ctx", "frames", "rate", "muted")
+        seen = {k: (str(body[k])[:40] if isinstance(body[k], str) else body[k]) for k in ("opened", "code", "seconds", "mic", "audio", "at", "ctx", "capture", "frames", "rate", "muted")
                 if isinstance(body.get(k), (bool, int, float, str))}
     except (ValueError, AttributeError):
         raise HTTPException(400, "Send JSON.") from None

@@ -32,6 +32,11 @@ events. Audio for the agent's lines is fetched over HTTP.
 
 `gen` numbers each reply; events for an older `gen` refer to lines that were already replaced.
 
+A `playback` message with `state: "playing"` may also include the line's `id`, `gen`, and
+`client_receive_to_play_ms` (browser-local elapsed time from receiving the line to its first playback). Older clients
+may omit them. They correlate optional latency observations; no client/server wall-clock synchronization is assumed.
+The server's time to a playback ACK includes the return network trip and is not an exact device-output timestamp.
+
 ## HTTP
 
 | route | |
@@ -41,5 +46,24 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `GET /api/health` | `ready`, `missing` settings, providers, `vad`, `voiceprint` (`off` \| `loading` \| `ready` \| `failed`) |
 | `GET /api/settings`, `POST /api/settings`, `POST /api/settings/test` | the settings page; writes only from this server's own page on this machine |
 
+For call-generated lines, stream playback, full refetches and byte ranges share one synthesis. The server may start
+the first eligible line of each generation before the browser GET (`TTS_PREFETCH=0` disables early start). Later
+lines start on demand. Each call limits retained audio to 32 lines / 8 MiB, with 2 MiB per line, two concurrent
+syntheses and a 120-second idle-entry expiry. Eviction or call close removes its URLs; unavailable audio returns 404.
+Interrupted or failed shared synthesis is not silently restarted. A cancelled HTTP reader does not cancel other
+readers. A byte-range request still needs the complete body to determine its length, so Range-capable browser
+playback can still wait for synthesis completion; shared caching does not remove that player limitation.
+
 Each call is logged to `runs/call-*.jsonl` (one JSON line per event and judgement, including the state Jev read, the
 questions and the answers) for `jev-interaction replay`.
+
+`latency` records additionally measure ASR finalization, the LLM's first content token / first text chunk, TTS's first
+audio, and playback ACKs. No new WebSocket event type is added. Use `python tools/latency_report.py "runs/call-*.jsonl"`
+to summarize the available stages without displaying conversation text. Server voice times mark arrival of voiced
+PCM frames at the server, not the exact instant the microphone stopped hearing speech.
+
+`line_to_tts_request_ms` measures eligible text to synthesis start (including any local concurrency wait), and
+`line_to_first_audio_ms` measures that same text boundary to the first provider audio block. They do not measure
+the browser's playback delay. `tts_prewarm` separately records `elapsed_ms`, `outcome`, `ok`, and optionally HTTP
+status or exception type; it never records metadata bodies, API keys or synthesis text. This background warmup
+overlaps call setup when possible and never delays formal synthesis until completion.
