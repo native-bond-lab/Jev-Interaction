@@ -499,6 +499,21 @@ docs/                 架构图和基准图表
 
 **花费多少？** 按我们的测量，一分钟通话音频几美分，大头是语言模型。
 
+## 引用
+
+如果 Jev-Interaction 对你的研究有帮助，欢迎引用。GitHub 页面右侧的 **Cite this repository** 读取 [CITATION.cff](CITATION.cff)；BibTeX 如下：
+
+```bibtex
+@software{jev_interaction,
+  author  = {{Native Bond Lab}},
+  title   = {Jev-Interaction: full-duplex voice turn-taking as plain-language decisions},
+  year    = {2026},
+  version = {0.2.0},
+  url     = {https://github.com/native-bond-lab/Jev-Interaction},
+  license = {Apache-2.0}
+}
+```
+
 ## 致谢
 
 感谢 [Jev](https://typesafe.ai) 和 TypeSafe 团队："把轮次交互写成题目"这个想法之所以可行，是因为有一个法官能在几十毫秒内、对着纯文字、给每个选项一个概率。也感谢 Full-Duplex-Bench、LiveKit eot-bench 和 TurnBench 的作者开放了基准和基线结果。

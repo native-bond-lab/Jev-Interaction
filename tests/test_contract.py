@@ -51,3 +51,11 @@ def test_the_events_the_code_sends_are_the_documented_ones():
     documented = set(re.findall(r'^\| `([a-z_]+)` \|', doc, re.M))
     assert sent == SERVER_EVENTS and sent <= documented, (sent ^ SERVER_EVENTS, sent - documented)
     assert read == CLIENT_MESSAGES and all(f'"type": "{m}"' in doc for m in read)
+
+
+def test_citation_matches_package_version():
+    root = pathlib.Path(__file__).resolve().parent.parent
+    version = re.search(r'^version = "([^"]+)"', (root / "pyproject.toml").read_text(), re.M).group(1)
+    assert f'version: "{version}"' in (root / "CITATION.cff").read_text()
+    for readme in ("README.md", "README.zh-CN.md"):
+        assert f"version = {{{version}}}" in (root / readme).read_text()

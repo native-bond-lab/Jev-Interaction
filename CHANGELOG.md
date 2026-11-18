@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Citation.** `CITATION.cff` (GitHub's *Cite this repository*) and a BibTeX block in the README; a test keeps
+  their version equal to the package version.
 - **The caller's voiceprint** (`pip install "jev-interaction[voiceprint]"`), the same check the call engine in our
   product runs. Each stretch of voice gets a speaker embedding (ECAPA-TDNN on the CPU, `EcapaEmbedder`) and is compared
   with a print learned from the words the agent answers, with no enrollment step. A clear stranger is not answered and

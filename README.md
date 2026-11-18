@@ -592,6 +592,22 @@ language model you plug in.
 
 **What does it cost?** On our measurements, a minute of call audio is a few cents, most of it the language model.
 
+## Citing
+
+If Jev-Interaction helps your research, please cite it. GitHub's **Cite this repository** button reads
+[CITATION.cff](CITATION.cff); the BibTeX is:
+
+```bibtex
+@software{jev_interaction,
+  author  = {{Native Bond Lab}},
+  title   = {Jev-Interaction: full-duplex voice turn-taking as plain-language decisions},
+  year    = {2026},
+  version = {0.2.0},
+  url     = {https://github.com/native-bond-lab/Jev-Interaction},
+  license = {Apache-2.0}
+}
+```
+
 ## Acknowledgements
 
 Thanks to [Jev](https://typesafe.ai) and the TypeSafe team: the idea of turn-taking as questions only works because a

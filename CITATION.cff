@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use Jev-Interaction in your research, please cite it as below."
+type: software
+title: "Jev-Interaction: full-duplex voice turn-taking as plain-language decisions"
+abstract: >-
+  A full-duplex voice framework whose turn-taking is a set of plain-language
+  decisions (turn, listen, floor, cut_in, quiet, who) judged by Jev, not a
+  trained model. Policies turn the judge's probabilities into actions, and
+  paces blend the timings.
+authors:
+  - name: "Native Bond Lab"
+repository-code: "https://github.com/native-bond-lab/Jev-Interaction"
+url: "https://huggingface.co/spaces/pupunpu/Jev-Interaction"
+license: Apache-2.0
+version: "0.2.0"
+date-released: "2026-11-16"
+keywords:
+  - full-duplex
+  - spoken dialogue
+  - turn-taking
+  - voice agents
+  - LLM-as-judge
