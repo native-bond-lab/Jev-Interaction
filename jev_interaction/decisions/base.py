@@ -45,7 +45,7 @@ class Decision:
 
     def state(self, s: Session, ctx: dict) -> str:
         """The text Jev reads. The header (who, the task profile, the pace, the recent turns) opens every state."""
-        return S.header(s.p, s.pace, s.ledger, s.cfg.judge_turns, s.cfg.judge_turn_chars)
+        return S.header(s.p, s.pace, s.ledger, s.cfg.judge_turns, s.cfg.judge_turn_chars, video=s.video)
 
     def allowed(self, s: Session, ctx: dict) -> Iterable[str] | None:
         """The choices that apply right now; None for all of them."""

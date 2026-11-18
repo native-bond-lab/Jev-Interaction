@@ -6,9 +6,11 @@ from ..ledger import Ledger
 from ..profile import Profile
 
 
-def header(profile: Profile, pace: str, ledger: Ledger, turns: int, chars: int) -> str:
+def header(profile: Profile, pace: str, ledger: Ledger, turns: int, chars: int, video: bool = False) -> str:
     recent = ledger.recent_text(profile.short, turns, chars) or "(the call just started)"
-    return (f"Phone call between the user and {profile.short}.\n{profile.judge_header()}\n"
+    call = (f"Video call between the user and {profile.short}: {profile.short} can see the user." if video
+            else f"Phone call between the user and {profile.short}.")
+    return (f"{call}\n{profile.judge_header()}\n"
             f"Current pace of the call: {pace}.\nRecent call:\n{recent}\n")
 
 

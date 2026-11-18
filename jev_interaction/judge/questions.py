@@ -125,11 +125,10 @@ def quiet(name: str, pace: str) -> dict:
 
 def notice(name: str) -> dict:
     return {"type": "choice", "instructions": (
-        f"The call has video: {name} can see the user. Something has just changed in view, and right now nobody is "
-        f"talking. People on a video call often react to what they see without being asked: a thing held up to the "
-        f"camera, something the user has just started or finished, someone coming in. Would {name}, being who they are, "
-        "say something about it now, or let it pass?"), "criteria": {
-        "remark": (f"worth a word now: the user is showing {name} something, has just done something {name} would react "
-                   "to, or it bears on what they were talking about"),
-        "let_be": (f"{name} lets it pass: an ordinary movement, the user busy with something nobody asked {name} to "
-                   f"watch, or {name} has just remarked on the view")}}
+        f"Something new has just come into view on the video call, and right now nobody is talking. When two people are "
+        f"on a video call and something new shows up on the other's side, they usually say a word about it: what they "
+        f"are holding, what they have just done, who has walked in, where they have gone. Would {name}, being who they "
+        f"are, say something about this now?"), "criteria": {
+        "remark": f"{name} says something about it now: it is new, and {name} has not remarked on it yet",
+        "let_be": (f"{name} lets it pass: it is not really new (the same as before, a small shift in the picture), "
+                   f"{name} has just remarked on the view, or the user is plainly absorbed in something on their own")}}
