@@ -8,8 +8,9 @@
   (`JEV_TURN_QUESTION=last_words`) words "have they finished" about the user's own words, sent in a field of their
   own, with the options in both orders: Alibaba Cloud Bailian's `decision-model-preview` goes from 63% to 88% right
   with it on 160 written pauses, and Jev reads both wordings alike (96%). The mainland setup in the cookbook and on
-  the setup page is now one Bailian key for all four nodes. `tools/judge_bench.py` measures any configured judge;
-  the numbers and their limits are in `cookbook/stacks.md`.
+  the setup page is now one Bailian key for all four nodes. `tools/judge_bench.py` measures any configured judge,
+  the end of a turn and (`--decisions`, 148 written moments in `tools/judge_cases.py`) the other decisions; the numbers,
+  and where the Bailian judge falls short of Jev, are in `cookbook/stacks.md`.
 - **The turn request asks two questions, not four.** `wait` (how long to hold the answer) and `kind` (a reply or a
   sound) are no longer sent. `wait` said what `done` already says (on 627 recorded turn judgements its value tracked
   p(finished) at -0.92) and its only effect was to hold the draw back: in 217 held moments the user went on during the

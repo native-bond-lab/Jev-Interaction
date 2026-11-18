@@ -101,11 +101,33 @@ p(finished) orders the pauses whatever the threshold.
 | Bailian `decision-model-preview` | engine | 63% | 0.72 | |
 | Volcengine `doubao-seed-2-1-lite-260915` | engine | 95% | 0.99 | about 330 → 450 ms |
 
-What this does not cover: only the end-of-turn decision was measured, on written pauses, not on calls. The other
-decisions (who has the floor when both talk, speaking into a silence, the pace) go to the judge in the engine's wording
-unchanged, and thresholds in the presets were set on Jev's probabilities. Run the benchmark against your own judge
-before you rely on it, and again after any change to the wording: on the Bailian model a few changed words in the
-options moved the result by twenty points.
+The other decisions, with `python tools/judge_bench.py --decisions`: 148 written moments (`tools/judge_cases.py`),
+Chinese and English alike, each sent as the engine sends it and scored on the action the engine would take. The Bailian
+column is with `JEV_TURN_QUESTION=last_words`.
+
+| decision | moments | Jev right | Bailian right | Bailian takes the same action as Jev |
+|---|---|---|---|---|
+| handing the line to someone else | 16 | 100% | 100% | 100% |
+| cutting in while the user talks (eager pace) | 16 | 69% | 56% | 88% |
+| speaking into a silence | 28 | 39% | 43% | 86% |
+| which pace | 32 | 81% | 78% | 75% |
+| both talking at once | 32 | 97% | 69% | 72% |
+| listening: is something due | 24 | 96% | 67% | 42% |
+
+Read with these in mind:
+
+- **Both talking.** The Bailian model keeps a reaction ("mm", a laugh) and a real "stop" apart, but a question or remark
+  said over the agent's line it reads as a reaction every time (0 of 8), so the agent talks on and the question is
+  not answered. In a trial, the same move that fixed the turn question (the user's words in a field of their own, and
+  a question about that field in both orders) took both judges to 32 of 32; that wording is not in the engine yet.
+- **Listening.** It knows when to stay quiet and when an answer is owed, but never finds the sound a user asked for
+  earlier in the call ("say so each time I mention a cat"): 0 of 8, where Jev finds 7. Two rewordings did not fix it.
+  On this judge the agent will not mark or count along.
+- **A silence** and **cutting in.** Both judges wait longer and cut in less than the written answers expect, so the
+  "right" columns are low for both; what matters there is that they act alike.
+- These are written moments, not calls, and the presets' thresholds were set on Jev's probabilities. Run the benchmark
+  against your own judge before you rely on it, and again after any change to the wording: on the Bailian model a few
+  changed words in the options moved a result by twenty points.
 
 ## The caller's voiceprint
 

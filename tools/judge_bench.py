@@ -2,6 +2,8 @@
 
     python tools/judge_bench.py                 # the engine's own state and question
     python tools/judge_bench.py --last-words    # a wording some judges read better (see cookbook/stacks.md)
+    python tools/judge_bench.py --decisions     # the other decisions: both talking, a silence, the pace, listening,
+                                                # cutting in, handing over (written moments in tools/judge_cases.py)
 
 It uses the judge from your settings (JEV_API_KEY, JEV_URL, JEV_MODEL, JEV_HEADERS), so the numbers are for your judge
 from your network. Two measurements:
@@ -19,6 +21,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import pathlib
+import re
 import statistics
 import sys
 import time
@@ -29,6 +32,7 @@ from jev_interaction.config import DEFAULT_PACES  # noqa: E402
 from jev_interaction.judge import JevClient  # noqa: E402
 from jev_interaction.judge import questions as Q  # noqa: E402
 from jev_interaction.judge import state as S  # noqa: E402
+from jev_interaction.judge.client import probs as P  # noqa: E402
 from jev_interaction.profile import Profile  # noqa: E402
 from jev_interaction.server import paths  # noqa: E402
 
@@ -100,13 +104,155 @@ def ranking(pairs: list[tuple[float, bool]]) -> float:
     return sum((a > b) + 0.5 * (a == b) for a in pos for b in neg) / (len(pos) * len(neg))
 
 
+class BothOrders:
+    """A judge that leans to whichever option is listed first: every choice question is sent a second time with its
+    options reversed, and the two answers are averaged. Costs twice the questions in the same request."""
+    def __init__(self, judge):
+        self.judge, self.model, self.url = judge, judge.model, judge.url
+
+    async def ask(self, questions: dict, state):
+        twins = {f"{k}__r": {**q, "criteria": dict(reversed(list(q["criteria"].items())))} for k, q in questions.items()
+                 if q.get("type") == "choice" and isinstance(q.get("criteria"), dict) and not k.endswith("_again")}
+        answers = await self.judge.ask({**questions, **twins}, state)
+        out = {k: v for k, v in answers.items() if not k.endswith("__r")}
+        for k in twins:
+            a, b = (answers.get(k[:-3]) or {}).get("probabilities") or {}, (answers.get(k) or {}).get("probabilities") or {}
+            if a and b:
+                mean = {c: (a.get(c, 0.0) + b.get(c, 0.0)) / 2 for c in a}
+                out[k[:-3]] = {**answers[k[:-3]], "probabilities": mean, "choice": max(mean, key=mean.get)}
+        return out
+
+    async def aclose(self):
+        await self.judge.aclose()
+
+
+# ---------------------------------------------------------------- the other decisions
+def named(text: str, other: str) -> str:
+    """`B` in a written case is the other one who can be put on the line (a bare letter in Chinese, a word in English)."""
+    return re.sub(r"\bB\b", other, text) if other and text.isascii() else text.replace("B", other) if other else text
+
+
+def header(p, pace: str, recent: list[str], other: str = "") -> str:
+    lines = "\n".join(named(t.replace("A:", f"{p.short}:"), other) for t in recent)
+    return f"Phone call between the user and {p.short}.\n{p.judge_header()}\nCurrent pace of the call: {pace}.\nRecent call:\n{lines}\n"
+
+
+def user_turn(p, segments: list[str], quiet_ms: int) -> str:
+    now = time.monotonic()
+    timed = [(now - quiet_ms / 1000 - 1.2 * (len(segments) - 1 - i), text) for i, text in enumerate(segments)]
+    return S.user_turn(p.short, timed, now, quiet_ms, False, ())
+
+
+def floor_action(probs: dict) -> str:
+    """What the engine does with a floor answer in the normal pace (decisions/floor.py with the default thresholds)."""
+    ok = [(v, k) for k, v in probs.items() if v >= 0.5]
+    action = max(ok)[1] if ok else "carry_on"
+    stops = {k: probs.get(k, 0.0) for k in ("yield", "jump_in")}
+    if action == "carry_on" and sum(stops.values()) >= 0.5 and sum(stops.values()) > probs.get("carry_on", 0.0) + probs.get("finish_first", 0.0):
+        action = max(stops, key=stops.get)
+    return action
+
+
+def decision_cases(last_words: bool) -> list[dict]:
+    """Every case as the request the engine would send, and a check of the answer it would act on."""
+    from tools import judge_cases as K
+    out = []
+    for lang, pid, other_id in (("zh", "lyra_zh", "kai_zh"), ("en", "lyra", "kai")):
+        p, b = Profile.load(paths.profiles()[pid]), Profile.load(paths.profiles()[other_id])
+        hello = ["user: 你说吧，我听着"] if lang == "zh" else ["user: Go on, I'm listening"]
+
+        def turn(questions, state, quiet_ms, said, p=p):           # a question that rides in the turn request
+            qs = {**Q.turn(p.short, "normal", PACES), **questions}
+            return ({**qs, **Q.last_words()}, S.with_last_words(state, said, quiet_ms)) if last_words else (qs, state)
+
+        for line, said, seconds, right in K.FLOOR[lang]:
+            crit = Q.floor_criteria(p.short, finish=True, overrule=False, aside=False, jump=True)
+            want = {"carry_on": {"carry_on"}, "stop": {"yield", "jump_in"}, "answer": {"finish_first", "yield", "jump_in"}}[right]
+            out.append({"d": "both talking", "lang": lang, "right": right, "q": {"floor": Q.floor(p.short, crit)},
+                        "state": header(p, "normal", hello + [f"A: {line}"]) + S.overlap(p.short, line, said, int(seconds * 1000)),
+                        "act": lambda a: floor_action(P(a, "floor")), "ok": lambda act, want=want: act in want})
+        for recent, last, quiet_s, spoke, pace, right in K.QUIET[lang]:
+            allowed = ["go_on", "wait"] + (["check"] if quiet_s >= 10 else []) + (["hang_up"] if quiet_s >= 25 and spoke else [])
+            out.append({"d": "a silence", "lang": lang, "right": right, "q": {"quiet": Q.quiet(p.short, pace)},
+                        "state": header(p, pace, recent + [f"A: {last}"]) + S.quiet(p.short, last, quiet_s, spoke, None),
+                        "act": lambda a, allowed=allowed: max(allowed, key=lambda k: P(a, "quiet").get(k, 0.0)),
+                        "ok": lambda act, right=right: act == right})
+        for recent, said, right in K.PACE[lang]:
+            q, st = turn({}, header(p, "normal", recent) + user_turn(p, [said], 400), 400, said)
+            out.append({"d": "the pace", "lang": lang, "right": right, "q": q, "state": st,
+                        "act": lambda a: max(P(a, "pace"), key=P(a, "pace").get) if P(a, "pace") else "", "ok": lambda act, right=right: act == right})
+        for recent, segments, right in K.LISTEN[lang]:
+            q, st = turn({"listen": Q.listen(p.short)}, header(p, "normal", recent) + user_turn(p, segments, 300), 300, " ".join(segments))
+
+            def act(a):
+                lp = P(a, "listen")
+                return "due" if lp.get("due", 0.0) >= 0.5 else "sound" if lp.get("due", 0.0) + lp.get("fits", 0.0) >= 0.5 else "nothing"
+            want = {"due": {"due"}, "none": {"sound", "nothing"}, "answer_due": {"nothing"}}[right]
+            out.append({"d": "listening", "lang": lang, "right": right, "q": q, "state": st, "act": act, "ok": lambda act, want=want: act in want})
+        for recent, segments, right in K.CUT_IN[lang]:
+            out.append({"d": "cutting in", "lang": lang, "right": right, "q": {"cut": Q.cut_in(p.short)},
+                        "state": header(p, "eager", recent) + user_turn(p, segments, 0),
+                        "act": lambda a: "cut_in" if P(a, "cut").get("cut_in", 0.0) >= 0.5 else "let_finish", "ok": lambda act, right=right: act == right})
+        for recent, said, right in K.WHO[lang]:
+            q, st = turn({"who": Q.who(p.short, {other_id: (b.short, b.task)})},
+                         header(p, "normal", recent, b.short) + user_turn(p, [named(said, b.short)], 400), 400, named(said, b.short))
+            out.append({"d": "handing over", "lang": lang, "right": right, "q": q, "state": st,
+                        "act": lambda a, other_id=other_id: "other" if P(a, "who").get(other_id, 0.0) >= 0.5 else "stay",
+                        "ok": lambda act, right=right: act == right})
+    return out
+
+
+async def decisions(judge, args):
+    import json
+    items = decision_cases(args.last_words)
+    sem, acts = asyncio.Semaphore(args.concurrency), [None] * len(items)
+
+    async def one(i, c):
+        async with sem:
+            for _ in range(5):
+                try:
+                    acts[i] = c["act"](await judge.ask(c["q"], c["state"]))
+                    return
+                except Exception:  # noqa: BLE001
+                    await asyncio.sleep(1.5)
+    await asyncio.gather(*[one(i, c) for i, c in enumerate(items)])
+    other = json.loads(pathlib.Path(args.against).read_text()) if args.against else None
+    for d in dict.fromkeys(c["d"] for c in items):
+        cells = []
+        for lang in ("zh", "en"):
+            g = [(a, c) for a, c in zip(acts, items) if c["d"] == d and c["lang"] == lang and a is not None]
+            cells.append(f"{lang} {sum(c['ok'](a) for a, c in g)}/{len(g)}")
+        g = [(i, a, c) for i, (a, c) in enumerate(zip(acts, items)) if c["d"] == d and a is not None]
+        by = {}
+        for _, a, c in g:
+            by.setdefault(c["right"], []).append(c["ok"](a))
+        line = f"  {d:<13} right {sum(c['ok'](a) for _, a, c in g) / len(g):.0%} ({', '.join(cells)}; " + ", ".join(f"{k} {sum(v)}/{len(v)}" for k, v in by.items()) + ")"
+        if other:
+            same = [a == other[i] for i, a, _ in g if other[i] is not None]
+            line += f" | same action as the other judge {sum(same) / len(same):.0%}"
+        print(line)
+    if args.save:
+        pathlib.Path(args.save).write_text(json.dumps(acts))
+
+
 async def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--last-words", action="store_true", help="ask about the user's last words, state as an object")
+    ap.add_argument("--decisions", action="store_true", help="the decisions besides the end of a turn")
+    ap.add_argument("--save", help="with --decisions: write the action taken on each case to this file")
+    ap.add_argument("--against", help="with --decisions: a file another judge's run saved, to count the same actions")
+    ap.add_argument("--both-orders", action="store_true", help="send every choice question in both option orders and average")
     ap.add_argument("--concurrency", type=int, default=2)
     args = ap.parse_args()
     paths.load_env()
-    judge = JevClient()
+    judge = BothOrders(JevClient()) if args.both_orders else JevClient()
+    if args.decisions:
+        print(f"judge: {judge.model} at {judge.url.split('/')[2].split('.', 1)[-1]} · turn wording: {'last words' if args.last_words else 'engine'}")
+        try:
+            await decisions(judge, args)
+        finally:
+            await judge.aclose()
+        return
     request = last_words_request if args.last_words else engine_request
     items = cases()
     print(f"judge: {judge.model} at {judge.url.split('/')[2].split('.', 1)[-1]} · wording: {'last words' if args.last_words else 'engine'}")
