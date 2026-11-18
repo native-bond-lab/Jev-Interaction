@@ -434,10 +434,11 @@
     };
   }
 
-  // the camera, when the server has eyes (health.vision): watch.js sends a picture only when the view has changed
+  // the camera, when the server has eyes (health.vision) and the page was opened with ?camera=1 (experimental: nobody is
+  // asked for their camera unless they came for it): watch.js sends a picture only when the view has changed
   let eyeStream = null, stopWatch = null;
   async function openEye(sock) {
-    if (!window.JevWatch || params.get('camera') === '0') return;
+    if (!window.JevWatch || params.get('camera') !== '1') return;
     try { eyeStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 } } }); }
     catch (e) { report({ camera: e.name }); return; }                // no camera: a voice call, as before
     if (ws !== sock) { closeEye(); return; }

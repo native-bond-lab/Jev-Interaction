@@ -122,7 +122,8 @@ On when the server has eyes: `VISION_MODEL` names any vision model on an OpenAI-
 and `VISION_API_KEY` fall back to the responder's). No model is picked for you. The page watches the camera with plain
 rules and sends a picture only when the view has changed (its thresholds are `RULES` in `server/web/watch.js`: share of
 the frame moved, settled or still moving, cool-down); the seer writes what is new in one sentence, which goes into the
-record for Jev and the responder; the `notice` question asks whether to remark on it once nobody is talking.
+record for Jev and the responder; the `notice` question asks whether to remark on it once nobody is talking. While it
+is experimental the page opens the camera only when its address has `?camera=1`.
 
 | field | recommended | what it does |
 |---|---|---|
