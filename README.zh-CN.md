@@ -505,7 +505,7 @@ docs/                 架构图和基准图表
 
 ```bibtex
 @software{jev_interaction,
-  author  = {{Native Bond Lab}},
+  author  = {Yang, Hengjie and Wu, Zipeng},
   title   = {Jev-Interaction: full-duplex voice turn-taking as plain-language decisions},
   year    = {2026},
   version = {0.2.0},

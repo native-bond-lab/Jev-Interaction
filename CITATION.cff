@@ -8,7 +8,12 @@ abstract: >-
   trained model. Policies turn the judge's probabilities into actions, and
   paces blend the timings.
 authors:
-  - name: "Native Bond Lab"
+  - given-names: Hengjie
+    family-names: Yang
+    affiliation: "Native Bond Lab"
+  - given-names: Zipeng
+    family-names: Wu
+    affiliation: "Native Bond Lab"
 repository-code: "https://github.com/native-bond-lab/Jev-Interaction"
 url: "https://huggingface.co/spaces/pupunpu/Jev-Interaction"
 license: Apache-2.0
