@@ -27,7 +27,7 @@ PROTOCOLS = {"VAD": {"is_voice"}, "Recognizer": {"connect", "send", "segments", 
 POLICIES = {"end_of_turn", "listen", "floor", "cut_in", "quiet", "who", "notice"}
 CLIENT_MESSAGES = {"start", "playback", "heard", "frame"}
 SERVER_EVENTS = {"line", "listen", "user", "stop", "finish_line", "decision", "persona", "pace", "error", "queue", "ready",
-                 "busy", "hangup", "seen"}
+                 "busy", "hangup", "seen", "look"}
 
 
 def test_python_surface():

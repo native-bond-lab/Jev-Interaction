@@ -296,6 +296,11 @@ async def call(ws: WebSocket):
         nonlocal synth
         if event.get("type") == "persona":       # someone else is on the line from here: their voice for the lines after
             synth = make_synthesizer(cast[event["id"]], event["id"])
+        if event.get("type") == "look":             # how the eyes are doing, never what they saw
+            LOG.info("look first=%s new=%s seconds=%s moving_s=%s%s", event["first"], event["new"], event["seconds"],
+                     event["moving_s"], f" error={event['error']}" if event["error"] else "")
+        if event.get("type") == "decision" and event.get("what") == "notice":
+            LOG.info("notice %s remark=%.2f", event.get("action"), (event.get("probs") or {}).get("remark", 0.0))
         if event.get("type") in ("line", "listen"):
             LINES[event["id"]] = (event["text"], synth)
             while len(LINES) > MAX_LINES:

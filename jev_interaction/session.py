@@ -188,26 +188,34 @@ class Session:
         except (binascii.Error, ValueError):
             return
         self.seeing = True
-        self._spawn(self.see(image, float(msg.get("change") or 0.0), first=bool(msg.get("first"))))
+        self._spawn(self.see(image, float(msg.get("change") or 0.0), first=bool(msg.get("first")),
+                             moving_s=float(msg.get("moving_s") or 0.0)))
 
-    async def see(self, image: bytes, change: float = 0.0, media_type: str = "image/jpeg", first: bool = False) -> str:
+    async def see(self, image: bytes, change: float = 0.0, media_type: str = "image/jpeg", first: bool = False,
+                  moving_s: float = 0.0) -> str:
         """Put a picture into words and into the record, where Jev and the responder both read it; the notice decision
         asks whether to say something about it once the line is free (not for the first look: that is just the scene).
         Returns what was seen ("" for nothing new)."""
         from .speaking import LANGUAGES
         first = first or self.sight_image is None    # no scene yet (the first look failed or saw nothing): this is it
+        started, error = time.monotonic(), ""
         try:
             seen = await asyncio.wait_for(self.seer.describe(image, media_type, before=self.sight, before_image=self.sight_image,
-                                                             name=self.p.short,
+                                                             moving_s=0.0 if first else moving_s, name=self.p.short,
                                                              language=LANGUAGES.get(self.cfg.language, self.cfg.language)), 10)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - a seer that fails sees nothing; the call goes on
-            self.rec.write("seer_error", error=f"{type(exc).__name__}: {str(exc)[:160]}")
+            error = f"{type(exc).__name__}: {str(exc)[:160]}"
+            self.rec.write("seer_error", error=error)
             seen = ""
         finally:
             self.seeing = False
+        await self.send(type="look", first=first, new=bool(seen), seconds=round(time.monotonic() - started, 1),
+                        moving_s=moving_s, error=error)     # every look, for the page's log and the server's
         self.rec.write("seen", text=seen, change=round(change, 3))
+        if seen and moving_s and not first:           # what the camera measured, beside what the model saw in one still
+            seen += f" (moving the whole time, {moving_s:.0f} s so far)"
         if seen:
             self.sight, self.sight_image = seen, image
             self.ledger.seen(seen)

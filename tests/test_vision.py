@@ -105,3 +105,15 @@ async def test_each_look_is_against_the_last_picture_and_the_first_is_the_scene(
     await s.see(b"three")
     assert seer.looked[1][2] == b"one" and seer.looked[2][2] == b"one"
     assert s.sight_image == b"three" and s.sight_pending[1] == "the user holds up a book"
+
+
+@pytest.mark.asyncio
+async def test_a_still_from_a_movement_says_so_and_every_look_is_reported():
+    seer = FakeSeer("a person at a desk", "the user raises an arm", "")
+    s, events, _ = scripted_session(seer=seer)
+    await s.see(b"scene", first=True)
+    await s.see(b"wave", moving_s=3.0)
+    await s.see(b"same")
+    assert s.ledger.turns[-1].text == "the user raises an arm (moving the whole time, 3 s so far)"
+    looks = [e for e in events if e["type"] == "look"]
+    assert [lk["new"] for lk in looks] == [True, True, False] and looks[1]["moving_s"] == 3.0

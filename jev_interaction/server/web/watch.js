@@ -51,12 +51,12 @@
     const big = document.createElement('canvas');
     let ref = null, prev = null, changingSince = 0, stillSince = 0, lastAt = 0;
     const began = performance.now();
-    function take(g, change, first) {
+    function take(g, change, first, movingMs) {
       const w = Math.min(RULES.width, video.videoWidth), h = Math.round(w * video.videoHeight / video.videoWidth);
       big.width = w; big.height = h; big.getContext('2d').drawImage(video, 0, 0, w, h);
       const image = big.toDataURL('image/jpeg', RULES.quality).split(',')[1];
-      ref = g; changingSince = stillSince = 0; lastAt = performance.now();
-      onPicture({ image, change: Math.round(change * 1000) / 1000, first });
+      ref = g; changingSince = stillSince = 0; lastAt = first ? 0 : performance.now();   // the first look is the scene: no cool-down after it
+      onPicture({ image, change: Math.round(change * 1000) / 1000, first, moving_s: Math.round((movingMs || 0) / 100) / 10 });
     }
     const timer = setInterval(() => {
       if (!video.videoWidth || video.readyState < 2) return;
@@ -69,7 +69,8 @@
       if (!changingSince) changingSince = now;
       stillSince = motion < RULES.still ? (stillSince || now) : 0;
       if (now - lastAt < RULES.cooldown_ms) return;
-      if ((stillSince && now - stillSince >= RULES.settle_ms) || now - changingSince >= RULES.moving_ms) take(g, change, false);
+      if (stillSince && now - stillSince >= RULES.settle_ms) take(g, change, false, 0);
+      else if (now - changingSince >= RULES.moving_ms) take(g, change, false, now - changingSince);   // still moving: one still from it
     }, STEP_MS);
     return () => clearInterval(timer);
   }

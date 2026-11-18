@@ -11,7 +11,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 | binary frame | 200 ms of 16 kHz mono PCM16 (3200 samples, 6400 bytes), continuously, including while the agent talks |
 | `{"type": "playback", "state": "playing" \| "idle"}` | the agent's audio started / the queue ran empty |
 | `{"type": "heard", "gen": 7, "text": "..."}` | after `stop`: what was actually played of the reply the last `line` belonged to (its `gen`): the lines that played to the end and the part of the one that was playing, joined by newlines; `""` when none of it played. Without `gen` the text replaces the last reply, and an empty text is ignored |
-| `{"type": "frame", "image": "<base64 JPEG>", "change": 0.18, "first": false}` | video calls only (`/api/health` `vision` true): a picture the page took because the view changed (`change`: the share of the frame that moved, by the page's own rules); `first` for the first look at the scene. Sent at most every few seconds; one the server is still busy with drops the next |
+| `{"type": "frame", "image": "<base64 JPEG>", "change": 0.18, "first": false, "moving_s": 0}` | video calls only (`/api/health` `vision` true): a picture the page took because the view changed (`change`: the share of the frame that moved, by the page's own rules); `first` for the first look at the scene; `moving_s` when it is one still from a movement kept up that long (waving, walking about). Sent at most every few seconds; one the server is still busy with drops the next |
 
 ## Server → client
 
@@ -23,6 +23,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `stop` | `gen` | drop everything, then reply `heard` |
 | `finish_line` | `gen` | drop queued lines, let the current one finish |
 | `decision` | `what, action?, go?, probs?, why?, ...` | a turn-taking decision Jev just made (`end_of_turn`, `floor`, `quiet`, `notice`, `not_for_me`); `notice` has `seen`, and `action` `remark` or `let_be`, for display and logs; `not_for_me` has `why`: `jev` (Jev heard it said to someone else), `far` (Config.far_db), `voice` (the voiceprint) |
+| `look` | `first, new, seconds, moving_s, error` | every picture the agent looked at: whether it found anything new (then a `seen` follows), how long the look took, and the error when it failed |
 | `seen` | `text, change, first` | what the agent saw in a `frame` that was new, in one sentence; it is in the call's record for Jev and the responder from now on |
 | `persona` | `id, name, gen, accent?` | someone else is on the line from reply `gen` on (the caller asked for them): lines from that reply are theirs, in their voice; show it when the first of them plays |
 | `pace` | `pace, probs` | the call's pace changed (normal, patient, narrate, eager) |
