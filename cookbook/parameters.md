@@ -56,6 +56,7 @@ something else.
 | field | recommended | what it does |
 |---|---|---|
 | `turn_reask_ms` | (1000, 2000, 4000) | words Jev did not judge finished: the turn question is asked again at these marks of quiet, with the listen question beside it |
+| `turn_question` | "engine" | how "have they finished" is worded. `"last_words"` asks about the user's own words, sent in a field of their own, with the options in both orders; for judges that read the engine's wording poorly ([stacks](stacks.md#recommended-mainland-china)) |
 | `turn_last_ms` | 4000 | this far past the pace's longest wait the agent speaks anyway, and its line is told the user went silent (`trailed`) rather than finished |
 | `sound_close_ms` | 1500 | a sound with no words (a cough, a breath) is over after this much quiet |
 

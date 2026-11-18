@@ -18,6 +18,8 @@ Proven at scale in our product.
 
 ```bash
 JEV_API_KEY=...
+JEV_URL=https://api.typesafe.ai/v1/systemone      # the default, as is the next line
+JEV_TURN_QUESTION=engine
 LLM_BASE_URL=https://api.x.ai/v1
 LLM_API_KEY=...
 LLM_MODEL=grok-4.3
@@ -41,12 +43,15 @@ Why these:
 
 ## Recommended (mainland China)
 
-One DashScope (Alibaba Cloud Bailian) key for all three nodes besides the judge.
+One Alibaba Cloud Bailian key for all four nodes: its decision model as the judge, Qwen, Paraformer and CosyVoice.
 
 ```bash
-JEV_API_KEY=...
+JEV_API_KEY=...            # the Bailian key
+JEV_URL=https://<your-workspace-id>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone
+JEV_MODEL=decision-model-preview
+JEV_TURN_QUESTION=last_words
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-LLM_API_KEY=...            # the DashScope key
+LLM_API_KEY=...            # the same key
 LLM_MODEL=qwen-plus
 ASR_PROVIDER=dashscope
 TTS_PROVIDER=dashscope
@@ -54,11 +59,53 @@ DASHSCOPE_API_KEY=...
 DASHSCOPE_ASR_MODEL=paraformer-realtime-v2
 DASHSCOPE_TTS_MODEL=cosyvoice-v2
 DASHSCOPE_TTS_VOICE=longxiaochun_v2
-# HTTPS_PROXY=...          # only if api.typesafe.ai is slow from your network
 ```
 
 CosyVoice does not perform audio tags, so the model writes plain words. Give each persona its own voice in its profile
 (`voices: {dashscope: longcheng_v2}`), see [role policies](role-policies.md#voice).
+
+### The judge on the mainland
+
+`api.typesafe.ai` does not serve requests from mainland networks (HTTP 451 when we measured, November 2026), so a
+mainland deployment needs another judge. Several services now speak the same protocol (a state, typed questions, a
+probability per choice back); `JEV_URL`, `JEV_MODEL` and `JEV_HEADERS` point the engine at one.
+
+- **Bailian `decision-model-preview`** is the one we recommend there. The endpoint is your workspace's own address: the
+  `llm-…` host shown as *API Host* when you create a key, with `/compatible-mode/v1/systemone` after it, and the key
+  must belong to that workspace. It is a preview: free when we measured, and it rate-limited us above two requests at
+  once.
+- It needs **`JEV_TURN_QUESTION=last_words`**. With the engine's own wording of "have they finished" its answers sit on
+  one side whatever the user said (nearly every Chinese pause read as finished). `last_words` sends the same state as
+  an object with the user's words in a field of their own, asks whether those words are a complete utterance, and asks
+  it twice with the options in both orders, because this model leans to whichever option is listed first. Jev reads
+  both wordings equally well, so the setting is safe to leave on.
+- **Volcengine Ark System One (beta)** reads the engine's wording as it is and judges close to Jev, but answers
+  several times slower:
+
+  ```bash
+  JEV_URL=https://ark.cn-beijing.volces.com/api/v1/systemone
+  JEV_MODEL=doubao-seed-2-1-lite-260915
+  JEV_HEADERS={"ark-beta-systemone-api": "true"}
+  ```
+
+What we measured, from a mainland network (Jev through a route outside it), with `python tools/judge_bench.py`: 160
+made-up pauses, 80 Chinese and 80 English, half a finished sentence and half cut off mid-thought, each asked the way
+the engine asks when a user pauses. *Right* is p(finished) on the correct side of 0.5; *ranking* is how well
+p(finished) orders the pauses whatever the threshold.
+
+| judge | wording | right | ranking | one request, 1 → 9 questions |
+|---|---|---|---|---|
+| Jev | engine | 96% | 1.00 | tens of ms where it is reachable |
+| Jev | `last_words` | 96% | 1.00 | |
+| Bailian `decision-model-preview` | `last_words` | 88% | 0.97 | about 100 → 180 ms |
+| Bailian `decision-model-preview` | engine | 63% | 0.72 | |
+| Volcengine `doubao-seed-2-1-lite-260915` | engine | 95% | 0.99 | about 330 → 450 ms |
+
+What this does not cover: only the end-of-turn decision was measured, on written pauses, not on calls. The other
+decisions (who has the floor when both talk, speaking into a silence, the pace) go to the judge in the engine's wording
+unchanged, and thresholds in the presets were set on Jev's probabilities. Run the benchmark against your own judge
+before you rely on it, and again after any change to the wording: on the Bailian model a few changed words in the
+options moved the result by twenty points.
 
 ## The caller's voiceprint
 

@@ -301,7 +301,7 @@ class Session:
         self.utt, self.judged = None, None
 
     # ------------------------------------------------------------------ judgements
-    async def _ask(self, purpose: str, questions: dict, state: str) -> dict:
+    async def _ask(self, purpose: str, questions: dict, state: str | dict) -> dict:
         """Jev's answers, or {} when the judge fails or is slow: every decision then takes its fallback (floor -> carry on,
         turn -> the pace's max wait, quiet -> nothing), so a judge error never freezes the call."""
         t = time.monotonic()

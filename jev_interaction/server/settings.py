@@ -34,14 +34,16 @@ REFERENCES = [
      "note": "Proven at scale in our product: xAI grok-4.3 with reasoning off, ElevenLabs Scribe v3 Live and eleven_v4_turbo. Keys: Jev, xAI, ElevenLabs.",
      "note_zh": "在我们产品的规模化通话里验证过：xAI grok-4.3（关闭思考）、ElevenLabs Scribe v3 Live 实时识别和 eleven_v4_turbo 合成。需要 Jev、xAI、ElevenLabs 三把密钥。"},
     {"id": "china", "title": "Recommended (mainland China)", "title_zh": "推荐组合（中国大陆）",
-     "note": "Qwen, Paraformer and CosyVoice on Alibaba Cloud Bailian. Keys: Jev and one DashScope key.",
-     "note_zh": "阿里云百炼上的通义千问、Paraformer 和 CosyVoice。需要 Jev 和一把百炼密钥。"},
+     "note": "All four nodes on Alibaba Cloud Bailian with one key: its decision model as the judge (set the endpoint to your "
+             "workspace's own address), Qwen, Paraformer and CosyVoice. cookbook/stacks.md has what we measured.",
+     "note_zh": "四个节点都用阿里云百炼、一把密钥：法官用百炼的决策模型（接口地址填你自己业务空间的地址），再加通义千问、Paraformer 和 CosyVoice。"
+                "实测结果见 cookbook/stacks.md。"},
 ]
 TEMPLATES = {
-    "global": {"JEV_MODEL": "jev-latest", "LLM_BASE_URL": "https://api.x.ai/v1", "LLM_MODEL": "grok-4.3", "LLM_TEMPERATURE": "0.7",
+    "global": {"JEV_MODEL": "jev-latest", "JEV_URL": "https://api.typesafe.ai/v1/systemone", "JEV_TURN_QUESTION": "engine", "LLM_BASE_URL": "https://api.x.ai/v1", "LLM_MODEL": "grok-4.3", "LLM_TEMPERATURE": "0.7",
                "ASR_PROVIDER": "elevenlabs", "TTS_PROVIDER": "elevenlabs", "ELEVENLABS_ASR_MODEL": "scribe_v3_live",
                "ELEVENLABS_TTS_MODEL": "eleven_v4_turbo", "JEV_PRESET": "recommended"},
-    "china": {"JEV_MODEL": "jev-latest", "LLM_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1", "LLM_MODEL": "qwen-plus",
+    "china": {"JEV_MODEL": "decision-model-preview", "JEV_TURN_QUESTION": "last_words", "LLM_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1", "LLM_MODEL": "qwen-plus",
               "ASR_PROVIDER": "dashscope", "TTS_PROVIDER": "dashscope", "DASHSCOPE_ASR_MODEL": "paraformer-realtime-v2",
               "DASHSCOPE_TTS_MODEL": "cosyvoice-v2", "DASHSCOPE_TTS_VOICE": "longxiaochun_v2", "JEV_PRESET": "recommended"},
 }

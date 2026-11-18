@@ -35,6 +35,8 @@ class Turn(Decision):
     def questions(self, s, ctx):
         paces = {p.name: p.description for p in s.cfg.paces}
         qs = Q.turn(s.p.short, s.pace, paces, opening=s.user_turns < s.cfg.opening_turns)
+        if s.cfg.turn_question == "last_words":                     # the same decision, worded about the words themselves
+            qs.update(Q.last_words())
         ctx["may_listen"] = LISTEN.ready(s, ctx)
         if ctx["may_listen"]:
             qs.update(LISTEN.questions(s, ctx))
@@ -46,8 +48,9 @@ class Turn(Decision):
         return qs
 
     def state(self, s, ctx):
-        return super().state(s, ctx) + S.user_turn(s.p.short, s.utt.segments, time.monotonic(), s.silence_ms, s.speaking,
-                                                    s.utt.asides)
+        text = super().state(s, ctx) + S.user_turn(s.p.short, s.utt.segments, time.monotonic(), s.silence_ms, s.speaking,
+                                                   s.utt.asides)
+        return S.with_last_words(text, s.utt.text, s.silence_ms) if s.cfg.turn_question == "last_words" else text
 
     def current(self, s, ctx):
         return s.utt is not None and s.utt.id == ctx["utt_id"]      # still the same utterance
@@ -59,7 +62,7 @@ class Turn(Decision):
             return
         await s._update_pace(P(answers, "pace"))
         # a failed judge: p(finished) 0, so the turn is answered at the pace's longest wait
-        s.judged = {"finished": P(answers, "done").get("finished", 0.0), "drawn": False,
+        s.judged = {"finished": Q.finished(answers), "drawn": False,
                     "who": HANDOVER.chosen(s, answers, ctx) if HANDOVER.ready(s, ctx) else None}
         if ctx["may_listen"]:
             await LISTEN.apply(s, answers, ctx)

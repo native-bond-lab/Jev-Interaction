@@ -143,6 +143,21 @@ async def test_a_pause_asks_only_what_is_read_and_the_draw_does_not_wait():
     assert any(e.get("what") == "end_of_turn" and e["go"] for e in events)
 
 
+async def test_the_last_words_wording_asks_about_the_users_words_both_ways_round_and_averages():
+    answers = {**TURN, "done": {"finished": 0.9, "continuing": 0.1}, "done_again": {"finished": 0.5, "continuing": 0.5}}
+    s, events, judge = make(answers, {"end_of_turn": SamplePolicy(rng=lambda: 0.1)})
+    s.cfg.turn_question = "last_words"
+    await s.on_segment(Segment("So what do you think?"))
+    await asyncio.sleep(0.05)
+    asked, state = judge.asked[0]
+    assert {"done", "done_again", "pace"} <= asked             # the other questions ride along and read the text under `call`
+    from jev_interaction.judge import questions as Q
+    both = Q.last_words()
+    assert list(both["done"]["criteria"]) == ["finished", "continuing"] and list(both["done_again"]["criteria"]) == ["continuing", "finished"]
+    assert state["user_latest_words"] == "So what do you think?" and "Phone call between the user and" in state["call"]
+    assert abs(s.judged["finished"] - 0.7) < 1e-9              # the two orders, averaged
+
+
 async def test_not_said_to_me_is_offered_only_after_the_first_answer_and_drops_the_words():
     answers = {**TURN, "kind": {"reply": 0.2, "sound": 0.1, "elsewhere": 0.7}}
     s, events, judge = make(answers, {"end_of_turn": SamplePolicy(rng=lambda: 0.1)})

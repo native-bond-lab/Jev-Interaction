@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **A judge for mainland China.** `api.typesafe.ai` does not serve mainland networks, and other services now speak the
+  same protocol. `JEV_URL`, `JEV_MODEL` and `JEV_HEADERS` (a JSON object of extra request headers) point the judge at
+  one; an empty `JEV_URL=` line no longer leaves the judge without an address. `Config.turn_question = "last_words"`
+  (`JEV_TURN_QUESTION=last_words`) words "have they finished" about the user's own words, sent in a field of their
+  own, with the options in both orders: Alibaba Cloud Bailian's `decision-model-preview` goes from 63% to 88% right
+  with it on 160 written pauses, and Jev reads both wordings alike (96%). The mainland setup in the cookbook and on
+  the setup page is now one Bailian key for all four nodes. `tools/judge_bench.py` measures any configured judge;
+  the numbers and their limits are in `cookbook/stacks.md`.
 - **The turn request asks two questions, not four.** `wait` (how long to hold the answer) and `kind` (a reply or a
   sound) are no longer sent. `wait` said what `done` already says (on 627 recorded turn judgements its value tracked
   p(finished) at -0.92) and its only effect was to hold the draw back: in 217 held moments the user went on during the

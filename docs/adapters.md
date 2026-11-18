@@ -9,7 +9,7 @@ those methods; there is no base class to inherit.
 | recognizer | `connect()`, `send(pcm)`, `segments()` (async iterator of `Segment(text)`), `close()` | ElevenLabs Scribe, Paraformer |
 | responder | `lines(messages, max_tokens)` (async iterator of spoken lines) | any OpenAI-compatible endpoint |
 | synthesizer | `audio(text)` (async iterator of encoded bytes) and `media_type` | ElevenLabs, CosyVoice |
-| judge | `ask(questions, state) -> {name: {"choice", "probabilities"}}` | Jev |
+| judge | `ask(questions, state) -> {name: {"choice", "probabilities"}}` | Jev; any service with the same protocol through `JEV_URL` / `JEV_MODEL` / `JEV_HEADERS` |
 
 A recognizer should close a segment after a short quiet (about 0.35 s) and send only closed segments: the session
 decides turns from those, not from partial words.
