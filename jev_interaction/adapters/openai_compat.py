@@ -2,7 +2,8 @@
 a newline arrives, so synthesis of the first line starts while the model is still writing the rest.
 
 Reasoning is switched off by default where the provider has a switch, as our product's engine does: a call cannot wait
-for a model to think (grok-4.3 with reasoning on took ~8 s to its first word; off, well under a second). LLM_EXTRA_BODY
+for a model to think (grok-4.3 with reasoning on took ~8 s to its first word; off, well under a second). Models that
+cannot switch it off (xAI after grok-4.3) are asked for "low" instead. LLM_EXTRA_BODY
 (a JSON object) is merged into every request to override this or to pass anything else."""
 from __future__ import annotations
 
@@ -25,6 +26,14 @@ def no_reasoning(base_url: str) -> dict:
     return {}
 
 
+def less_reasoning(extra: dict) -> dict:
+    """What to send when the provider refused `extra` (a 400): the next step down. xAI's newer models (after grok-4.3)
+    cannot switch thinking off, only down to "low"; anything else, and a refused "low", is sent with no switch at all."""
+    if extra.get("reasoning_effort") == "none":
+        return {**extra, "reasoning_effort": "low"}
+    return {}
+
+
 class OpenAICompatResponder:
     def __init__(self, base_url: str | None = None, api_key: str | None = None, model: str | None = None, temperature: float | None = None):
         self.base_url = (base_url or os.getenv("LLM_BASE_URL", "")).rstrip("/")
@@ -39,14 +48,14 @@ class OpenAICompatResponder:
         body = {"model": self.model, "messages": messages, "stream": True, "max_tokens": max_tokens, "temperature": self.temperature}
         buf = ""
         async with httpx.AsyncClient(timeout=30) as http:
-            for attempt in (0, 1):
+            for attempt in (0, 1, 2):
                 async with http.stream("POST", f"{self.base_url}/chat/completions", headers={"Authorization": f"Bearer {self.key}"},
                                        json={**body, **self.extra}) as r:
-                    if r.status_code == 400 and self.extra and attempt == 0:
-                        # this model has no such switch (grok-4.5+ always reason, non-reasoning models take no
-                        # reasoning parameter): drop the extras for the rest of the call and ask again
+                    if r.status_code == 400 and self.extra and attempt < 2:
+                        # this model refuses the switch (after grok-4.3 thinking only goes down to "low"; a model that
+                        # does not reason takes no such parameter): one step down for the rest of the call, ask again
                         await r.aread()
-                        self.extra = {}
+                        self.extra = less_reasoning(self.extra)
                         continue
                     r.raise_for_status()
                     async for raw in r.aiter_lines():

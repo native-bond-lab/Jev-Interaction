@@ -211,6 +211,13 @@ def test_reasoning_is_switched_off_where_the_provider_has_a_switch():
     assert no_reasoning("https://api.openai.com/v1") == {} and no_reasoning("http://localhost:11434/v1") == {}
 
 
+def test_a_refused_switch_steps_down_to_low_then_to_nothing():
+    from jev_interaction.adapters.openai_compat import less_reasoning
+    assert less_reasoning({"reasoning_effort": "none"}) == {"reasoning_effort": "low"}     # xAI after grok-4.3
+    assert less_reasoning({"reasoning_effort": "low"}) == {}
+    assert less_reasoning({"thinking": {"type": "disabled"}}) == {}
+
+
 async def test_a_failing_judge_leaves_the_line_playing():
     class BrokenJudge:
         async def ask(self, questions, state):

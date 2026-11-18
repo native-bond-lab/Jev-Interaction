@@ -11,7 +11,7 @@ import os
 
 import httpx
 
-from .openai_compat import no_reasoning
+from .openai_compat import less_reasoning, no_reasoning
 
 PROMPT = ("You are the eyes of {name}, who is on a video call with the user. This is the picture now. What {name} saw "
           "before: {before}\nIn one short sentence in {language}, say what is new in the picture: what the user did, "
@@ -37,10 +37,10 @@ class OpenAISeer:
             {"role": "user", "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": url}}]}]}
         r = await self._http.post(f"{self.base_url}/chat/completions", headers={"Authorization": f"Bearer {self.key}"},
                                   json={**body, **self.extra})
-        if r.status_code == 400 and self.extra:      # this model has no such switch: ask again without it, and from now on
-            self.extra = {}
+        while r.status_code == 400 and self.extra:   # the model refuses the switch: one step down, from now on
+            self.extra = less_reasoning(self.extra)
             r = await self._http.post(f"{self.base_url}/chat/completions", headers={"Authorization": f"Bearer {self.key}"},
-                                      json=body)
+                                      json={**body, **self.extra})
         r.raise_for_status()
         said = ((r.json().get("choices") or [{}])[0].get("message") or {}).get("content") or ""
         said = said.strip().strip('"')
