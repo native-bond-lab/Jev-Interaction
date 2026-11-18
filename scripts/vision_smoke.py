@@ -1,6 +1,6 @@
 """Try the seer on a real vision model with two scripted pictures: a desk scene, then the same with a red mug held up.
 
-    VISION_BASE_URL=https://api.x.ai/v1 VISION_API_KEY=... VISION_MODEL=grok-4 python scripts/vision_smoke.py [before.jpg after.jpg]
+    VISION_BASE_URL=https://api.x.ai/v1 VISION_API_KEY=... VISION_MODEL=grok-4.3 python scripts/vision_smoke.py [before.jpg after.jpg]
 
 With no files it draws the two pictures itself (needs Pillow). Prints what the seer says for each, and how long it took.
 """
