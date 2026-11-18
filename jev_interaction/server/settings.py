@@ -40,10 +40,10 @@ REFERENCES = [
                 "实测结果见 cookbook/stacks.md。"},
 ]
 TEMPLATES = {
-    "global": {"JEV_MODEL": "jev-latest", "JEV_URL": "https://api.typesafe.ai/v1/systemone", "JEV_TURN_QUESTION": "engine", "LLM_BASE_URL": "https://api.x.ai/v1", "LLM_MODEL": "grok-4.3", "LLM_TEMPERATURE": "0.7",
+    "global": {"JEV_MODEL": "jev-latest", "JEV_URL": "https://api.typesafe.ai/v1/systemone", "JEV_TURN_QUESTION": "engine", "JEV_PROVIDER": "jev", "LLM_BASE_URL": "https://api.x.ai/v1", "LLM_MODEL": "grok-4.3", "LLM_TEMPERATURE": "0.7",
                "ASR_PROVIDER": "elevenlabs", "TTS_PROVIDER": "elevenlabs", "ELEVENLABS_ASR_MODEL": "scribe_v3_live",
                "ELEVENLABS_TTS_MODEL": "eleven_v4_turbo", "JEV_PRESET": "recommended"},
-    "china": {"JEV_MODEL": "decision-model-preview", "JEV_TURN_QUESTION": "last_words", "LLM_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1", "LLM_MODEL": "qwen-plus",
+    "china": {"JEV_MODEL": "decision-model-preview", "JEV_TURN_QUESTION": "last_words", "JEV_PROVIDER": "bailian", "LLM_BASE_URL": "https://dashscope.aliyuncs.com/compatible-mode/v1", "LLM_MODEL": "qwen-plus",
               "ASR_PROVIDER": "dashscope", "TTS_PROVIDER": "dashscope", "DASHSCOPE_ASR_MODEL": "paraformer-realtime-v2",
               "DASHSCOPE_TTS_MODEL": "cosyvoice-v2", "DASHSCOPE_TTS_VOICE": "longxiaochun_v2", "JEV_PRESET": "recommended"},
 }

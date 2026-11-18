@@ -20,6 +20,7 @@ Proven at scale in our product.
 JEV_API_KEY=...
 JEV_URL=https://api.typesafe.ai/v1/systemone      # the default, as is the next line
 JEV_TURN_QUESTION=engine
+JEV_PROVIDER=jev
 LLM_BASE_URL=https://api.x.ai/v1
 LLM_API_KEY=...
 LLM_MODEL=grok-4.3
@@ -50,6 +51,7 @@ JEV_API_KEY=...            # the Bailian key
 JEV_URL=https://<your-workspace-id>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone
 JEV_MODEL=decision-model-preview
 JEV_TURN_QUESTION=last_words
+JEV_PROVIDER=bailian
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_API_KEY=...            # the same key
 LLM_MODEL=qwen-plus
@@ -74,11 +76,14 @@ probability per choice back); `JEV_URL`, `JEV_MODEL` and `JEV_HEADERS` point the
   `llm-…` host shown as *API Host* when you create a key, with `/compatible-mode/v1/systemone` after it, and the key
   must belong to that workspace. It is a preview: free when we measured, and it rate-limited us above two requests at
   once.
-- It needs **`JEV_TURN_QUESTION=last_words`**. With the engine's own wording of "have they finished" its answers sit on
-  one side whatever the user said (nearly every Chinese pause read as finished). `last_words` sends the same state as
-  an object with the user's words in a field of their own, asks whether those words are a complete utterance, and asks
-  it twice with the options in both orders, because this model leans to whichever option is listed first. Jev reads
-  both wordings equally well, so the setting is safe to leave on.
+- It needs **`JEV_PROVIDER=bailian`**: its own wording of the questions (`jev_interaction/judge/bailian.py`). With the
+  engine's own wording of "have they finished" its answers sit on one side whatever the user said (nearly every
+  Chinese pause read as finished), and it misreads a question said over the agent's line as a reaction. The Bailian
+  set sends the state as an object with the words a question is about in a field of their own, points each question
+  at its field, asks it twice with the options in both orders (this model leans to whichever option is listed first),
+  and splits a question that needs the whole call read into small ones. It covers the end of a turn
+  (`JEV_TURN_QUESTION=last_words` alone does only that much), both talking, a silence and "something is due" while
+  listening; the other decisions go out as the engine words them. Leave Jev on the engine's questions.
 - **Volcengine Ark System One (beta)** reads the engine's wording as it is and judges close to Jev, but answers
   several times slower:
 
@@ -101,30 +106,37 @@ p(finished) orders the pauses whatever the threshold.
 | Bailian `decision-model-preview` | engine | 63% | 0.72 | |
 | Volcengine `doubao-seed-2-1-lite-260915` | engine | 95% | 0.99 | about 330 → 450 ms |
 
-The other decisions, with `python tools/judge_bench.py --decisions`: 148 written moments (`tools/judge_cases.py`),
-Chinese and English alike, each sent as the engine sends it and scored on the action the engine would take. The Bailian
-column is with `JEV_TURN_QUESTION=last_words`.
+The other decisions, with `python tools/judge_bench.py --decisions`: written moments, Chinese and English alike, each
+sent as the engine sends it and scored on the action the engine would take. The Bailian set was worded on 148 moments
+(`tools/judge_cases.py`) and checked on 108 others kept apart from the wording (`tools/judge_cases_heldout.py`,
+`--held-out`); the held-out column is the one to trust. "Before" is the engine's questions with
+`JEV_TURN_QUESTION=last_words`, "after" is `JEV_PROVIDER=bailian`.
 
-| decision | moments | Jev right | Bailian right | Bailian takes the same action as Jev |
-|---|---|---|---|---|
-| handing the line to someone else | 16 | 100% | 100% | 100% |
-| cutting in while the user talks (eager pace) | 16 | 69% | 56% | 88% |
-| speaking into a silence | 28 | 39% | 43% | 86% |
-| which pace | 32 | 81% | 78% | 75% |
-| both talking at once | 32 | 97% | 69% | 72% |
-| listening: is something due | 24 | 96% | 67% | 42% |
+| decision | Jev (engine questions), tuning set | Bailian before, tuning / held out | Bailian after, tuning / held out |
+|---|---|---|---|
+| both talking at once | 97% | 69% / 54% | 100% / 100% |
+| speaking into a silence | 39% | 43% / 40% | 100% / 85% |
+| listening: is something due | 96% | 67% / 67% | 88% / 96% |
+| which pace | 81% | 78% / 75% | 78% / 71% (not reworded) |
+| cutting in while the user talks (eager pace) | 69% | 56% / 56% | 56% / 56% (not reworded) |
+| handing the line to someone else | 100% | 100% | 100% (not reworded) |
 
 Read with these in mind:
 
-- **Both talking.** The Bailian model keeps a reaction ("mm", a laugh) and a real "stop" apart, but a question or remark
-  said over the agent's line it reads as a reaction every time (0 of 8), so the agent talks on and the question is
-  not answered. In a trial, the same move that fixed the turn question (the user's words in a field of their own, and
-  a question about that field in both orders) took both judges to 32 of 32; that wording is not in the engine yet.
-- **Listening.** It knows when to stay quiet and when an answer is owed, but never finds the sound a user asked for
-  earlier in the call ("say so each time I mention a cat"): 0 of 8, where Jev finds 7. Two rewordings did not fix it.
-  On this judge the agent will not mark or count along.
-- **A silence** and **cutting in.** Both judges wait longer and cut in less than the written answers expect, so the
-  "right" columns are low for both; what matters there is that they act alike.
+- **Both talking.** On the engine's question the Bailian model read a question or remark said over the agent's line
+  as a reaction every time (0 of 8), so the agent talked on. Pointed at `user_words_over_it` (a reaction, a "stop", or
+  something of their own that wants an answer) it gets all three apart. Reacting at once (`jump_in`) is not offered
+  in this set.
+- **A silence.** Five small questions in place of one: is the agent's last line asking something, did the user say
+  they need a moment, have they said goodbye, has the agent already called out with no answer, is the quiet long.
+  What still goes wrong: a short "okay" after the user said "hold on" is sometimes read as the agent's move.
+- **Listening.** On the engine's question it never found the sound a user asked for earlier in the call ("say so each
+  time I mention a cat"): 0 of 8. Asked separately whether such a rule was set earlier and whether the latest words
+  bring it up (the two answers multiplied), it finds 7 of 8 held-out ones and still stays quiet where nothing was
+  asked for.
+- **Which pace** and **cutting in** are not reworded yet: on the engine's questions the Bailian model rarely picks
+  the eager pace and rarely cuts in. A question on the user's words alone did better in a first trial and is the next
+  step.
 - These are written moments, not calls, and the presets' thresholds were set on Jev's probabilities. Run the benchmark
   against your own judge before you rely on it, and again after any change to the wording: on the Bailian model a few
   changed words in the options moved a result by twenty points.

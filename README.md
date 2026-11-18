@@ -218,7 +218,7 @@ how to write for the voice you pick: voices that perform audio tags (ElevenLabs 
 
 | | recommended (global), proven at scale in our product | recommended (mainland China) |
 |---|---|---|
-| judge | Jev | Bailian `decision-model-preview`, the same protocol (`JEV_TURN_QUESTION=last_words`; what we measured: [cookbook](cookbook/stacks.md#the-judge-on-the-mainland)) |
+| judge | Jev | Bailian `decision-model-preview`, the same protocol (`JEV_PROVIDER=bailian`; what we measured: [cookbook](cookbook/stacks.md#the-judge-on-the-mainland)) |
 | language model | grok-4.3, reasoning off, temperature 0.7 | qwen-plus via DashScope |
 | recognition | ElevenLabs Scribe v3 Live | Paraformer realtime v2 |
 | voice | ElevenLabs eleven_v4_turbo (audio tags) | CosyVoice v2, per-persona voices (plain words) |

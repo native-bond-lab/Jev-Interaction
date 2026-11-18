@@ -734,3 +734,68 @@ def test_health_is_the_whole_report():
     from jev_interaction.server import app as server
     h = TestClient(server.app).get("/api/health").json()
     assert isinstance(h, dict) and {"ready", "missing", "providers", "vad", "voiceprint"} <= set(h)
+
+
+# ---------------------------------------------------------------- the Bailian question set (Config.judge_provider)
+def both_ways(answers: dict) -> dict:
+    """A fake judge's answers for questions asked in both option orders (judge/bailian.py): the same either way."""
+    return {**answers, **{k + "__r": v for k, v in answers.items()}}
+
+
+def test_bailian_merges_the_two_orders_and_turns_small_answers_into_the_engines_choices():
+    from jev_interaction.judge import bailian as B
+    asked = B.both("q", {"type": "choice", "instructions": "?", "criteria": {"a": "A", "b": "B"}})
+    assert list(asked["q"]["criteria"]) == ["a", "b"] and list(asked["q__r"]["criteria"]) == ["b", "a"]
+    merged = B.merge({"q": {"probabilities": {"a": 0.9, "b": 0.1}}, "q__r": {"probabilities": {"a": 0.5, "b": 0.5}}})
+    assert set(merged) == {"q"} and abs(merged["q"]["probabilities"]["a"] - 0.7) < 1e-9 and merged["q"]["choice"] == "a"
+    p = lambda **kw: {k: {"probabilities": v} for k, v in kw.items()}                       # noqa: E731
+    quiet = B.quiet_probs(p(turn={"theirs": 1.0}, busy={"busy": 0.0}, bye={"goodbye": 0.0}, gone={"unanswered": 0.0},
+                            long={"long": 1.0}))
+    assert max(quiet, key=quiet.get) == "check"                 # their move, a long quiet: check on them
+    quiet = B.quiet_probs(p(turn={"theirs": 0.0}, busy={"busy": 0.0}, bye={"goodbye": 0.0}, gone={"unanswered": 0.0},
+                            long={"long": 0.0}))
+    assert max(quiet, key=quiet.get) == "go_on"                 # the agent's move: pick the thread up
+    listen = B.listen_probs(p(rule={"task": 0.9}, hit={"hit": 0.9}, ask={"asks": 0.0}, listen={"fits": 0.5, "quiet": 0.5}))
+    assert listen["due"] > 0.8
+    listen = B.listen_probs(p(rule={"task": 0.02}, hit={"hit": 0.95}, ask={"asks": 0.0}, listen={"fits": 0.5, "quiet": 0.5}))
+    assert listen["due"] < 0.05                                 # "yes, it came up" alone, with no task set, is not due
+
+
+async def test_bailian_floor_points_at_the_words_said_over_the_line():
+    s, events, judge = make(both_ways({"floor": {"carry_on": 0.2, "yield": 0.1, "finish_first": 0.7}}))
+    s.cfg.judge_provider = "bailian"
+    s.speaking = True
+    s.ledger.agent("So the thing about my morning is")
+    await s.on_segment(Segment("Who were you with?"))
+    await asyncio.sleep(0.05)
+    asked, state = judge.asked[0]
+    assert asked == {"floor", "floor__r"} and state["user_words_over_it"] == "Who were you with?"
+    assert state["agent_line"] == "So the thing about my morning is" and "Phone call" in state["call"]
+    assert any(e.get("what") == "floor" and e["action"] == "finish_first" for e in events)
+
+
+async def test_bailian_quiet_asks_small_questions_and_hangs_up_on_a_closed_call():
+    small = {"turn": {"theirs": 0.2, "ours": 0.8}, "busy": {"busy": 0.0, "not_busy": 1.0},
+             "bye": {"goodbye": 0.95, "going": 0.05}, "gone": {"unanswered": 0.1, "not_yet": 0.9}, "long": {"pause": 0.0, "long": 1.0}}
+    s, events, judge = make(both_ways(small), {"quiet": ArgmaxPolicy()})
+    s.cfg.judge_provider = "bailian"
+    s.ledger.user("Okay, bye then")
+    s.ledger.agent("Bye, take care.")
+    s.spoke_into_quiet = 1
+    await s.ask_quiet(30.0)
+    asked, state = judge.asked[0]
+    assert {"turn", "busy", "bye", "gone", "long", "bye__r"} <= asked and "quiet" not in asked
+    assert state["user_last_words"] == "Okay, bye then" and state["agent_last_line"] == "Bye, take care."
+    assert any(e.get("what") == "quiet" and e["action"] == "hang_up" for e in events)
+
+
+async def test_bailian_turn_uses_the_last_words_wording_and_asks_what_was_set_up_earlier():
+    s, events, judge = make(both_ways({**TURN, "done_again": TURN["done"], "rule": {"task": 0.0, "no_task": 1.0}}))
+    s.cfg.judge_provider = "bailian"                           # turn_question left at "engine": the provider decides
+    s.ledger.user("Let me tell you about today")
+    s.ledger.agent("Okay.")
+    await s.on_segment(Segment("I had an interview"))
+    await asyncio.sleep(0.05)
+    asked, state = judge.asked[0]
+    assert {"done", "done_again", "listen", "rule", "hit", "ask", "rule__r"} <= asked
+    assert state["user_latest_words"] == "I had an interview" and state["user_earlier_lines"] == ["Let me tell you about today"]

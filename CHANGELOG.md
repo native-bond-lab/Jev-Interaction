@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Questions worded for Bailian's judge.** `Config.judge_provider = "bailian"` (`JEV_PROVIDER=bailian`) sends Alibaba
+  Cloud Bailian's `decision-model-preview` its own set of questions (`judge/bailian.py`); Jev keeps the engine's. The
+  words a question is about go in a field of their own and the question points at it, every choice is asked in both
+  option orders and averaged, and a question that needs the whole call read is split into small ones. It covers the
+  end of a turn (the `last_words` wording), both talking, a silence and "something is due" while listening. On 108
+  written moments kept apart from the wording: both talking 54% → 100%, a silence 40% → 85%, listening 67% → 96%
+  (`tools/judge_bench.py --decisions --held-out`). The mainland setup in the cookbook and on the setup page sets it.
 - **A judge for mainland China.** `api.typesafe.ai` does not serve mainland networks, and other services now speak the
   same protocol. `JEV_URL`, `JEV_MODEL` and `JEV_HEADERS` (a JSON object of extra request headers) point the judge at
   one; an empty `JEV_URL=` line no longer leaves the judge without an address. `Config.turn_question = "last_words"`

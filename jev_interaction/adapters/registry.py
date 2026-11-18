@@ -267,7 +267,8 @@ register("judge", "jev", _jev, [
     # another service that speaks the same protocol (cookbook/stacks.md): its endpoint, and any header it asks for
     Setting("JEV_URL", "Endpoint", "接口地址", default="https://api.typesafe.ai/v1/systemone"),
     Setting("JEV_HEADERS", "Extra request headers (JSON)", "额外请求头（JSON）", hint='{"header-name": "value"}'),
-    Setting("JEV_TURN_QUESTION", "End-of-turn wording: engine | last_words", "「说完没」的问法：engine | last_words", default="engine")],
+    Setting("JEV_TURN_QUESTION", "End-of-turn wording: engine | last_words", "「说完没」的问法：engine | last_words", default="engine"),
+    Setting("JEV_PROVIDER", "Question wording for: jev | bailian", "问法按哪家法官：jev | bailian", default="jev")],
     label="Jev", docs="console.typesafe.ai")
 register("llm", "openai-compatible", _openai_compat, [
     Setting("LLM_BASE_URL", "Endpoint (OpenAI-compatible)", "接口地址（兼容 OpenAI）", required=True),

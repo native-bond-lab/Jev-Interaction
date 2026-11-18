@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import time
 
+from ..judge import bailian as B
 from ..judge import questions as Q
 from ..judge import state as S
 from ..judge.client import probs as P
@@ -35,11 +36,13 @@ class Turn(Decision):
     def questions(self, s, ctx):
         paces = {p.name: p.description for p in s.cfg.paces}
         qs = Q.turn(s.p.short, s.pace, paces, opening=s.user_turns < s.cfg.opening_turns)
-        if s.cfg.turn_question == "last_words":                     # the same decision, worded about the words themselves
+        if self.last_words(s):                                      # the same decision, worded about the words themselves
             qs.update(Q.last_words())
         ctx["may_listen"] = LISTEN.ready(s, ctx)
         if ctx["may_listen"]:
             qs.update(LISTEN.questions(s, ctx))
+            if s.cfg.judge_provider == "bailian":
+                qs.update(B.listen())
         if HANDOVER.ready(s, ctx):
             qs.update(HANDOVER.questions(s, ctx))
         if s._offer_elsewhere():                                    # the only reader of `kind` is the "not said to me" choice
@@ -50,7 +53,16 @@ class Turn(Decision):
     def state(self, s, ctx):
         text = super().state(s, ctx) + S.user_turn(s.p.short, s.utt.segments, time.monotonic(), s.silence_ms, s.speaking,
                                                    s.utt.asides)
-        return S.with_last_words(text, s.utt.text, s.silence_ms) if s.cfg.turn_question == "last_words" else text
+        if not self.last_words(s):
+            return text
+        state = S.with_last_words(text, s.utt.text, s.silence_ms)
+        if s.cfg.judge_provider == "bailian":
+            state["user_earlier_lines"] = B.earlier_user_lines(s.ledger, s.cfg.judge_turns)
+        return state
+
+    @staticmethod
+    def last_words(s) -> bool:
+        return s.cfg.turn_question == "last_words" or s.cfg.judge_provider == "bailian"
 
     def current(self, s, ctx):
         return s.utt is not None and s.utt.id == ctx["utt_id"]      # still the same utterance
@@ -65,6 +77,8 @@ class Turn(Decision):
         s.judged = {"finished": Q.finished(answers), "drawn": False,
                     "who": HANDOVER.chosen(s, answers, ctx) if HANDOVER.ready(s, ctx) else None}
         if ctx["may_listen"]:
+            if s.cfg.judge_provider == "bailian":
+                answers = {**answers, "listen": {"probabilities": B.listen_probs(answers)}}
             await LISTEN.apply(s, answers, ctx)
 
     async def on_tick(self, s, now):

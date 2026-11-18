@@ -4,6 +4,10 @@
     python tools/judge_bench.py --last-words    # a wording some judges read better (see cookbook/stacks.md)
     python tools/judge_bench.py --decisions     # the other decisions: both talking, a silence, the pace, listening,
                                                 # cutting in, handing over (written moments in tools/judge_cases.py)
+    python tools/judge_bench.py --decisions --held-out   # the same on a second set kept apart from wording edits
+                                                # (tools/judge_cases_heldout.py)
+
+JEV_PROVIDER=bailian sends the Bailian question set (judge/bailian.py) the way the engine does with that setting.
 
 It uses the judge from your settings (JEV_API_KEY, JEV_URL, JEV_MODEL, JEV_HEADERS), so the numbers are for your judge
 from your network. Two measurements:
@@ -30,6 +34,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from jev_interaction.config import DEFAULT_PACES  # noqa: E402
 from jev_interaction.judge import JevClient  # noqa: E402
+from jev_interaction.judge import bailian as B  # noqa: E402
 from jev_interaction.judge import questions as Q  # noqa: E402
 from jev_interaction.judge import state as S  # noqa: E402
 from jev_interaction.judge.client import probs as P  # noqa: E402
@@ -66,6 +71,7 @@ EN_DONE = ["Have you eaten yet?", "Can you look up my order?", "The weather is l
            "Can you cancel my order?", "Today was a rough day.", "Get some rest then.", "I'd like to change rooms.", "That movie was pretty good."]
 
 PACES = {p.name: p.description for p in DEFAULT_PACES}
+PROVIDER = "jev"
 QUIET_S = 0.4
 
 
@@ -153,39 +159,55 @@ def floor_action(probs: dict) -> str:
     return action
 
 
-def decision_cases(last_words: bool) -> list[dict]:
+def decision_cases(last_words: bool, held_out: bool = False, provider: str = "jev") -> list[dict]:
     """Every case as the request the engine would send, and a check of the answer it would act on."""
-    from tools import judge_cases as K
+    if held_out:
+        from tools import judge_cases_heldout as K
+    else:
+        from tools import judge_cases as K
+    bailian = provider == "bailian"
+    last_words = last_words or bailian
     out = []
     for lang, pid, other_id in (("zh", "lyra_zh", "kai_zh"), ("en", "lyra", "kai")):
         p, b = Profile.load(paths.profiles()[pid]), Profile.load(paths.profiles()[other_id])
         hello = ["user: 你说吧，我听着"] if lang == "zh" else ["user: Go on, I'm listening"]
 
-        def turn(questions, state, quiet_ms, said, p=p):           # a question that rides in the turn request
+        def turn(questions, state, quiet_ms, said, p=p, recent=()):  # a question that rides in the turn request
             qs = {**Q.turn(p.short, "normal", PACES), **questions}
-            return ({**qs, **Q.last_words()}, S.with_last_words(state, said, quiet_ms)) if last_words else (qs, state)
+            if not last_words:
+                return qs, state
+            state = S.with_last_words(state, said, quiet_ms)
+            if bailian:
+                state["user_earlier_lines"] = [r.split(": ", 1)[1] for r in recent if r.startswith("user: ")]
+            return {**qs, **Q.last_words()}, state
 
         for line, said, seconds, right in K.FLOOR[lang]:
             crit = Q.floor_criteria(p.short, finish=True, overrule=False, aside=False, jump=True)
             want = {"carry_on": {"carry_on"}, "stop": {"yield", "jump_in"}, "answer": {"finish_first", "yield", "jump_in"}}[right]
-            out.append({"d": "both talking", "lang": lang, "right": right, "q": {"floor": Q.floor(p.short, crit)},
-                        "state": header(p, "normal", hello + [f"A: {line}"]) + S.overlap(p.short, line, said, int(seconds * 1000)),
+            text = header(p, "normal", hello + [f"A: {line}"]) + S.overlap(p.short, line, said, int(seconds * 1000))
+            q, st = (B.floor(crit), B.floor_state(text, line, said)) if bailian else ({"floor": Q.floor(p.short, crit)}, text)
+            out.append({"d": "both talking", "lang": lang, "right": right, "q": q, "state": st,
                         "act": lambda a: floor_action(P(a, "floor")), "ok": lambda act, want=want: act in want})
         for recent, last, quiet_s, spoke, pace, right in K.QUIET[lang]:
             allowed = ["go_on", "wait"] + (["check"] if quiet_s >= 10 else []) + (["hang_up"] if quiet_s >= 25 and spoke else [])
-            out.append({"d": "a silence", "lang": lang, "right": right, "q": {"quiet": Q.quiet(p.short, pace)},
-                        "state": header(p, pace, recent + [f"A: {last}"]) + S.quiet(p.short, last, quiet_s, spoke, None),
-                        "act": lambda a, allowed=allowed: max(allowed, key=lambda k: P(a, "quiet").get(k, 0.0)),
+            text = header(p, pace, recent + [f"A: {last}"]) + S.quiet(p.short, last, quiet_s, spoke, None)
+            said = [r.split(": ", 1)[1] for r in recent if r.startswith("user: ")]
+            q, st = ((B.quiet(), B.quiet_state(text, last, said[-1] if said else "", quiet_s, spoke, pace)) if bailian
+                     else ({"quiet": Q.quiet(p.short, pace)}, text))
+            probs = (lambda a: B.quiet_probs(a)) if bailian else (lambda a: P(a, "quiet"))
+            out.append({"d": "a silence", "lang": lang, "right": right, "q": q, "state": st,
+                        "act": lambda a, allowed=allowed, probs=probs: max(allowed, key=lambda k: probs(a).get(k, 0.0)),
                         "ok": lambda act, right=right: act == right})
         for recent, said, right in K.PACE[lang]:
             q, st = turn({}, header(p, "normal", recent) + user_turn(p, [said], 400), 400, said)
             out.append({"d": "the pace", "lang": lang, "right": right, "q": q, "state": st,
                         "act": lambda a: max(P(a, "pace"), key=P(a, "pace").get) if P(a, "pace") else "", "ok": lambda act, right=right: act == right})
         for recent, segments, right in K.LISTEN[lang]:
-            q, st = turn({"listen": Q.listen(p.short)}, header(p, "normal", recent) + user_turn(p, segments, 300), 300, " ".join(segments))
+            q, st = turn({"listen": Q.listen(p.short), **(B.listen() if bailian else {})},
+                         header(p, "normal", recent) + user_turn(p, segments, 300), 300, " ".join(segments), recent=recent)
 
             def act(a):
-                lp = P(a, "listen")
+                lp = B.listen_probs(a) if bailian else P(a, "listen")
                 return "due" if lp.get("due", 0.0) >= 0.5 else "sound" if lp.get("due", 0.0) + lp.get("fits", 0.0) >= 0.5 else "nothing"
             want = {"due": {"due"}, "none": {"sound", "nothing"}, "answer_due": {"nothing"}}[right]
             out.append({"d": "listening", "lang": lang, "right": right, "q": q, "state": st, "act": act, "ok": lambda act, want=want: act in want})
@@ -204,14 +226,14 @@ def decision_cases(last_words: bool) -> list[dict]:
 
 async def decisions(judge, args):
     import json
-    items = decision_cases(args.last_words)
+    items = decision_cases(args.last_words, args.held_out, PROVIDER)
     sem, acts = asyncio.Semaphore(args.concurrency), [None] * len(items)
 
     async def one(i, c):
         async with sem:
             for _ in range(5):
                 try:
-                    acts[i] = c["act"](await judge.ask(c["q"], c["state"]))
+                    acts[i] = c["act"](B.merge(await judge.ask(c["q"], c["state"])))
                     return
                 except Exception:  # noqa: BLE001
                     await asyncio.sleep(1.5)
@@ -239,15 +261,20 @@ async def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--last-words", action="store_true", help="ask about the user's last words, state as an object")
     ap.add_argument("--decisions", action="store_true", help="the decisions besides the end of a turn")
+    ap.add_argument("--held-out", action="store_true", help="with --decisions: the moments kept apart from wording edits")
     ap.add_argument("--save", help="with --decisions: write the action taken on each case to this file")
     ap.add_argument("--against", help="with --decisions: a file another judge's run saved, to count the same actions")
     ap.add_argument("--both-orders", action="store_true", help="send every choice question in both option orders and average")
     ap.add_argument("--concurrency", type=int, default=2)
     args = ap.parse_args()
     paths.load_env()
+    global PROVIDER
+    import os
+    PROVIDER = os.getenv("JEV_PROVIDER") or "jev"
     judge = BothOrders(JevClient()) if args.both_orders else JevClient()
     if args.decisions:
-        print(f"judge: {judge.model} at {judge.url.split('/')[2].split('.', 1)[-1]} · turn wording: {'last words' if args.last_words else 'engine'}")
+        print(f"judge: {judge.model} at {judge.url.split('/')[2].split('.', 1)[-1]} · questions: {PROVIDER} · turn wording: "
+              f"{'last words' if args.last_words or PROVIDER == 'bailian' else 'engine'} · moments: {'held out' if args.held_out else 'tuning set'}")
         try:
             await decisions(judge, args)
         finally:

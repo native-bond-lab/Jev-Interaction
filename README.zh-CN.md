@@ -175,7 +175,7 @@ docker compose up             # 打开 http://localhost:8080
 
 | | 推荐（海外），在我们产品的规模化通话里验证过 | 推荐（中国大陆） |
 |---|---|---|
-| 法官 | Jev | 百炼 `decision-model-preview`，同一套协议（要设 `JEV_TURN_QUESTION=last_words`；实测结果见 [cookbook](cookbook/stacks.md#the-judge-on-the-mainland)） |
+| 法官 | Jev | 百炼 `decision-model-preview`，同一套协议（要设 `JEV_PROVIDER=bailian`；实测结果见 [cookbook](cookbook/stacks.md#the-judge-on-the-mainland)） |
 | 大模型 | grok-4.3，关闭思考，温度 0.7 | 通过百炼调用 qwen-plus |
 | 语音识别 | ElevenLabs Scribe v3 Live | Paraformer realtime v2 |
 | 音色 | ElevenLabs eleven_v4_turbo（音频标签） | CosyVoice v2，每个角色可配音色（纯文字） |

@@ -57,6 +57,10 @@ class Config:
                                        # object with the user's words in a field of their own and the question is about that
                                        # field, asked with its options in both orders. Some judges read that far better
                                        # (cookbook/stacks.md, tools/judge_bench.py); Jev reads both well
+    judge_provider: str = "jev"        # whose wording of the questions: "jev", the engine's own (judge/questions.py), or
+                                       # "bailian" for Alibaba Cloud Bailian's decision model (judge/bailian.py): the
+                                       # last_words turn question, and both talking, quiet and "something is due" put as
+                                       # small questions about fields of their own. Leave "jev" for Jev
     turn_last_ms: int = 4000           # ... and this far past the pace's longest wait the agent speaks anyway
     listen_finished_max: float = 0.65  # no listening sound once Jev is this sure the user has finished
     quiet_marks_s: tuple = (1.5, 4.0, 10.0, 25.0, 60.0, 120.0)   # when the quiet question is asked (jittered)
