@@ -11,11 +11,9 @@ from jev_interaction import Profile, Session, preset
 from jev_interaction.adapters.base import Segment
 from jev_interaction.testing import FakeJudge, FakeRecognizer, FakeResponder, FakeVAD
 
-# What the fake Jev answers: the turn is finished, answer now with a reply, normal pace, no listening sound.
+# What the fake Jev answers: the turn is finished, normal pace, no listening sound.
 ANSWERS = {
     "done": {"finished": 0.9, "continuing": 0.1},
-    "wait": {"now": 1.0, "half_second": 0, "two_seconds": 0, "hold": 0},
-    "kind": {"reply": 0.9, "sound": 0.1},
     "pace": {"normal": 1.0, "patient": 0, "narrate": 0, "eager": 0},
     "listen": {"due": 0, "fits": 0, "quiet": 1.0, "answer_due": 0},
 }
