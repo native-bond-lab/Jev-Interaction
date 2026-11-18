@@ -122,7 +122,6 @@ def profiles():
     return sorted((c for c in cards if c["listed"]), key=lambda c: (c["order"], c["id"]))
 
 
-@app.get("/api/health")
 def voiceprint_state() -> str:
     """off (not installed or JEV_VOICEPRINT=0) | loading | ready | failed"""
     if EMBEDDER is None:
@@ -130,6 +129,7 @@ def voiceprint_state() -> str:
     return "ready" if EMBEDDER.ready else ("failed" if getattr(EMBEDDER, "error", "") else "loading")
 
 
+@app.get("/api/health")
 def health():
     missing = registry.missing_settings()
     llm = f"{os.getenv('LLM_MODEL', '')} @ {os.getenv('LLM_BASE_URL', '')}" if os.getenv("LLM_BASE_URL") else None

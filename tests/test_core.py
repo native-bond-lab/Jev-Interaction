@@ -700,3 +700,11 @@ def test_a_player_that_asks_for_byte_ranges_gets_them_and_the_others_get_the_str
     assert c.get("/tts/abc", headers={"Range": "bytes=50-60"}).status_code == 416
     assert Counting.calls == 3                                                          # the ranges share one synthesis
     assert c.get("/tts/nope").status_code == 404
+
+
+def test_health_is_the_whole_report():
+    from fastapi.testclient import TestClient
+
+    from jev_interaction.server import app as server
+    h = TestClient(server.app).get("/api/health").json()
+    assert isinstance(h, dict) and {"ready", "missing", "providers", "vad", "voiceprint"} <= set(h)
