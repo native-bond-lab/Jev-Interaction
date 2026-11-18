@@ -15,7 +15,7 @@
     still: 0.02,        // ... and it has settled: frame to frame, less than this share moving
     settle_ms: 400,     // for this long
     moving_ms: 2500,    // or it has been changing this long without settling: taken anyway
-    cooldown_ms: 3000,  // never two pictures closer than this
+    cooldown_ms: 8000,  // never two pictures closer than this (a look costs a vision call; a call needs few)
     first_ms: 1200,     // the first look, after the camera warms up
     width: 640, quality: 0.7,
   };
