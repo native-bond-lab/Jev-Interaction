@@ -1,5 +1,8 @@
 """The agent's eyes on a video call: a picture the page took when the view changed, put into one plain sentence.
 
+The seer is shown the picture it looked at last beside the new one, so what was there already (the headphones the user
+has had on all along) is never news; the first look describes the scene, which is kept as the background.
+
 Any OpenAI-compatible endpoint with a vision model works. VISION_BASE_URL, VISION_API_KEY and VISION_MODEL pick it; the
 first two fall back to the responder's LLM_BASE_URL and LLM_API_KEY. No model is chosen for you: without VISION_MODEL the
 call runs without eyes, as before. The sentence goes into the call's record, where Jev and the responder both read it.
@@ -13,10 +16,15 @@ import httpx
 
 from .openai_compat import less_reasoning, no_reasoning
 
-PROMPT = ("You are the eyes of {name}, who is on a video call with the user. This is the picture now. What {name} saw "
-          "before: {before}\nIn one short sentence in {language}, say what is new in the picture: what the user did, "
-          "picked up, showed or put down, who or what came or went. Plain facts, no guessing at feelings, no description "
-          "of the room for its own sake. If nothing worth a word has changed, answer exactly: nothing")
+FIRST = ("You are the eyes of {name}, who has just started a video call with the user. In one short sentence in "
+         "{language}, say who is in the picture and what they have with them or are doing. Plain facts, no guessing at "
+         "feelings.")
+CHANGED = ("You are the eyes of {name}, who is on a video call with the user. The first picture is what {name} saw last "
+           "({before}); the second is now. In one short sentence in {language}, say what is different in the second: "
+           "what the user did, picked up, showed or put down, who or what came or went. Anything that is in both "
+           "pictures is not new, however it was described before, and so is the same thing a little moved, turned or lit "
+           "differently. Plain facts, no guessing at feelings. If nothing a person on the call would notice has "
+           "changed, answer exactly: nothing")
 
 
 class OpenAISeer:
@@ -29,12 +37,16 @@ class OpenAISeer:
         self.extra = no_reasoning(self.base_url)    # a look cannot wait for a model to think, as for the responder
         self._http = httpx.AsyncClient(timeout=float(os.getenv("VISION_TIMEOUT_S", timeout)))
 
-    async def describe(self, image: bytes, media_type: str = "image/jpeg", *, before: str = "", name: str = "the agent",
-                       language: str = "English") -> str:
-        url = f"data:{media_type};base64,{base64.b64encode(image).decode()}"
-        text = PROMPT.format(name=name, before=before or "(nothing yet: this is the first look)", language=language)
-        body = {"model": self.model, "max_tokens": 60, "temperature": 0.2, "messages": [
-            {"role": "user", "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": url}}]}]}
+    async def describe(self, image: bytes, media_type: str = "image/jpeg", *, before: str = "", before_image: bytes | None = None,
+                       name: str = "the agent", language: str = "English") -> str:
+        def part(img: bytes) -> dict:
+            return {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{base64.b64encode(img).decode()}"}}
+        if before_image is None:
+            content = [{"type": "text", "text": FIRST.format(name=name, language=language)}, part(image)]
+        else:
+            text = CHANGED.format(name=name, before=before or "the scene", language=language)
+            content = [{"type": "text", "text": text}, part(before_image), part(image)]
+        body = {"model": self.model, "max_tokens": 60, "temperature": 0.2, "messages": [{"role": "user", "content": content}]}
         r = await self._http.post(f"{self.base_url}/chat/completions", headers={"Authorization": f"Bearer {self.key}"},
                                   json={**body, **self.extra})
         while r.status_code == 400 and self.extra:   # the model refuses the switch: one step down, from now on

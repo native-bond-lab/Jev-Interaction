@@ -79,7 +79,8 @@ class Session:
         self.embedder = embedder                # speaker embeddings for the caller's voiceprint; None: no voiceprint
         self.voiceprint = Voiceprint(self.cfg.voice_same, self.cfg.voice_other, self.cfg.far_db or 10.0, self.cfg.voice_verdict_ms)
         self.seer = seer                        # the agent's eyes on a video call (adapters/vision.py); None: no eyes
-        self.sight = ""                          # the latest thing seen, which the next look is compared with
+        self.sight = ""                          # the latest thing seen, and the picture it was seen in: the next look is
+        self.sight_image: bytes | None = None    # compared with them, so what was there already is not news
         self.sight_pending: tuple[float, str] | None = None     # (when, what) not yet put to the notice question
         self.seeing = False                      # a picture is with the seer: the page's next one waits its turn
         self.video = False                       # the page has sent a picture: this is a video call
@@ -194,8 +195,10 @@ class Session:
         asks whether to say something about it once the line is free (not for the first look: that is just the scene).
         Returns what was seen ("" for nothing new)."""
         from .speaking import LANGUAGES
+        first = first or self.sight_image is None    # no scene yet (the first look failed or saw nothing): this is it
         try:
-            seen = await asyncio.wait_for(self.seer.describe(image, media_type, before=self.sight, name=self.p.short,
+            seen = await asyncio.wait_for(self.seer.describe(image, media_type, before=self.sight, before_image=self.sight_image,
+                                                             name=self.p.short,
                                                              language=LANGUAGES.get(self.cfg.language, self.cfg.language)), 10)
         except asyncio.CancelledError:
             raise
@@ -206,7 +209,7 @@ class Session:
             self.seeing = False
         self.rec.write("seen", text=seen, change=round(change, 3))
         if seen:
-            self.sight = seen
+            self.sight, self.sight_image = seen, image
             self.ledger.seen(seen)
             if not first:
                 self.sight_pending = (time.monotonic(), seen)

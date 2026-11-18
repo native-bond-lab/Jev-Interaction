@@ -93,9 +93,9 @@ class FakeSeer:
     def __init__(self, *said: str):
         self.said, self.looked = list(said), []
 
-    async def describe(self, image: bytes, media_type: str = "image/jpeg", *, before: str = "", name: str = "",
-                       language: str = "English") -> str:
-        self.looked.append((image, before))
+    async def describe(self, image: bytes, media_type: str = "image/jpeg", *, before: str = "", before_image: bytes | None = None,
+                       name: str = "", language: str = "English") -> str:
+        self.looked.append((image, before, before_image))
         return self.said.pop(0) if self.said else ""
 
 

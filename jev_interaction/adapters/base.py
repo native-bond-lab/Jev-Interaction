@@ -52,6 +52,7 @@ class Embedder(Protocol):
 
 class Seer(Protocol):
     """The agent's eyes (adapters/vision.py): a picture the page took because the view changed, as one plain sentence
-    of what is new in it, or "" when nothing worth a word is."""
-    async def describe(self, image: bytes, media_type: str = "image/jpeg", *, before: str = "", name: str = "",
-                       language: str = "English") -> str: ...
+    of what is new in it against `before_image` (the picture looked at last, None for the first look: then the scene
+    itself), or "" when nothing worth a word is."""
+    async def describe(self, image: bytes, media_type: str = "image/jpeg", *, before: str = "", before_image: bytes | None = None,
+                       name: str = "", language: str = "English") -> str: ...

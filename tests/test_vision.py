@@ -17,8 +17,9 @@ async def settle(s):
 
 @pytest.mark.asyncio
 async def test_a_change_goes_into_the_record_and_jev_says_remark():
-    seer = FakeSeer("the user holds up a red mug")
+    seer = FakeSeer("a person at a desk", "the user holds up a red mug")
     s, events, judge = scripted_session({"notice": {"remark": 0.8, "let_be": 0.2}}, seer=seer)
+    await s.see(b"scene", first=True)
     await s.on_client({"type": "frame", "image": PIC, "change": 0.2})
     await settle(s)
     assert any(e["type"] == "seen" and e["text"] == "the user holds up a red mug" for e in events)
@@ -35,7 +36,8 @@ async def test_a_change_goes_into_the_record_and_jev_says_remark():
 @pytest.mark.asyncio
 async def test_let_be_says_nothing_and_a_failed_judge_says_nothing():
     for answers in ({"notice": {"remark": 0.3, "let_be": 0.7}}, {}):
-        s, events, _ = scripted_session(answers, seer=FakeSeer("the user scratches their head"))
+        s, events, _ = scripted_session(answers, seer=FakeSeer("a person at a desk", "the user scratches their head"))
+        await s.see(b"scene", first=True)
         await s.on_client({"type": "frame", "image": PIC, "change": 0.15})
         await settle(s)
         await s.tick()
@@ -57,7 +59,8 @@ async def test_the_first_look_is_the_scene_not_a_change():
 
 @pytest.mark.asyncio
 async def test_a_sight_waits_while_the_user_talks_and_passes_when_stale():
-    s, events, judge = scripted_session({"notice": {"remark": 1.0}}, seer=FakeSeer("the user stands up"), notice_stale_s=0.0)
+    s, events, judge = scripted_session({"notice": {"remark": 1.0}}, seer=FakeSeer("a desk", "the user stands up"), notice_stale_s=0.0)
+    await s.see(b"scene", first=True)
     s._open_utterance()
     await s.on_client({"type": "frame", "image": PIC, "change": 0.3})
     await settle(s)
@@ -90,3 +93,15 @@ async def test_a_sight_is_not_a_turn_and_jev_reads_it():
     await s.see(b"x")
     assert s.ledger.last_is_agent()
     assert "Seen on video: the user pours tea" in s.ledger.recent_text("Mara", 8, 300)
+
+
+@pytest.mark.asyncio
+async def test_each_look_is_against_the_last_picture_and_the_first_is_the_scene():
+    seer = FakeSeer("a person with white earphones at a desk", "", "the user holds up a book")
+    s, events, judge = scripted_session({"notice": {"remark": 1.0}}, seer=seer)
+    await s.see(b"one")                                 # no scene yet: the first look, whatever the page said
+    assert s.sight_pending is None and seer.looked[0][2] is None
+    await s.see(b"two")                                 # nothing new: the scene stays the one to compare with
+    await s.see(b"three")
+    assert seer.looked[1][2] == b"one" and seer.looked[2][2] == b"one"
+    assert s.sight_image == b"three" and s.sight_pending[1] == "the user holds up a book"
