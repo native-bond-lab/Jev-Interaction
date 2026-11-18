@@ -7,6 +7,7 @@
     the user talks, the agent leads        cut_in      cut_in.py    cut_in
     quiet since the agent's last line      quiet       quiet.py     quiet
     someone else can be put on the line    who         handover.py  who           (rides in the turn request)
+    the view changed (video calls)         notice      notice.py    notice
 
 Adding a decision is one module with a Decision subclass, `register()` (or an entry in DECISIONS), and a policy under
 its key in Config.policies. The order of DECISIONS is the order the session offers each new segment and each tick.
@@ -18,10 +19,11 @@ from .cut_in import CUT_IN
 from .floor import FLOOR
 from .handover import HANDOVER
 from .listen import LISTEN
+from .notice import NOTICE
 from .quiet import QUIET
 from .turn import TURN
 
-DECISIONS: dict[str, Decision] = {d.name: d for d in (TURN, LISTEN, FLOOR, CUT_IN, QUIET)}
+DECISIONS: dict[str, Decision] = {d.name: d for d in (TURN, LISTEN, FLOOR, CUT_IN, QUIET, NOTICE)}
 
 
 def register(decision: Decision) -> Decision:

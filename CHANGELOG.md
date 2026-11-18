@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Video calls (experimental).** The page watches the camera with plain rules (share of the frame moved, settled
+  or still moving, cool-down: `server/web/watch.js`) and sends a picture only when the view changed; a vision model
+  (`VISION_MODEL`, none picked for you) writes what is new in one sentence into the record, and a new `notice` question
+  asks Jev whether to remark on it once nobody is talking. New: `Seer` protocol, `Session(seer=...)`, `frame` / `seen`
+  messages, `notice_stale_s`, `frame_max_bytes`.
 - **Citation.** `CITATION.cff` (GitHub's *Cite this repository*) and a BibTeX block in the README; a test keeps
   their version equal to the package version.
 - **The caller's voiceprint** (`pip install "jev-interaction[voiceprint]"`), the same check the call engine in our

@@ -10,13 +10,17 @@ question is in judge/questions.py and whose answer goes through the policy confi
     both talk at once      floor    -> carry on / yield / finish the sentence / take the floor back / react
     the agent leads        cut_in   -> talk over the user now?
     quiet on the line      quiet    -> go on / check on them / wait / hang up
+    the view changed       notice   -> remark on it / let it pass (video calls: a session with a seer)
 
 Events to the client: line {id, text, audio}, listen {id, text, audio}, stop, finish_line, hangup,
-user {text}, pace {pace, probs}, persona {id, name, gen}, decision {...}. Client messages: playback {state: playing | idle}, heard {gen, text}.
+user {text}, pace {pace, probs}, persona {id, name, gen}, seen {text, change}, decision {...}. Client messages: playback
+{state: playing | idle}, heard {gen, text}, frame {image (base64 JPEG), change} when the page saw the view change.
 """
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import random
 import re
 import time
@@ -42,7 +46,7 @@ class Session:
     def __init__(self, profile: Profile, *, send: Callable[[dict], Awaitable[None]], judge: JevClient, recognizer: Recognizer,
                  responder: Responder, vad: VAD, config: Config | None = None, recorder: Recorder | None = None,
                  system_template: str = SYSTEM_TEMPLATE, speech: str | None = None, cast: dict[str, Profile] | None = None,
-                 embedder=None):
+                 embedder=None, seer=None):
         self.p, self.cfg, self.send_event = profile, config or Config(), send
         self.judge, self.asr, self.llm, self.vad = judge, recognizer, responder, vad
         self.rec = recorder or Recorder(None)
@@ -74,6 +78,11 @@ class Session:
         self.caller_levels: list[float] = []   # loudness of the utterances answered as the caller's (Config.far_db)
         self.embedder = embedder                # speaker embeddings for the caller's voiceprint; None: no voiceprint
         self.voiceprint = Voiceprint(self.cfg.voice_same, self.cfg.voice_other, self.cfg.far_db or 10.0, self.cfg.voice_verdict_ms)
+        self.seer = seer                        # the agent's eyes on a video call (adapters/vision.py); None: no eyes
+        self.sight = ""                          # the latest thing seen, which the next look is compared with
+        self.sight_pending: tuple[float, str] | None = None     # (when, what) not yet put to the notice question
+        self.seeing = False                      # a picture is with the seer: the page's next one waits its turn
+        self.remarks_on_view = 0
         self.hanging_up = False
         self.busy: set[str] = set()              # decisions with a question out to Jev right now
         self._tasks: set[asyncio.Task] = set()
@@ -148,6 +157,8 @@ class Session:
                 self._reset_quiet()
                 if self.hanging_up:
                     await self.send(type="hangup")
+        elif msg.get("type") == "frame":
+            self._frame(msg)
         elif msg.get("type") == "heard":
             heard = (msg.get("text") or "").strip()
             turn = self.replies.get(msg.get("gen"))
@@ -158,6 +169,45 @@ class Session:
                 last = self.ledger.last_agent()
                 if last and heard and heard != last.text:
                     last.text, last.cut = heard, True
+
+    def _frame(self, msg: dict) -> None:
+        """A picture the page took because the view changed. One at a time: while the seer is on one, the next is dropped
+        (the page sends again on the next change)."""
+        if self.seer is None or self.seeing:
+            return
+        data = str(msg.get("image") or "")
+        if len(data) > self.cfg.frame_max_bytes * 4 // 3 + 4:
+            return
+        try:
+            image = base64.b64decode(data.split(",", 1)[-1], validate=True)
+        except (binascii.Error, ValueError):
+            return
+        self.seeing = True
+        self._spawn(self.see(image, float(msg.get("change") or 0.0), first=bool(msg.get("first"))))
+
+    async def see(self, image: bytes, change: float = 0.0, media_type: str = "image/jpeg", first: bool = False) -> str:
+        """Put a picture into words and into the record, where Jev and the responder both read it; the notice decision
+        asks whether to say something about it once the line is free (not for the first look: that is just the scene).
+        Returns what was seen ("" for nothing new)."""
+        from .speaking import LANGUAGES
+        try:
+            seen = await asyncio.wait_for(self.seer.describe(image, media_type, before=self.sight, name=self.p.short,
+                                                             language=LANGUAGES.get(self.cfg.language, self.cfg.language)), 10)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a seer that fails sees nothing; the call goes on
+            self.rec.write("seer_error", error=f"{type(exc).__name__}: {str(exc)[:160]}")
+            seen = ""
+        finally:
+            self.seeing = False
+        self.rec.write("seen", text=seen, change=round(change, 3))
+        if seen:
+            self.sight = seen
+            self.ledger.seen(seen)
+            if not first:
+                self.sight_pending = (time.monotonic(), seen)
+            await self.send(type="seen", text=seen, change=round(change, 3), first=first)
+        return seen
 
     async def _segments_loop(self):
         async for seg in self.asr.segments():

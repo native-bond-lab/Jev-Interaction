@@ -26,6 +26,7 @@
       p_normal: 'normal', p_patient: 'patient', p_narrate: 'narrate', p_eager: 'eager',
       o_finished: 'finished', o_continuing: 'still talking', o_wait: 'wait', o_normal: 'normal', o_patient: 'patient', o_narrate: 'narrate', o_eager: 'eager',
       l_due: 'asked for', l_fits: 'in passing',
+      d_remark: 'say something about it', d_let_be: 'let it pass', k_notice: 'what it sees', k_seen: 'seen', o_remark: 'remark', o_let_be: 'let it pass',
       why_far: 'far from the microphone', why_jev: 'meant for someone else', quiet_for: 'quiet for',
       setup_chip: 'Set up', ready_chip: 'Ready', fun: 'Fun',
       err_file: 'Opened as a file, so there is no server to call. Run jev-interaction serve and open http://localhost:8080.',
@@ -54,6 +55,7 @@
       p_normal: '正常', p_patient: '耐心', p_narrate: '讲述', p_eager: '积极',
       o_finished: '说完了', o_continuing: '还在说', o_wait: '等', o_normal: '正常', o_patient: '耐心', o_narrate: '讲述', o_eager: '积极',
       l_due: '对方在等的', l_fits: '顺口一声',
+      d_remark: '说一句', d_let_be: '不提', k_notice: '看到的', k_seen: '看到', o_remark: '说一句', o_let_be: '不提',
       why_far: '声音离麦克风较远', why_jev: '在和别人说话', quiet_for: '已安静',
       setup_chip: '配置', ready_chip: '已就绪', fun: '趣味角色',
       err_file: '当前是直接打开的本地文件，没有通话服务。请运行 jev-interaction serve，然后打开 http://localhost:8080。',
@@ -207,6 +209,7 @@
         yieldedUntil = performance.now() + 900; thinkingUntil = 0;
         break;
       }
+      case 'seen': note({ tone: 'info', kind: 'seen', label: `👁 ${m.text}`, value: m.change }); break;
       case 'persona': incoming = m; note({ tone: 'pace', kind: 'pace', label: `→ ${m.name}` }); break;
       case 'finish_line': queue.forEach((l) => l.el.pause()); queue = []; break;
       case 'decision': onDecision(m); break;
@@ -239,6 +242,9 @@
       const key = m.action === 'wait' ? 'd_quiet_wait' : 'd_' + m.action;
       note({ tone: m.action === 'wait' ? 'info' : 'go', kind: 'quiet', label: t(key), value: p && p[m.action], probs: p, chosen: m.action,
              detail: m.quiet_s != null ? `${t('quiet_for')} ${m.quiet_s}s` : '' });
+    } else if (m.what === 'notice') {
+      note({ tone: m.action === 'remark' ? 'go' : 'info', kind: 'notice', label: t(m.action === 'remark' ? 'd_remark' : 'd_let_be'),
+             value: p && p[m.action], probs: p, chosen: m.action, detail: m.seen || '' });
     } else if (m.what === 'not_for_me') {
       thinkingUntil = 0;
       note({ tone: 'info', kind: 'not_for_me', label: t('d_not_for_me'), detail: [m.why ? t('why_' + m.why) : '', m.text ? `“${m.text}”` : ''].filter(Boolean).join(' · ') });
@@ -417,6 +423,7 @@
       setTimeout(() => { if (ws === sock) report({ at: 5, ...ears() }); }, 5000);
       setTimeout(() => { if (ws === sock) report({ at: 20, ...ears() }); }, 20000);
       sock.send(JSON.stringify({ type: 'start', profile: selected.id, language: selected.language || 'en' }));   // the persona speaks its own language; the toggle is for the page
+      if (health && health.vision) openEye(sock);
     };
     sock.onmessage = (e) => { if (typeof e.data === 'string' && ws === sock) onEvent(JSON.parse(e.data)); };
     sock.onclose = (e) => {                                    // closed by the server or the network, not by this page
@@ -425,6 +432,22 @@
       endCall();
       if (!opened) showNotice(t('err_server'), true); else if (e.code === 1006) showNotice(t('err_dropped'), true);
     };
+  }
+
+  // the camera, when the server has eyes (health.vision): watch.js sends a picture only when the view has changed
+  let eyeStream = null, stopWatch = null;
+  async function openEye(sock) {
+    if (!window.JevWatch || params.get('camera') === '0') return;
+    try { eyeStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 } } }); }
+    catch (e) { report({ camera: e.name }); return; }                // no camera: a voice call, as before
+    if (ws !== sock) { closeEye(); return; }
+    const eye = $('eye'); eye.srcObject = eyeStream; eye.hidden = false;
+    stopWatch = window.JevWatch.start(eye, (pic) => { if (ws === sock) send({ type: 'frame', ...pic }); });
+  }
+  function closeEye() {
+    if (stopWatch) { stopWatch(); stopWatch = null; }
+    if (eyeStream) { eyeStream.getTracks().forEach((tr) => tr.stop()); eyeStream = null; }
+    const eye = $('eye'); eye.srcObject = null; eye.hidden = true;
   }
 
   // how a call failed, for the server's log (the failures that never reach it otherwise); nothing about who or what was said
@@ -442,6 +465,7 @@
     const sock = ws; ws = null; if (sock) { try { sock.close(); } catch (e) { /* already closed */ } }
     if (proc) { proc.onaudioprocess = null; proc.disconnect(); proc = null; }
     if (stream) { stream.getTracks().forEach((tr) => tr.stop()); stream = null; }
+    closeEye();
     voices.forEach((el) => { el.onended = null; el.pause(); }); voices = [];
     if (ctx) { ctx.close().catch(() => {}); ctx = null; analyser = null; }
     connecting = false; waiting = null; micLevel = 0; endedUntil = performance.now() + 900;

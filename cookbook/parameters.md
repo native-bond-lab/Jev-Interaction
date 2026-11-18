@@ -116,6 +116,19 @@ if there were no print.
 The print needs two answered utterances before it can call anyone a stranger, so a thin print never shuts the caller
 out. Every verdict is in the call log (`voice`, with the similarity), for tuning the two thresholds on your own calls.
 
+### Video calls (experimental)
+
+On when the server has eyes: `VISION_MODEL` names any vision model on an OpenAI-compatible endpoint (`VISION_BASE_URL`
+and `VISION_API_KEY` fall back to the responder's). No model is picked for you. The page watches the camera with plain
+rules and sends a picture only when the view has changed (its thresholds are `RULES` in `server/web/watch.js`: share of
+the frame moved, settled or still moving, cool-down); the seer writes what is new in one sentence, which goes into the
+record for Jev and the responder; the `notice` question asks whether to remark on it once nobody is talking.
+
+| field | recommended | what it does |
+|---|---|---|
+| `notice_stale_s` | 6.0 | a sight not yet asked about after this long has passed: no remark on it |
+| `frame_max_bytes` | 600000 | a bigger picture from the page is dropped |
+
 ### Tested knobs (off by default)
 
 | field | tested at | effect | trade-off |

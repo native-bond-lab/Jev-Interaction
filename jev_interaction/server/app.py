@@ -27,7 +27,7 @@ paths.load_env()
 
 from jev_interaction import Profile  # noqa: E402  (after .env, so adapters read the keys)
 from jev_interaction import preset as preset_config  # noqa: E402
-from jev_interaction.adapters import best_embedder, best_vad, registry  # noqa: E402
+from jev_interaction.adapters import best_embedder, best_seer, best_vad, registry  # noqa: E402
 from jev_interaction.recorder import Recorder  # noqa: E402
 from jev_interaction.server import settings as S  # noqa: E402
 from jev_interaction.session import Session  # noqa: E402
@@ -44,6 +44,7 @@ MAX_CALL_S = float(os.getenv("MAX_CALL_SECONDS", "0"))      # 0 = no limit
 DAY_BUDGET_S = 60 * float(os.getenv("MAX_CALL_MINUTES_PER_DAY", "0"))   # 0 = no limit; all calls together, per UTC day
 VAD_NAME = type(best_vad()).__name__     # which ear this server has: TenVAD, or EnergyVAD without the ten-vad package
 EMBEDDER = best_embedder()               # the caller's voiceprint: ECAPA when speechbrain is installed (loads in the background)
+SEER = best_seer()                       # eyes for video calls when VISION_MODEL names a vision model; None: voice only
 MAX_WAITING = int(os.getenv("MAX_WAITING_CALLS", "20"))     # callers held in line when every line is taken; more than this hear busy
 LOG = logging.getLogger("uvicorn.error")   # uvicorn's own logger: the lines land beside its access log
 ACTIVE = {"calls": 0}
@@ -134,7 +135,7 @@ def health():
     missing = registry.missing_settings()
     llm = f"{os.getenv('LLM_MODEL', '')} @ {os.getenv('LLM_BASE_URL', '')}" if os.getenv("LLM_BASE_URL") else None
     return {"ready": not missing, "missing": missing, "preset": os.getenv("JEV_PRESET", "recommended"),
-            "vad": VAD_NAME, "voiceprint": voiceprint_state(),
+            "vad": VAD_NAME, "voiceprint": voiceprint_state(), "vision": SEER is not None,
             "providers": {"judge": os.getenv("JEV_MODEL", "jev-latest"), "llm": llm, "asr": registry.selected("asr"),
                           "tts": registry.selected("tts")}, "speech": registry.speech_style()}
 
@@ -310,7 +311,7 @@ async def call(ws: WebSocket):
     try:
         judge = registry.create("judge")
         session = Session(profile, send=send, judge=judge, recognizer=make_recognizer(language),
-                          responder=registry.create("llm"), vad=best_vad(), config=cfg, cast=cast, embedder=EMBEDDER,
+                          responder=registry.create("llm"), vad=best_vad(), config=cfg, cast=cast, embedder=EMBEDDER, seer=SEER,
                           recorder=Recorder(paths.runs_dir() / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl" if RECORD else None))
         try:
             await session.start()

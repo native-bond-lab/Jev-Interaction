@@ -88,6 +88,17 @@ class FakeEmbedder:
         return v / np.linalg.norm(v)
 
 
+class FakeSeer:
+    """Eyes for tests: says the next of the sentences it was given for each picture ("" = nothing new), keeps what it saw."""
+    def __init__(self, *said: str):
+        self.said, self.looked = list(said), []
+
+    async def describe(self, image: bytes, media_type: str = "image/jpeg", *, before: str = "", name: str = "",
+                       language: str = "English") -> str:
+        self.looked.append((image, before))
+        return self.said.pop(0) if self.said else ""
+
+
 class FakeSynthesizer:
     media_type = "audio/mpeg"
 
@@ -96,7 +107,7 @@ class FakeSynthesizer:
 
 
 def scripted_session(answers: dict | None = None, policies: dict | None = None, profile: Profile | None = None,
-                     send: Callable[[dict], Awaitable[None]] | None = None, embedder=None, **config) -> tuple[Session, list[dict], FakeJudge]:
+                     send: Callable[[dict], Awaitable[None]] | None = None, embedder=None, seer=None, **config) -> tuple[Session, list[dict], FakeJudge]:
     """A session on fakes, plus the list its events land in and its judge. `config` overrides Config fields."""
     events: list[dict] = []
 
@@ -108,7 +119,7 @@ def scripted_session(answers: dict | None = None, policies: dict | None = None, 
     judge = FakeJudge(answers)
     s = Session(profile or Profile("Mara Quinn", task="A companion who chats.", manner="Chatty listener."), send=collect,
                 judge=judge, recognizer=FakeRecognizer(), responder=FakeResponder(), vad=FakeVAD(), config=cfg,
-                embedder=embedder)
+                embedder=embedder, seer=seer)
     return s, events, judge
 
 

@@ -39,3 +39,10 @@ def quiet(name: str, last_line: str, quiet_s: float, spoke_into_quiet: int, usua
     if spoke_into_quiet:
         s += f"{name} has already spoken {spoke_into_quiet} time(s) into this quiet without the user saying anything.\n"
     return s
+
+
+def notice(name: str, seen: str, remarks: int) -> str:
+    s = f"What has just changed in view: {seen}\nNobody is talking right now.\n"
+    if remarks:
+        s += f"{name} has remarked on the view {remarks} time(s) on this call, unasked.\n"
+    return s

@@ -62,6 +62,8 @@ EVENTS: dict[str, Event] = {
     "take_over": Event("you have just been put on this call: the user was talking with {who} and asked for you, so {who} "
                        "is off the line and the user is the one you are talking to now; the call so far is above. Come "
                        "on the line in your own way, a line or two"),
+    "notice": Event("nobody is talking and something has just changed in what you can see (above); say something about "
+                    "it if you would, in a line, as yourself", max_tokens=60),
     "safe_word": Event("the safe word: everything stops; step out in one or two calm lines and ask if they are all right"),
 }
 UNKNOWN = Event("")             # a kind nobody registered: its name is the event text, and it is an ordinary line

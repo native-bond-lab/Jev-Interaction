@@ -5,10 +5,11 @@
     Responder    the agent's lines, streamed          OpenAICompatResponder (xAI, OpenAI, local servers)
     Synthesizer  audio for a line                     ElevenLabsTTS; any TTS
     Embedder     speaker embeddings (voiceprint)      EcapaEmbedder (speechbrain, optional); none: no voiceprint
+    Seer         a changed view as one sentence       OpenAISeer (any vision model, VISION_MODEL); none: no eyes
 Response latency is mostly the responder's first line: a faster model there makes the whole call faster, and the
 interaction decisions do not change.
 """
-from .base import VAD, Embedder, Recognizer, Responder, Segment, Synthesizer
+from .base import VAD, Embedder, Recognizer, Responder, Seer, Segment, Synthesizer
 from .energy_vad import EnergyVAD
 
 
@@ -38,4 +39,14 @@ def best_embedder() -> Embedder | None:
     return _EMBEDDER[0]
 
 
-__all__ = ["VAD", "Recognizer", "Responder", "Synthesizer", "Embedder", "Segment", "EnergyVAD", "best_vad", "best_embedder"]
+def best_seer() -> Seer | None:
+    """Eyes for video calls when VISION_MODEL names a vision model (and JEV_VISION is not 0); None otherwise."""
+    import os
+    if os.getenv("JEV_VISION", "1") == "0" or not os.getenv("VISION_MODEL"):
+        return None
+    from .vision import OpenAISeer
+    return OpenAISeer()
+
+
+__all__ = ["VAD", "Recognizer", "Responder", "Synthesizer", "Embedder", "Seer", "Segment", "EnergyVAD", "best_vad",
+           "best_embedder", "best_seer"]

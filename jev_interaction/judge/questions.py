@@ -11,6 +11,7 @@ agent's short name.
     the user talks, the agent leads        cut_in      cut_in / let_finish
     quiet since the agent's last line      quiet       go_on / check / wait / hang_up
     someone else can be put on the line    who         stay / one of the others (rides in the turn request)
+    the view changed (video calls)         notice      remark / let_be
 """
 from __future__ import annotations
 
@@ -120,3 +121,15 @@ def quiet(name: str, pace: str) -> dict:
             "check": f"{name} checks on them: are you there, are you all right, in a few words",
             "wait": f"{name} lets the quiet be: the user is answering in their own time, thinking or busy, or it is too soon",
             "hang_up": f"{name} says goodbye and ends the call: the user has gone, or the call has reached its end"}}
+
+
+def notice(name: str) -> dict:
+    return {"type": "choice", "instructions": (
+        f"The call has video: {name} can see the user. Something has just changed in view, and right now nobody is "
+        f"talking. People on a video call often react to what they see without being asked: a thing held up to the "
+        f"camera, something the user has just started or finished, someone coming in. Would {name}, being who they are, "
+        "say something about it now, or let it pass?"), "criteria": {
+        "remark": (f"worth a word now: the user is showing {name} something, has just done something {name} would react "
+                   "to, or it bears on what they were talking about"),
+        "let_be": (f"{name} lets it pass: an ordinary movement, the user busy with something nobody asked {name} to "
+                   f"watch, or {name} has just remarked on the view")}}

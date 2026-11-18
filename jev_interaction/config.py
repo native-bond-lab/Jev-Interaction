@@ -42,7 +42,8 @@ class Config:
         "end_of_turn": SamplePolicy(), "listen": SamplePolicy(),
         "floor": ThresholdPolicy(fallback="carry_on"),   # yield's threshold comes from the (blended) pace
         "cut_in": SamplePolicy(), "quiet": SamplePolicy(),
-        "who": ThresholdPolicy(fallback="stay")})        # someone else is put on the line only when Jev is sure
+        "who": ThresholdPolicy(fallback="stay"),         # someone else is put on the line only when Jev is sure
+        "notice": ThresholdPolicy(fallback="let_be")})   # a judge that gives nothing: no remark on the view
 
     voice_min_ms: int = 60             # a frame with this much voice in it is the user making sound
     overlap_ask_ms: int = 400          # the user talks over the agent this long: the words so far, closed or not, go to the
@@ -72,6 +73,10 @@ class Config:
     voice_other: float = 0.25          # at or below this: someone else, not answered (between: as if there were no print)
     voice_verdict_ms: int = 1500       # a voice shorter than this is never called someone else
     voice_enroll_ms: int = 2000        # an answered utterance at least this long teaches the print
+
+    # video calls (a session with a seer; the page decides when the view changed, see client.js `watch`)
+    notice_stale_s: float = 6.0        # a sight not yet asked about after this long has passed: no remark on it
+    frame_max_bytes: int = 600_000     # a bigger picture from the page is dropped
 
     # tested knobs, off by default (README: "Tested knobs")
     not_for_me: bool = False           # a "not said to me" choice in the turn and floor questions; picked, the words are

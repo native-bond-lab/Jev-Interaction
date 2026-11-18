@@ -19,7 +19,7 @@ from .utterance import Utterance
 
 @dataclass
 class Turn:
-    role: str            # "user" | "agent"
+    role: str            # "user" | "agent" | "seen" (what changed in view on a video call: both readers see it)
     text: str
     data_line: str = ""  # the bracketed line the responder was given with this user turn
     cut: bool = False
@@ -38,6 +38,11 @@ class Ledger:
 
     def user(self, text: str, data_line: str = "", who: str = "") -> Turn:
         t = Turn("user", text, data_line, who=who)
+        self.turns.append(t)
+        return t
+
+    def seen(self, text: str) -> Turn:
+        t = Turn("seen", text)
         self.turns.append(t)
         return t
 
@@ -81,7 +86,7 @@ class Ledger:
         return next((t for t in reversed(self.turns) if t.role == "agent"), None)
 
     def last_is_agent(self) -> bool:
-        last = next((t for t in reversed(self.turns) if not t.over), None)     # words over a line are not a turn
+        last = next((t for t in reversed(self.turns) if not t.over and t.role != "seen"), None)   # nor is a sight
         return last is not None and last.role == "agent"
 
     def messages(self, me: str = "", max_turns: int = 24) -> list[dict]:
@@ -105,6 +110,8 @@ class Ledger:
             elif t.exchanges and mine:
                 out += self._exchanges(t.exchanges)
                 out.append({"role": "user", "content": (t.data_line + "\n" + t.tail).strip()})
+            elif t.role == "seen":
+                heard(f"(you see: {t.text})")              # the view is everyone's on the line
             elif t.over:
                 heard(f"(over you: {t.text})" if mine else f"(over {t.who}: {t.text})")
             elif mine:
@@ -119,6 +126,7 @@ class Ledger:
             text = (t.text + ("—" if t.cut else "")).strip()
             if text:
                 on = t.who or name
-                who = on if t.role == "agent" else f"User (over {on}, who went on)" if t.over else "User"
+                who = (on if t.role == "agent" else "Seen on video" if t.role == "seen"
+                       else f"User (over {on}, who went on)" if t.over else "User")
                 rows.append(f"{who}: {text[:width]}")
         return "\n".join(rows)
