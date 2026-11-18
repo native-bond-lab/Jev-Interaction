@@ -1,10 +1,13 @@
-"""The user pauses while talking: have they finished, how long to wait, a reply or a sound, which pace.
+"""The user pauses while talking: have they finished, and which pace.
 
 Asked on every new segment of words, and again as the quiet grows (Config.turn_reask_ms) if the last draw said "not
-yet". The answer is kept on the session (`judged`); the tick draws against p(finished) once the quiet reaches the wait
-Jev suggested. The listen question rides in the same request (listen.py), so while the user is not judged finished the
-agent is still listening: a sound may slip in, the turn is not taken. Only when the quiet has outlasted the pace's
-longest wait by Config.turn_last_ms with Jev never sure does the agent speak anyway, and its line is told so ("trailed").
+yet". The answer is kept on the session (`judged`); the next tick draws against p(finished). The listen question rides
+in the same request (listen.py), so while the user is not judged finished the agent is still listening: a sound may
+slip in, the turn is not taken. Only when the quiet has outlasted the pace's longest wait by Config.turn_last_ms with
+Jev never sure does the agent speak anyway, and its line is told so ("trailed").
+
+There is no "how long to wait" question. It was asked until 0.2.x and held the draw back; on recorded calls it said
+what `done` already says (correlation -0.92 with p(finished)) and the user went on during the hold in 4 of 217 cases.
 """
 from __future__ import annotations
 
@@ -37,7 +40,8 @@ class Turn(Decision):
             qs.update(LISTEN.questions(s, ctx))
         if HANDOVER.ready(s, ctx):
             qs.update(HANDOVER.questions(s, ctx))
-        if s._offer_elsewhere():
+        if s._offer_elsewhere():                                    # the only reader of `kind` is the "not said to me" choice
+            qs["kind"] = Q.kind(s.p.short)
             qs["kind"]["criteria"]["elsewhere"] = Q.elsewhere(s.p.short)
         return qs
 
@@ -54,10 +58,8 @@ class Turn(Decision):
             await s._not_for_me(s._someone_else() or "jev")
             return
         await s._update_pace(P(answers, "pace"))
-        wait = P(answers, "wait")                                   # a failed judge: no wait, p(finished) 0, so the
-        s.judged = {"finished": P(answers, "done").get("finished", 0.0),   # turn is answered at the pace's longest wait
-                    "wait_ms": int(sum(Q.WAIT_MS[k] * v for k, v in wait.items())),
-                    "reply": kind.get("reply", 1.0), "drawn": False,
+        # a failed judge: p(finished) 0, so the turn is answered at the pace's longest wait
+        s.judged = {"finished": P(answers, "done").get("finished", 0.0), "drawn": False,
                     "who": HANDOVER.chosen(s, answers, ctx) if HANDOVER.ready(s, ctx) else None}
         if ctx["may_listen"]:
             await LISTEN.apply(s, answers, ctx)
@@ -67,7 +69,7 @@ class Turn(Decision):
             return False
         pace = s.params()
         j = s.judged
-        if j and not j["drawn"] and s.silence_ms >= min(j["wait_ms"], pace.max_wait_ms):
+        if j and not j["drawn"]:
             j["drawn"] = True                 # one draw per Jev answer; new words or more quiet bring a new answer
             go = self.policy_for(s, ctx={}).draw(j["finished"])
             await s.send(type="decision", what="end_of_turn", finished=round(j["finished"], 2), go=go)

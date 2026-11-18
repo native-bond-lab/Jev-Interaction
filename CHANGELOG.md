@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **The turn request asks two questions, not four.** `wait` (how long to hold the answer) and `kind` (a reply or a
+  sound) are no longer sent. `wait` said what `done` already says (on 627 recorded turn judgements its value tracked
+  p(finished) at -0.92) and its only effect was to hold the draw back: in 217 held moments the user went on during the
+  hold 4 times. Replies now start about 150 ms sooner on average, more in the patient pace. Nothing read `kind`'s
+  answer; it is still asked, with its `elsewhere` choice, when `Config.not_for_me` is on. `judge.questions.WAIT_MS`
+  is gone, `Session.judged` no longer carries `wait_ms` or `reply`, and a judge that answers per question (one
+  forward pass each) is asked half as much on every pause.
 - **Citation.** `CITATION.cff` (GitHub's *Cite this repository*) and a BibTeX block in the README; a test keeps
   their version equal to the package version.
 - **The caller's voiceprint** (`pip install "jev-interaction[voiceprint]"`), the same check the call engine in our

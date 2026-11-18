@@ -67,7 +67,7 @@ async def test_re_ask_marks_that_are_not_multiples_of_a_frame_still_fire():
     s, _, judge = scripted_session({"done": {"finished": 0.2, "continuing": 0.8}}, turn_reask_ms=(500, 1500),
                                    policies={"end_of_turn": ThresholdPolicy(default=0.5)})   # not a draw: never answers here
     s.utt = Utterance(1, time.monotonic(), [(0.0, "and then, um,")])
-    s.judged = {"finished": 0.2, "wait_ms": 0, "reply": 1.0, "drawn": True}
+    s.judged = {"finished": 0.2, "drawn": True}
     for ms in range(200, 1800, s.cfg.frame_ms):        # the quiet grows a frame at a time
         s.silence_ms = ms
         await TURN.on_tick(s, time.monotonic())

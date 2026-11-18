@@ -5,7 +5,7 @@ words and re-asking recorded moments (`jev-interaction replay`). Which choices a
 agent's short name.
 
     when                                   question    choices
-    the user pauses while talking          turn        done (finished / continuing), wait, kind (reply / sound), pace
+    the user pauses while talking          turn        done (finished / continuing), pace
                                            listen      due / fits / quiet / answer_due
     both talk at once                      floor       carry_on / yield / finish_first / overrule / jump_in / aside
     the user talks, the agent leads        cut_in      cut_in / let_finish
@@ -13,8 +13,6 @@ agent's short name.
     someone else can be put on the line    who         stay / one of the others (rides in the turn request)
 """
 from __future__ import annotations
-
-WAIT_MS = {"now": 0, "half_second": 500, "two_seconds": 2000, "hold": 4000}
 
 # what a real "no" is: about what the user wants to happen, never about tone or swearing
 REAL_NO = ("they want what is happening to end: they tell the agent to stop, quit or leave them alone, or say they do not "
@@ -30,15 +28,16 @@ def turn(name: str, pace: str, paces: dict[str, str], opening: bool = False) -> 
         "done": {"type": "choice", "instructions": "Has the user finished speaking for now?", "criteria": {
             "finished": f"the user has said their piece for now and is waiting for {name}",
             "continuing": "the user is mid-thought: pausing to breathe or think, and will go on"}},
-        "wait": {"type": "choice", "instructions": f"How long should {name} wait before answering what the user has said so far?",
-                 "criteria": {"now": "answer now: they have finished", "half_second": "a short beat more: they may add a word",
-                              "two_seconds": "a couple of seconds: they are likely to go on",
-                              "hold": "do not answer yet: they are clearly mid-thought"}},
-        "kind": {"type": "choice", "instructions": f"What does the user's latest sound or words ask of {name}?", "criteria": {
-            "reply": f"it is addressed to {name} and asks for words back",
-            "sound": "a sound or filler along the way; a voice response or none is enough"}},
         "pace": {"type": "choice", "instructions": lead, "criteria": dict(paces)},
     }
+
+
+def kind(name: str) -> dict:
+    """Who the words are for. Asked only when "not said to me" is offered (Config.not_for_me): decisions/turn.py adds
+    the `elsewhere` choice to it. Without that choice nothing reads the answer, so the question is not sent."""
+    return {"type": "choice", "instructions": f"What does the user's latest sound or words ask of {name}?", "criteria": {
+        "reply": f"it is addressed to {name} and asks for words back",
+        "sound": "a sound or filler along the way; a voice response or none is enough"}}
 
 
 def listen(name: str) -> dict:

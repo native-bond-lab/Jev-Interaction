@@ -40,8 +40,8 @@ def make(answers, policies=None):
     return scripted_session(answers, policies)
 
 
-TURN = {"done": {"finished": 0.9, "continuing": 0.1}, "wait": {"now": 1.0, "half_second": 0, "two_seconds": 0, "hold": 0},
-        "kind": {"reply": 0.9, "sound": 0.1}, "pace": {"normal": 0.6, "patient": 0.4, "narrate": 0, "eager": 0},
+TURN = {"done": {"finished": 0.9, "continuing": 0.1},
+        "pace": {"normal": 0.6, "patient": 0.4, "narrate": 0, "eager": 0},
         "listen": {"due": 0, "fits": 0, "quiet": 1.0, "answer_due": 0}}
 
 
@@ -130,6 +130,17 @@ def loud(db: float) -> bytes:
     import numpy as np
     a = int(32767 * 10 ** (db / 20))
     return (np.array([a, -a] * 1600, dtype=np.int16)).tobytes()
+
+
+async def test_a_pause_asks_only_what_is_read_and_the_draw_does_not_wait():
+    s, events, judge = make(TURN, {"end_of_turn": SamplePolicy(rng=lambda: 0.1)})
+    await s.on_segment(Segment("So what do you think?"))
+    await asyncio.sleep(0.05)
+    asked = judge.asked[0][0]
+    assert "done" in asked and "pace" in asked and "wait" not in asked and "kind" not in asked   # nothing reads those
+    s.silence_ms = 200                                         # one frame of quiet: the answer is drawn on at once
+    await s.tick()
+    assert any(e.get("what") == "end_of_turn" and e["go"] for e in events)
 
 
 async def test_not_said_to_me_is_offered_only_after_the_first_answer_and_drops_the_words():
@@ -619,7 +630,7 @@ async def test_a_silence_after_unfinished_words_stays_the_users_until_jev_is_sur
     s, _, judge = scripted_session({"done": {"finished": 0.2, "continuing": 0.8}},
                                    policies={"end_of_turn": ThresholdPolicy(default=0.5)})
     s.utt = Utterance(1, time.monotonic(), [(0.0, "and it pushed my cup off too.")])
-    s.judged = {"finished": 0.2, "wait_ms": 0, "reply": 1.0, "drawn": True}
+    s.judged = {"finished": 0.2, "drawn": True}
     asked = len(s.llm.seen)
     s.silence_ms = s.cfg.pace("normal").max_wait_ms + 1000         # past the longest wait: no clock hands her the turn
     assert not await TURN_DECISION.on_tick(s, time.monotonic())

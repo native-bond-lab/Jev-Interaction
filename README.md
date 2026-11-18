@@ -141,7 +141,7 @@ The same question, the same kind of answer; the profile decides how it is read.
 
 | when | question | choices |
 |---|---|---|
-| the user pauses | `turn` | finished / continuing · how long to wait · reply / just a sound · which pace |
+| the user pauses | `turn` | finished / continuing · which pace |
 | the user talks on | `listen` | something they are waiting for is due · a spot that fits a sound · quiet · an answer is due (Jev picks the moment, the language model the words) |
 | both talk at once | `floor` | carry on · yield · finish the sentence · take the floor back · react at once · short aside |
 | the agent leads | `cut_in` | cut in · let them finish |
