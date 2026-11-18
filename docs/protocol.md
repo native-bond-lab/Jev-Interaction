@@ -11,7 +11,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 | binary frame | 200 ms of 16 kHz mono PCM16 (3200 samples, 6400 bytes), continuously, including while the agent talks |
 | `{"type": "playback", "state": "playing" \| "idle"}` | the agent's audio started / the queue ran empty |
 | `{"type": "heard", "gen": 7, "text": "..."}` | after `stop`: what was actually played of the reply the last `line` belonged to (its `gen`): the lines that played to the end and the part of the one that was playing, joined by newlines; `""` when none of it played. Without `gen` the text replaces the last reply, and an empty text is ignored |
-| `{"type": "frame", "image": "<base64 JPEG>", "change": 0.18, "first": false, "moving_s": 0}` | video calls only (`/api/health` `vision` true): a picture the page took because the view changed (`change`: the share of the frame that moved, by the page's own rules); `first` for the first look at the scene; `moving_s` when it is one still from a movement kept up that long (waving, walking about). Sent at most every few seconds; one the server is still busy with drops the next |
+| `{"type": "frame", "image": "<base64 JPEG>", "change": 0.18, "first": false, "moving_s": 0}` | video calls only (`/api/health` `vision` true): a picture the page took because the view changed (`change`: the share of the frame that moved, by the page's own rules); `first` for the first look at the scene; `moving_s` when it is one still from a movement kept up that long (waving, walking about). Sent at most every few seconds; one that comes while the server is still looking at another waits for it (only the latest waits) |
 
 ## Server → client
 

@@ -117,3 +117,21 @@ async def test_a_still_from_a_movement_says_so_and_every_look_is_reported():
     assert s.ledger.turns[-1].text == "the user raises an arm (moving the whole time, 3 s so far)"
     looks = [e for e in events if e["type"] == "look"]
     assert [lk["new"] for lk in looks] == [True, True, False] and looks[1]["moving_s"] == 3.0
+
+
+@pytest.mark.asyncio
+async def test_a_picture_that_comes_while_the_seer_is_busy_is_looked_at_next():
+    gate = asyncio.Event()
+
+    class Slow(FakeSeer):
+        async def describe(self, image, *a, **k):
+            if image == b"one":
+                await gate.wait()
+            return await super().describe(image, *a, **k)
+    seer = Slow("a desk", "the user waves")
+    s, events, _ = scripted_session(seer=seer)
+    for img in (b"one", b"two", b"three"):
+        await s.on_client({"type": "frame", "image": base64.b64encode(img).decode()})
+    gate.set()
+    await settle(s)
+    assert [x[0] for x in seer.looked] == [b"one", b"three"] and s.sight == "the user waves"

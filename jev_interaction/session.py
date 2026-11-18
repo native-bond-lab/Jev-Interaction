@@ -84,6 +84,7 @@ class Session:
         self.sight_pending: tuple[float, str] | None = None     # (when, what) not yet put to the notice question
         self.seeing = False                      # a picture is with the seer: the page's next one waits its turn
         self.video = False                       # the page has sent a picture: this is a video call
+        self.frame_waiting: dict | None = None   # the latest picture that came while the seer was busy
         self.remarks_on_view = 0
         self.hanging_up = False
         self.busy: set[str] = set()              # decisions with a question out to Jev right now
@@ -173,13 +174,11 @@ class Session:
                     last.text, last.cut = heard, True
 
     def _frame(self, msg: dict) -> None:
-        """A picture the page took because the view changed. One at a time: while the seer is on one, the next is dropped
-        (the page sends again on the next change)."""
+        """A picture the page took because the view changed. One at a time: while the seer is on one, the latest to arrive
+        waits and is looked at next (any older waiting one is dropped)."""
         if self.seer is None:
             return
         self.video = True
-        if self.seeing:
-            return
         data = str(msg.get("image") or "")
         if len(data) > self.cfg.frame_max_bytes * 4 // 3 + 4:
             return
@@ -187,9 +186,13 @@ class Session:
             image = base64.b64decode(data.split(",", 1)[-1], validate=True)
         except (binascii.Error, ValueError):
             return
+        look = dict(image=image, change=float(msg.get("change") or 0.0), first=bool(msg.get("first")),
+                    moving_s=float(msg.get("moving_s") or 0.0))
+        if self.seeing:
+            self.frame_waiting = look
+            return
         self.seeing = True
-        self._spawn(self.see(image, float(msg.get("change") or 0.0), first=bool(msg.get("first")),
-                             moving_s=float(msg.get("moving_s") or 0.0)))
+        self._spawn(self.see(**look))
 
     async def see(self, image: bytes, change: float = 0.0, media_type: str = "image/jpeg", first: bool = False,
                   moving_s: float = 0.0) -> str:
@@ -211,6 +214,10 @@ class Session:
             seen = ""
         finally:
             self.seeing = False
+            if self.frame_waiting is not None and not self.closed:
+                look, self.frame_waiting = self.frame_waiting, None
+                self.seeing = True
+                self._spawn(self.see(**look))
         await self.send(type="look", first=first, new=bool(seen), seconds=round(time.monotonic() - started, 1),
                         moving_s=moving_s, error=error)     # every look, for the page's log and the server's
         self.rec.write("seen", text=seen, change=round(change, 3))
