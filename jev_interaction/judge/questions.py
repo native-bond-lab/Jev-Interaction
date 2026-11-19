@@ -32,6 +32,28 @@ def turn(name: str, pace: str, paces: dict[str, str], opening: bool = False) -> 
     }
 
 
+LAST_WORDS = "Look only at `user_latest_words`. Is that a complete utterance, or is it cut off mid-sentence?"
+WHOLE = "a complete sentence, question or request: nothing is missing"
+CUT_OFF = "cut off: the sentence is left hanging and needs more words to make sense"
+
+
+def last_words() -> dict:
+    """ "Have they finished" put as a question about the user's own words (Config.turn_question = "last_words", with the
+    state from judge/state.py `with_last_words`). It is asked twice in the one request, the options in both orders: a
+    judge that leans to whichever option comes first cancels out when the two answers are averaged (`finished`).
+    The wording is measured, not tidied: on one judge a few changed words in the options moved the result by twenty
+    points. Run tools/judge_bench.py --last-words before and after any edit."""
+    return {"done": {"type": "choice", "instructions": LAST_WORDS, "criteria": {"finished": WHOLE, "continuing": CUT_OFF}},
+            "done_again": {"type": "choice", "instructions": LAST_WORDS, "criteria": {"continuing": CUT_OFF, "finished": WHOLE}}}
+
+
+def finished(answers: dict) -> float:
+    """p(the user has finished) from a turn answer: `done`, averaged with `done_again` when that was asked too."""
+    ps = [(answers.get(k) or {}).get("probabilities", {}).get("finished") for k in ("done", "done_again") if k in answers]
+    ps = [p for p in ps if p is not None]
+    return sum(ps) / len(ps) if ps else 0.0
+
+
 def kind(name: str) -> dict:
     """Who the words are for. Asked only when "not said to me" is offered (Config.not_for_me): decisions/turn.py adds
     the `elsewhere` choice to it. Without that choice nothing reads the answer, so the question is not sent."""

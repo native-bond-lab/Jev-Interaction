@@ -286,7 +286,9 @@ async def call(ws: WebSocket):
             return
     profile = Profile.load(path)
     language = start.get("language") or (profile.extra.get("display") or {}).get("language", "en")
-    cfg = preset_config(os.getenv("JEV_PRESET", "recommended"), language=language)
+    cfg = preset_config(os.getenv("JEV_PRESET", "recommended"), language=language,
+                        turn_question=os.getenv("JEV_TURN_QUESTION") or "engine",
+                        judge_provider=os.getenv("JEV_PROVIDER") or "jev")
     synth = make_synthesizer(profile, pid)
     # who else can be put on this line (the persona's `cast`): the caller asks, Jev hears it, the session hands over
     cast = {pid: profile, **{c: Profile.load(paths.profiles()[c]) for c in profile.extra.get("cast") or [] if c in paths.profiles()}}

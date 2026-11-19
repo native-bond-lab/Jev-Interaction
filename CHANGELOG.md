@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- **Bailian's p(finished) is stretched before the draw.** The engine draws once against p(finished), and on a sentence
+  cut off mid-thought Bailian's `decision-model-preview` says about 0.35 where Jev says about 0.1: drawn against as it
+  comes, the agent spoke into one unfinished sentence in three. With `JEV_PROVIDER=bailian` the number is stretched
+  first (below 0.6 not finished, above 0.85 finished, in between in proportion; `judge/bailian.py`, `finished`). On 80
+  pauses kept apart from the fitting: speaking into an unfinished sentence at the first draw 35% → 13% (Jev 10%),
+  answering a finished one 87% → 89% (Jev 80%). `tools/judge_bench.py` prints this as "drawn against", and takes
+  `--held-out` (80 other pauses in `tools/judge_cases_heldout.py`) and `--bare` (no closing punctuation).
+- **Questions worded for Bailian's judge.** `Config.judge_provider = "bailian"` (`JEV_PROVIDER=bailian`) sends Alibaba
+  Cloud Bailian's `decision-model-preview` its own set of questions (`judge/bailian.py`); Jev keeps the engine's. The
+  words a question is about go in a field of their own and the question points at it, every choice is asked in both
+  option orders and averaged, and a question that needs the whole call read is split into small ones. It covers the
+  end of a turn (the `last_words` wording), both talking, a silence and "something is due" while listening. On 108
+  written moments kept apart from the wording: both talking 54% → 100%, a silence 40% → 85%, listening 67% → 96%
+  (`tools/judge_bench.py --decisions --held-out`). The mainland setup in the cookbook and on the setup page sets it.
+- **A judge for mainland China.** `api.typesafe.ai` does not serve mainland networks, and other services now speak the
+  same protocol. `JEV_URL`, `JEV_MODEL` and `JEV_HEADERS` (a JSON object of extra request headers) point the judge at
+  one; an empty `JEV_URL=` line no longer leaves the judge without an address. `Config.turn_question = "last_words"`
+  (`JEV_TURN_QUESTION=last_words`) words "have they finished" about the user's own words, sent in a field of their
+  own, with the options in both orders: Alibaba Cloud Bailian's `decision-model-preview` goes from 63% to 88% right
+  with it on 160 written pauses, and Jev reads both wordings alike (96%). The mainland setup in the cookbook and on
+  the setup page is now one Bailian key for all four nodes. `tools/judge_bench.py` measures any configured judge,
+  the end of a turn and (`--decisions`, 148 written moments in `tools/judge_cases.py`) the other decisions; the numbers,
+  and where the Bailian judge falls short of Jev, are in `cookbook/stacks.md`.
 - **The turn request asks two questions, not four.** `wait` (how long to hold the answer) and `kind` (a reply or a
   sound) are no longer sent. `wait` said what `done` already says (on 627 recorded turn judgements its value tracked
   p(finished) at -0.92) and its only effect was to hold the draw back: in 217 held moments the user went on during the

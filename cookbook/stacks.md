@@ -18,6 +18,9 @@ Proven at scale in our product.
 
 ```bash
 JEV_API_KEY=...
+JEV_URL=https://api.typesafe.ai/v1/systemone      # the default, as is the next line
+JEV_TURN_QUESTION=engine
+JEV_PROVIDER=jev
 LLM_BASE_URL=https://api.x.ai/v1
 LLM_API_KEY=...
 LLM_MODEL=grok-4.3
@@ -41,12 +44,16 @@ Why these:
 
 ## Recommended (mainland China)
 
-One DashScope (Alibaba Cloud Bailian) key for all three nodes besides the judge.
+One Alibaba Cloud Bailian key for all four nodes: its decision model as the judge, Qwen, Paraformer and CosyVoice.
 
 ```bash
-JEV_API_KEY=...
+JEV_API_KEY=...            # the Bailian key
+JEV_URL=https://<your-workspace-id>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone
+JEV_MODEL=decision-model-preview
+JEV_TURN_QUESTION=last_words
+JEV_PROVIDER=bailian
 LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
-LLM_API_KEY=...            # the DashScope key
+LLM_API_KEY=...            # the same key
 LLM_MODEL=qwen-plus
 ASR_PROVIDER=dashscope
 TTS_PROVIDER=dashscope
@@ -54,11 +61,104 @@ DASHSCOPE_API_KEY=...
 DASHSCOPE_ASR_MODEL=paraformer-realtime-v2
 DASHSCOPE_TTS_MODEL=cosyvoice-v2
 DASHSCOPE_TTS_VOICE=longxiaochun_v2
-# HTTPS_PROXY=...          # only if api.typesafe.ai is slow from your network
 ```
 
 CosyVoice does not perform audio tags, so the model writes plain words. Give each persona its own voice in its profile
 (`voices: {dashscope: longcheng_v2}`), see [role policies](role-policies.md#voice).
+
+### The judge on the mainland
+
+`api.typesafe.ai` does not serve requests from mainland networks (HTTP 451 when we measured, November 2026), so a
+mainland deployment needs another judge. Several services now speak the same protocol (a state, typed questions, a
+probability per choice back); `JEV_URL`, `JEV_MODEL` and `JEV_HEADERS` point the engine at one.
+
+- **Bailian `decision-model-preview`** is the one we recommend there. The endpoint is your workspace's own address: the
+  `llm-…` host shown as *API Host* when you create a key, with `/compatible-mode/v1/systemone` after it, and the key
+  must belong to that workspace. It is a preview: free when we measured, and it rate-limited us above two requests at
+  once.
+- It needs **`JEV_PROVIDER=bailian`**: its own wording of the questions (`jev_interaction/judge/bailian.py`). With the
+  engine's own wording of "have they finished" its answers sit on one side whatever the user said (nearly every
+  Chinese pause read as finished), and it misreads a question said over the agent's line as a reaction. The Bailian
+  set sends the state as an object with the words a question is about in a field of their own, points each question
+  at its field, asks it twice with the options in both orders (this model leans to whichever option is listed first),
+  and splits a question that needs the whole call read into small ones. It covers the end of a turn
+  (`JEV_TURN_QUESTION=last_words` alone does only that much), both talking, a silence and "something is due" while
+  listening; the other decisions go out as the engine words them. It also stretches this model's p(finished) before
+  the engine draws against it (below). Leave Jev on the engine's questions.
+- **Volcengine Ark System One (beta)** reads the engine's wording as it is and judges close to Jev, but answers
+  several times slower:
+
+  ```bash
+  JEV_URL=https://ark.cn-beijing.volces.com/api/v1/systemone
+  JEV_MODEL=doubao-seed-2-1-lite-260915
+  JEV_HEADERS={"ark-beta-systemone-api": "true"}
+  ```
+
+What we measured, from a mainland network (Jev through a route outside it), with `python tools/judge_bench.py`: 160
+made-up pauses, 80 Chinese and 80 English, half a finished sentence and half cut off mid-thought, each asked the way
+the engine asks when a user pauses. *Right* is p(finished) on the correct side of 0.5; *ranking* is how well
+p(finished) orders the pauses whatever the threshold.
+
+| judge | wording | right | ranking | one request, 1 → 9 questions |
+|---|---|---|---|---|
+| Jev | engine | 96% | 1.00 | tens of ms where it is reachable |
+| Jev | `last_words` | 96% | 1.00 | |
+| Bailian `decision-model-preview` | `last_words` | 88% | 0.97 | about 100 → 180 ms |
+| Bailian `decision-model-preview` | engine | 63% | 0.72 | |
+| Volcengine `doubao-seed-2-1-lite-260915` | engine | 95% | 0.99 | about 330 → 450 ms |
+
+Which side of 0.5 is not the whole of it. The engine draws once against p(finished), so a judge whose numbers sit
+nearer the middle answers into unfinished sentences even when it ranks them well. On a sentence cut off mid-thought
+the Bailian model says about 0.35 where Jev says about 0.1. `JEV_PROVIDER=bailian` therefore stretches its p(finished)
+before the draw: below 0.6 counts as not finished, above 0.85 as finished, in between in proportion
+(`judge/bailian.py`, `finished`). The bounds were set on the 160 pauses above and checked on 80 others
+(`python tools/judge_bench.py --held-out`, the "drawn against" line); the numbers are the held-out ones:
+
+| judge | answers a finished sentence at the first draw | speaks into an unfinished one at the first draw |
+|---|---|---|
+| Jev | 80% | 10% |
+| Bailian, p(finished) as it comes | 87% | 35% |
+| Bailian, stretched (`JEV_PROVIDER=bailian`) | 89% | 13% |
+
+Without the closing punctuation a recognizer may or may not send (`--bare`) the same pauses give 76% / 10% on Jev and
+83% / 13% on Bailian. What the stretch does not mend is a wording matter: a number given in pieces ("my code is four
+eight") or "hold on, let me check" is a whole sentence, so this wording calls it finished, at about 0.8.
+
+The other decisions, with `python tools/judge_bench.py --decisions`: written moments, Chinese and English alike, each
+sent as the engine sends it and scored on the action the engine would take. The Bailian set was worded on 148 moments
+(`tools/judge_cases.py`) and checked on 108 others kept apart from the wording (`tools/judge_cases_heldout.py`,
+`--held-out`); the held-out column is the one to trust. "Before" is the engine's questions with
+`JEV_TURN_QUESTION=last_words`, "after" is `JEV_PROVIDER=bailian`.
+
+| decision | Jev (engine questions), tuning set | Bailian before, tuning / held out | Bailian after, tuning / held out |
+|---|---|---|---|
+| both talking at once | 97% | 69% / 54% | 100% / 100% |
+| speaking into a silence | 39% | 43% / 40% | 100% / 85% |
+| listening: is something due | 96% | 67% / 67% | 88% / 96% |
+| which pace | 81% | 78% / 75% | 78% / 71% (not reworded) |
+| cutting in while the user talks (eager pace) | 69% | 56% / 56% | 56% / 56% (not reworded) |
+| handing the line to someone else | 100% | 100% | 100% (not reworded) |
+
+Read with these in mind:
+
+- **Both talking.** On the engine's question the Bailian model read a question or remark said over the agent's line
+  as a reaction every time (0 of 8), so the agent talked on. Pointed at `user_words_over_it` (a reaction, a "stop", or
+  something of their own that wants an answer) it gets all three apart. Reacting at once (`jump_in`) is not offered
+  in this set.
+- **A silence.** Five small questions in place of one: is the agent's last line asking something, did the user say
+  they need a moment, have they said goodbye, has the agent already called out with no answer, is the quiet long.
+  What still goes wrong: a short "okay" after the user said "hold on" is sometimes read as the agent's move.
+- **Listening.** On the engine's question it never found the sound a user asked for earlier in the call ("say so each
+  time I mention a cat"): 0 of 8. Asked separately whether such a rule was set earlier and whether the latest words
+  bring it up (the two answers multiplied), it finds 7 of 8 held-out ones and still stays quiet where nothing was
+  asked for.
+- **Which pace** and **cutting in** are not reworded yet: on the engine's questions the Bailian model rarely picks
+  the eager pace and rarely cuts in. A question on the user's words alone did better in a first trial and is the next
+  step.
+- These are written moments, not calls, and the presets' thresholds were set on Jev's probabilities; only
+  p(finished) has been fitted to the Bailian model's own numbers so far. Run the benchmark against your own judge
+  before you rely on it, and again after any change to the wording: on the Bailian model a few changed words in the
+  options moved a result by twenty points.
 
 ## The caller's voiceprint
 

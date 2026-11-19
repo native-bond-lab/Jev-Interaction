@@ -218,11 +218,11 @@ how to write for the voice you pick: voices that perform audio tags (ElevenLabs 
 
 | | recommended (global), proven at scale in our product | recommended (mainland China) |
 |---|---|---|
-| judge | Jev | Jev (set `HTTPS_PROXY` if `api.typesafe.ai` is slow from your network) |
+| judge | Jev | Bailian `decision-model-preview`, the same protocol (`JEV_PROVIDER=bailian`; what we measured: [cookbook](cookbook/stacks.md#the-judge-on-the-mainland)) |
 | language model | grok-4.3, reasoning off, temperature 0.7 | qwen-plus via DashScope |
 | recognition | ElevenLabs Scribe v3 Live | Paraformer realtime v2 |
 | voice | ElevenLabs eleven_v4_turbo (audio tags) | CosyVoice v2, per-persona voices (plain words) |
-| keys | Jev, xAI, ElevenLabs | Jev, one DashScope key |
+| keys | Jev, xAI, ElevenLabs | one Bailian (DashScope) key |
 
 **Presets.** `JEV_PRESET=recommended` (default) is the timing our product runs on today; `tested` adds the knobs
 measured below; `default` is the library defaults. In code: `jev_interaction.preset("recommended", language="en")`

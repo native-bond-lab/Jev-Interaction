@@ -8,6 +8,7 @@ judge that fails leaves the agent carrying on.
 """
 from __future__ import annotations
 
+from ..judge import bailian as B
 from ..judge import questions as Q
 from ..judge import state as S
 from ..judge.client import probs as P
@@ -40,12 +41,17 @@ class Floor(Decision):
                                     aside=pace.leads and not pace.cut_in, jump=True)
         if s._offer_elsewhere():
             criteria["elsewhere"] = Q.elsewhere(s.p.short)
+        if s.cfg.judge_provider == "bailian":
+            questions = B.floor(criteria)
+            ctx["criteria"] = questions["floor"]["criteria"]
+            return questions
         ctx["criteria"] = criteria
         return {"floor": Q.floor(s.p.short, criteria)}
 
     def state(self, s, ctx):
         line = s.ledger.last_agent().text if s.ledger.last_agent() else ""
-        return super().state(s, ctx) + S.overlap(s.p.short, line, s.utt.heard, s.utt.speech_ms)
+        text = super().state(s, ctx) + S.overlap(s.p.short, line, s.utt.heard, s.utt.speech_ms)
+        return B.floor_state(text, line, s.utt.heard) if s.cfg.judge_provider == "bailian" else text
 
     def allowed(self, s, ctx):
         return ctx["criteria"]                    # the choices this pace was offered

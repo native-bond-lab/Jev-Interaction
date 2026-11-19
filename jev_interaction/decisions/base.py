@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
+from ..judge import bailian as B
 from ..judge import state as S
 from ..judge.client import probs as P
 from ..policy import Policy
@@ -76,6 +77,8 @@ class Decision:
             questions, state = self.questions(s, ctx), self.state(s, ctx)
             ctx.setdefault("gen", s.gen)
             answers = await s._ask(self.name, questions, state)
+            if s.cfg.judge_provider == "bailian":
+                answers = B.merge(answers)                         # questions asked both ways round: one answer each
             if self.current(s, ctx):
                 await self.apply(s, answers, ctx)
         finally:

@@ -53,6 +53,14 @@ class Config:
     listen_min_gap_s: float = 1.0      # and no two things put in closer than this, whatever they are: they would run together
     listen_due_min: float = 0.5        # what the user is waiting for is put in when Jev is this sure, never left to a draw
     turn_reask_ms: tuple = (1000, 2000, 4000)   # quiet after words not judged finished: the turn question is asked again
+    turn_question: str = "engine"      # how "have they finished" is put to the judge. "last_words": the state is sent as an
+                                       # object with the user's words in a field of their own and the question is about that
+                                       # field, asked with its options in both orders. Some judges read that far better
+                                       # (cookbook/stacks.md, tools/judge_bench.py); Jev reads both well
+    judge_provider: str = "jev"        # whose wording of the questions: "jev", the engine's own (judge/questions.py), or
+                                       # "bailian" for Alibaba Cloud Bailian's decision model (judge/bailian.py): the
+                                       # last_words turn question, and both talking, quiet and "something is due" put as
+                                       # small questions about fields of their own. Leave "jev" for Jev
     turn_last_ms: int = 4000           # ... and this far past the pace's longest wait the agent speaks anyway
     listen_finished_max: float = 0.65  # no listening sound once Jev is this sure the user has finished
     quiet_marks_s: tuple = (1.5, 4.0, 10.0, 25.0, 60.0, 120.0)   # when the quiet question is asked (jittered)

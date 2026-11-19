@@ -28,6 +28,12 @@ def user_turn(name: str, segments: list[tuple[float, str]], now: float, silence_
     return "\n".join(lines)
 
 
+def with_last_words(state: str, words: str, quiet_ms: int) -> dict:
+    """The same state as an object: the text every other question reads under `call`, and the user's words of this
+    turn in a field of their own for the question that is only about them (questions.last_words)."""
+    return {"call": state, "user_latest_words": words, "user_quiet_seconds": round(quiet_ms / 1000, 1)}
+
+
 def overlap(name: str, agent_line: str, heard: str, speech_ms: int) -> str:
     return f'{name} is in the middle of saying: "{agent_line}"\nOver it, for {speech_ms / 1000:.1f} s, the user is saying: "{heard}".'
 

@@ -11,7 +11,7 @@
 
 ## 三句话版本
 
-- **配置**：四个节点（Jev、大模型、识别、音色）都由你选。我们推荐海外用 grok-4.3（关闭思考）+ ElevenLabs Scribe v3 Live + eleven_v4_turbo，中国大陆用一把百炼密钥（qwen-plus + Paraformer + CosyVoice）。模型字段不填就用服务商自己的默认值。
+- **配置**：四个节点（Jev、大模型、识别、音色）都由你选。我们推荐海外用 grok-4.3（关闭思考）+ ElevenLabs Scribe v3 Live + eleven_v4_turbo，中国大陆用一把百炼密钥管四个节点（法官用百炼的决策模型，再加 qwen-plus + Paraformer + CosyVoice）；官方 Jev 在大陆网络访问不了，各家法官的实测结果在[配置](stacks.md#the-judge-on-the-mainland)一章。模型字段不填就用服务商自己的默认值。
 - **参数**：从 `recommended` 预设开始（我们产品在用的时间参数），只改你的产品需要的。先改角色的 manner，所有通话都有的问题再改参数。
 - **角色 policy**：`prompt` 给大模型，决定说什么；`manner` 给 Jev，决定怎么说、什么时候说；`policies` 决定 Jev 的概率怎么变成动作。工作型角色用阈值，角色型的只抽小声音、开口前要 Jev 有把握。
 
