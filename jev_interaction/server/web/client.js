@@ -311,7 +311,14 @@
     const line = current;
     if (!line || !line.started || line.el.paused) return;
     let h = heardSoFar(line);
-    if (h.length < line.text.length && /[a-z]/i.test(line.text)) h = h.slice(0, Math.max(0, h.lastIndexOf(' ')));   // whole words
+    // Wait only if playback cuts through an English word, even when it has no spaces around it.
+    for (const word of line.text.matchAll(/[a-z0-9]+(?:['’-][a-z0-9]+)*/gi)) {
+      if (word.index >= h.length) break;
+      if (word.index + word[0].length > h.length && /[a-z]/i.test(word[0])) {
+        h = h.slice(0, word.index);
+        break;
+      }
+    }
     if (h.length === line.shown) return;
     line.shown = h.length;
     agentCaption(joinLines(line.before, h), line.text.slice(h.length));
