@@ -74,7 +74,10 @@ class Turn(Decision):
             return
         await s._update_pace(P(answers, "pace"))
         # a failed judge: p(finished) 0, so the turn is answered at the pace's longest wait
-        s.judged = {"finished": Q.finished(answers), "drawn": False,
+        finished = Q.finished(answers)
+        if s.cfg.judge_provider == "bailian":
+            finished = B.finished(finished)                         # its numbers sit nearer the middle: stretched for the draw
+        s.judged = {"finished": finished, "drawn": False,
                     "who": HANDOVER.chosen(s, answers, ctx) if HANDOVER.ready(s, ctx) else None}
         if ctx["may_listen"]:
             if s.cfg.judge_provider == "bailian":

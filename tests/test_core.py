@@ -761,6 +761,21 @@ def test_bailian_merges_the_two_orders_and_turns_small_answers_into_the_engines_
     assert listen["due"] < 0.05                                 # "yes, it came up" alone, with no task set, is not due
 
 
+async def test_bailian_stretches_p_finished_before_the_draw():
+    from jev_interaction.judge import bailian as B
+    assert B.finished(0.35) == 0.0 and B.finished(0.95) == 1.0 and abs(B.finished(0.725) - 0.5) < 1e-9
+    half = {"finished": 0.55, "continuing": 0.45}              # this judge on a sentence cut off mid-thought
+    s, events, judge = make(both_ways({**TURN, "done": half, "done_again": half, "rule": {"task": 0.0, "no_task": 1.0}}),
+                            {"end_of_turn": SamplePolicy(rng=lambda: 0.3)})
+    s.cfg.judge_provider = "bailian"
+    await s.on_segment(Segment("My order number is"))
+    await asyncio.sleep(0.05)
+    assert s.judged["finished"] == 0.0                         # drawn against as 0.55, a roll of 0.3 would have answered
+    s.silence_ms = 200
+    await s.tick()
+    assert not any(e.get("what") == "end_of_turn" and e["go"] for e in events)
+
+
 async def test_bailian_floor_points_at_the_words_said_over_the_line():
     s, events, judge = make(both_ways({"floor": {"carry_on": 0.2, "yield": 0.1, "finish_first": 0.7}}))
     s.cfg.judge_provider = "bailian"

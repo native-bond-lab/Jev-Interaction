@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Bailian's p(finished) is stretched before the draw.** The engine draws once against p(finished), and on a sentence
+  cut off mid-thought Bailian's `decision-model-preview` says about 0.35 where Jev says about 0.1: drawn against as it
+  comes, the agent spoke into one unfinished sentence in three. With `JEV_PROVIDER=bailian` the number is stretched
+  first (below 0.6 not finished, above 0.85 finished, in between in proportion; `judge/bailian.py`, `finished`). On 80
+  pauses kept apart from the fitting: speaking into an unfinished sentence at the first draw 35% → 13% (Jev 10%),
+  answering a finished one 87% → 89% (Jev 80%). `tools/judge_bench.py` prints this as "drawn against", and takes
+  `--held-out` (80 other pauses in `tools/judge_cases_heldout.py`) and `--bare` (no closing punctuation).
 - **Questions worded for Bailian's judge.** `Config.judge_provider = "bailian"` (`JEV_PROVIDER=bailian`) sends Alibaba
   Cloud Bailian's `decision-model-preview` its own set of questions (`judge/bailian.py`); Jev keeps the engine's. The
   words a question is about go in a field of their own and the question points at it, every choice is asked in both
