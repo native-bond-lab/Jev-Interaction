@@ -152,3 +152,34 @@ CUT_IN = {
 }
 
 WHO = {"zh": [], "en": []}     # handing over: not reworded for any judge, so nothing to hold out
+
+
+# pauses for the end-of-turn question (`tools/judge_bench.py --held-out`): the user's words when they pause, cut off
+# mid-thought ("open") or a finished sentence ("done"). Kept apart from the 160 in judge_bench.py that wordings and the
+# Bailian stretch (judge/bailian.py `finished`) were set on.
+PAUSES = {
+    "zh": {
+        "open": ["我上周末回了趟老家，然后", "主要是因为", "你还记得我之前说的那个", "我想先问一下，就是", "其实我一直在考虑",
+                 "要是他不同意的话", "那个文件我放在", "我的工号是零四七", "身份证后四位是二九", "稍等，我翻一下记录", "一开始我以为",
+                 "不是，我的意思是", "还有就是", "我刚才想说的是", "他们公司那边", "除了这个以外", "我本来打算今天", "嗯，让我想想",
+                 "对了，上次你说的那个", "如果可以的话，我想"],
+        "done": ["你今天过得怎么样？", "帮我订一张去上海的票。", "我不想再聊这个了。", "这件衣服有大一号的吗？", "我刚下班。",
+                 "明天早上八点叫我。", "你会说粤语吗？", "我觉得挺好的。", "那就算了吧。", "外面下雨了。", "我想问一下退款多久到账。",
+                 "你猜我今天遇到谁了？", "我有点想家了。", "快递到哪儿了？", "行，我知道了。", "给我推荐一本书吧。", "我昨晚没睡好。",
+                 "这个周末我要搬家。", "你再想想。", "晚安。"],
+    },
+    "en": {
+        "open": ["I went back home last weekend, and then", "Mainly because", "Do you remember that thing I mentioned about",
+                 "I wanted to ask first, like", "Actually I've been thinking about", "If he doesn't agree, then", "I put that file in",
+                 "My employee number is zero four seven", "The last four digits are two nine", "One second, let me find the email",
+                 "At first I thought", "No, what I mean is", "And another thing is", "What I was trying to say was",
+                 "The people at their company", "Apart from that", "I was planning to", "Hmm, let me think",
+                 "Oh right, that thing you said about", "If possible, I'd like to"],
+        "done": ["How was your day?", "Book me a ticket to Chicago.", "I don't want to talk about this anymore.",
+                 "Do you have this in a larger size?", "I just got off work.", "Wake me up at eight tomorrow.", "Do you speak Spanish?",
+                 "I think it's fine.", "Never mind then.", "It's raining outside.", "How long does a refund take?",
+                 "Guess who I ran into today?", "I miss home a little.", "Where's my package?", "All right, I get it.",
+                 "Recommend me a book.", "I didn't sleep well last night.", "I'm moving this weekend.", "Think about it again.",
+                 "Good night."],
+    },
+}

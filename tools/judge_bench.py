@@ -15,7 +15,10 @@ from your network. Two measurements:
   judgement   160 made-up pauses, 80 Chinese and 80 English, half of them a finished sentence and half cut off
               mid-thought, each asked the way the engine asks when a user pauses (done + pace + listen in one request).
               "right" is p(finished) on the correct side of 0.5; "ranking" is how well p(finished) orders the pauses
-              whatever the threshold (1.0 = perfectly).
+              whatever the threshold (1.0 = perfectly). "drawn against" is what the engine does with the number: one
+              roll against it, so its mean over the finished pauses is how often the agent answers at the first
+              draw, and over the cut-off ones how often it speaks into an unfinished sentence.
+              --held-out: 80 other pauses (tools/judge_cases_heldout.py). --bare: without closing punctuation.
   latency     the same state with 1, 2, 5 and 9 questions, wall time on a kept-alive connection.
 
 The pauses are written for this test; none is a recorded call. About 180 small requests.
@@ -75,13 +78,20 @@ PROVIDER = "jev"
 QUIET_S = 0.4
 
 
-def cases() -> list[dict]:
+def cases(held_out: bool = False, bare: bool = False) -> list[dict]:
+    """`held_out`: the second set of pauses (tools/judge_cases_heldout.py). `bare`: the closing punctuation taken off,
+    as a recognizer that sends none would give the words."""
     zh, en = Profile.load(paths.profiles()["lyra_zh"]), Profile.load(paths.profiles()["lyra"])
+    sets = {"zh": (ZH_OPEN, ZH_DONE), "en": (EN_OPEN, EN_DONE)}
+    if held_out:
+        from tools import judge_cases_heldout as K
+        sets = {lang: (K.PAUSES[lang]["open"], K.PAUSES[lang]["done"]) for lang in ("zh", "en")}
     out = []
-    for lang, p, recent, opens, dones in (("zh", zh, ["user: 喂，在吗", f"{zh.short}: 在呢，你说。"], ZH_OPEN, ZH_DONE),
-                                          ("en", en, ["user: Hey, are you there?", f"{en.short}: I'm here. Go on."], EN_OPEN, EN_DONE)):
-        for finished, texts in ((False, opens), (True, dones)):
-            out += [{"lang": lang, "finished": finished, "p": p, "recent": recent, "said": t} for t in texts]
+    for lang, p, recent in (("zh", zh, ["user: 喂，在吗", f"{zh.short}: 在呢，你说。"]),
+                            ("en", en, ["user: Hey, are you there?", f"{en.short}: I'm here. Go on."])):
+        for finished, texts in ((False, sets[lang][0]), (True, sets[lang][1])):
+            out += [{"lang": lang, "finished": finished, "p": p, "recent": recent,
+                     "said": t.rstrip("。？！.?!") if bare else t} for t in texts]
     return out
 
 
@@ -261,7 +271,8 @@ async def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--last-words", action="store_true", help="ask about the user's last words, state as an object")
     ap.add_argument("--decisions", action="store_true", help="the decisions besides the end of a turn")
-    ap.add_argument("--held-out", action="store_true", help="with --decisions: the moments kept apart from wording edits")
+    ap.add_argument("--held-out", action="store_true", help="the pauses, or with --decisions the moments, kept apart from wording edits")
+    ap.add_argument("--bare", action="store_true", help="the pauses without their closing punctuation")
     ap.add_argument("--save", help="with --decisions: write the action taken on each case to this file")
     ap.add_argument("--against", help="with --decisions: a file another judge's run saved, to count the same actions")
     ap.add_argument("--both-orders", action="store_true", help="send every choice question in both option orders and average")
@@ -280,9 +291,13 @@ async def main():
         finally:
             await judge.aclose()
         return
-    request = last_words_request if args.last_words else engine_request
-    items = cases()
-    print(f"judge: {judge.model} at {judge.url.split('/')[2].split('.', 1)[-1]} · wording: {'last words' if args.last_words else 'engine'}")
+    last_words = args.last_words or PROVIDER == "bailian"        # as decisions/turn.py: the provider decides
+    request = last_words_request if last_words else engine_request
+    drawn = B.finished if PROVIDER == "bailian" else (lambda p: p)   # what the engine draws against
+    items = cases(args.held_out, args.bare)
+    print(f"judge: {judge.model} at {judge.url.split('/')[2].split('.', 1)[-1]} · questions: {PROVIDER} · wording: "
+          f"{'last words' if last_words else 'engine'} · pauses: {'held out' if args.held_out else 'tuning set'}"
+          f"{', no closing punctuation' if args.bare else ''}")
     try:
         sem, got, failed = asyncio.Semaphore(args.concurrency), [None] * len(items), []
 
@@ -304,7 +319,9 @@ async def main():
                 print(f"  {lang}: no answers"); continue
             fin, mid = [p for p, y in g if y], [p for p, y in g if not y]
             print(f"  {lang}: {len(g)} pauses, right {sum((p >= 0.5) == y for p, y in g) / len(g):.0%}, ranking {ranking(g):.2f}, "
-                  f"mean p(finished) {statistics.mean(fin):.2f} when finished / {statistics.mean(mid):.2f} when cut off")
+                  f"mean p(finished) {statistics.mean(fin):.2f} when finished / {statistics.mean(mid):.2f} when cut off; "
+                  f"drawn against: answers a finished one at the first draw {statistics.mean(map(drawn, fin)):.0%}, "
+                  f"speaks into an unfinished one {statistics.mean(map(drawn, mid)):.0%}")
         if failed:
             print(f"  {len(failed)} requests failed, e.g. {failed[0]}")
         questions, state = engine_request(items[0])

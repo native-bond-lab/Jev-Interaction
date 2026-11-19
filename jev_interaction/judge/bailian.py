@@ -12,7 +12,8 @@ follows what made "have they finished" work on it (questions.last_words):
   (did they ask for this earlier, and has it come up now?) is split into small ones whose answers are combined here.
 
 Only the decisions this judge got wrong are reworded: both talking (floor), quiet since the agent's line (quiet) and
-"something is due" while listening. The others go out as the engine words them. The wordings are measured, not tidied:
+"something is due" while listening. The others go out as the engine words them. Its p(finished) is also stretched
+before the engine draws against it (`finished`): its numbers sit closer to the middle than Jev's. The wordings are measured, not tidied:
 a few changed words moved results by twenty points. `python tools/judge_bench.py --decisions --held-out` before and
 after any edit.
 """
@@ -42,6 +43,20 @@ def merge(answers: dict) -> dict:
 
 def _p(answers: dict, name: str, choice: str) -> float:
     return P(answers, name).get(choice, 0.0)
+
+
+# ---------------------------------------------------------------- have they finished: what the draw is made against
+FINISHED_LOW, FINISHED_HIGH = 0.6, 0.85
+
+
+def finished(p: float) -> float:
+    """p(the user has finished) as the engine draws against it. The draw is one roll against the probability
+    (SamplePolicy), so how far the number sits from 0 and 1 matters, not only which side of 0.5 it is on. On a
+    sentence cut off mid-thought this judge still says about 0.35 where Jev says about 0.1: drawn against as it is,
+    the agent would speak into one unfinished sentence in three. Below FINISHED_LOW counts as not finished, above
+    FINISHED_HIGH as finished, and in between in proportion. Measured with `python tools/judge_bench.py` (the
+    "drawn against" line), before and after any change, on the held-out pauses too (`--held-out`)."""
+    return min(1.0, max(0.0, (p - FINISHED_LOW) / (FINISHED_HIGH - FINISHED_LOW)))
 
 
 # ---------------------------------------------------------------- both talk at once
