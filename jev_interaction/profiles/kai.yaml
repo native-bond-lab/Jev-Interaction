@@ -20,7 +20,6 @@ manner: >
 policies:
   end_of_turn: sample
   listen: sample
-  quiet: sample
   cut_in: sample
 cast: [lyra]      # who the caller can ask to be put on the line
 display: {title: Companion, title_zh: 陪伴, tagline: "All four paces, every decision open", tagline_zh: "四种节奏，所有决策都放开", language: en, accent: "#ffb86b", order: 41, group: task, listed: false}

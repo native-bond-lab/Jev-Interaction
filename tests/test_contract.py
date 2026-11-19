@@ -21,7 +21,7 @@ CONFIG_FIELDS = {"language", "frame_ms", "sample_rate", "paces", "start_pace", "
                  "hangup_min_quiet_s", "judge_timeout_s", "judge_turns", "judge_turn_chars", "safe_words",
                  "listen_max_words", "voice_same", "voice_other", "voice_verdict_ms", "voice_enroll_ms", "not_for_me",
                  "far_db", "hold_after_ms", "hold_release_ms", "turn_question", "judge_provider"}
-PACE_FIELDS = {"name", "description", "max_wait_ms", "yield_p", "leads", "cut_in"}
+PACE_FIELDS = {"name", "description", "max_wait_ms", "yield_p", "leads", "cut_in", "lead_after_s"}
 PROTOCOLS = {"VAD": {"is_voice"}, "Recognizer": {"connect", "send", "segments", "close"}, "Responder": {"lines"},
              "Synthesizer": {"audio"}, "Embedder": {"ready", "warm", "embed"}}
 POLICIES = {"end_of_turn", "listen", "floor", "cut_in", "quiet", "who"}

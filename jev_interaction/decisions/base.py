@@ -81,8 +81,7 @@ class Decision:
             questions, state = self.questions(s, ctx), self.state(s, ctx)
             ctx.setdefault("gen", s.gen)
             answers = await s._ask(self.name, questions, state, now=ctx.get("now"))
-            if s.cfg.judge_provider == "bailian":
-                answers = B.merge(answers)                         # questions asked both ways round: one answer each
+            answers = B.merge(answers)                             # a question asked both ways round: one answer
             if self.current(s, ctx):
                 await self.apply(s, answers, ctx)
         finally:

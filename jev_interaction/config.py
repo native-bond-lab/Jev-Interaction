@@ -15,16 +15,19 @@ class Pace:
     max_wait_ms: int = 1200            # answered anyway after this much quiet
     yield_p: float = 0.5               # p(user takes the floor) that stops the agent's line
     leads: bool = False                # the agent may talk over the user's sounds; the floor question offers overrule / aside
+    lead_after_s: float = 6.0          # quiet after a line of the agent's that asked nothing: it picks its own thread up
+                                       # once this much has passed (asked at the next of Config.quiet_marks_s)
     cut_in: bool = False               # the agent may cut in over the user's words
 
 
 DEFAULT_PACES = [
     Pace("normal", "even back-and-forth: chatting, asking and answering, light teasing between equals"),
     Pace("patient", "the user needs room: upset, venting, thinking aloud, tired; the agent says little and lets them go on",
-         max_wait_ms=2500, yield_p=0.35),
-    Pace("narrate", "the agent carries the call: a story, an explanation, a memory; the user mostly listens", leads=True),
+         max_wait_ms=2500, yield_p=0.35, lead_after_s=15.0),
+    Pace("narrate", "the agent carries the call: a story, an explanation, a memory; the user mostly listens", leads=True,
+         lead_after_s=2.5),
     Pace("eager", "the agent presses and holds the floor: a quarrel, a game, heated teasing; short and fast",
-         max_wait_ms=1500, yield_p=0.6, leads=True, cut_in=True),
+         max_wait_ms=1500, yield_p=0.6, leads=True, cut_in=True, lead_after_s=2.5),
 ]
 
 
@@ -41,7 +44,8 @@ class Config:
     policies: dict[str, Policy] = field(default_factory=lambda: {
         "end_of_turn": SamplePolicy(), "listen": SamplePolicy(),
         "floor": ThresholdPolicy(fallback="carry_on"),   # yield's threshold comes from the (blended) pace
-        "cut_in": SamplePolicy(), "quiet": SamplePolicy(),
+        "cut_in": SamplePolicy(),
+        "quiet": ThresholdPolicy(fallback="wait"),       # the same quiet goes the same way: the marks are jittered instead
         "who": ThresholdPolicy(fallback="stay")})        # someone else is put on the line only when Jev is sure
 
     voice_min_ms: int = 60             # a frame with this much voice in it is the user making sound

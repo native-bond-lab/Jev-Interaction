@@ -145,7 +145,7 @@ The same question, the same kind of answer; the profile decides how it is read.
 | the user talks on | `listen` | something they are waiting for is due · a spot that fits a sound · quiet · an answer is due (Jev picks the moment, the language model the words) |
 | both talk at once | `floor` | carry on · yield · finish the sentence · take the floor back · react at once · short aside |
 | the agent leads | `cut_in` | cut in · let them finish |
-| the line is quiet | `quiet` | go on · check on them · wait · hang up |
+| the line is quiet | `quiet` | asked as facts (whose move is it · are they busy · were goodbyes said · has the agent called out with no answer); the facts and the clock give go on · check on them · wait · hang up |
 | the caller asks for someone else | `who` | stay · put them on (experimental; personas that list a `cast`) |
 
 **Paces** (normal, patient, narrate, eager) say who holds the floor. Their timing is blended by Jev's probabilities

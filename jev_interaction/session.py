@@ -232,7 +232,7 @@ class Session:
         tot = sum(probs.values())
         mix = lambda attr: sum(v / tot * getattr(self.cfg.pace(k), attr) for k, v in probs.items())  # noqa: E731
         return Pace(base.name, base.description, max_wait_ms=int(mix("max_wait_ms")), yield_p=mix("yield_p"),
-                    leads=base.leads, cut_in=base.cut_in)
+                    leads=base.leads, cut_in=base.cut_in, lead_after_s=mix("lead_after_s"))
 
     async def _update_pace(self, probs: dict):
         self.pace_probs = probs

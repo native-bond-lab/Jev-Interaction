@@ -33,11 +33,13 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from jev_interaction.config import DEFAULT_PACES  # noqa: E402
+from jev_interaction.decisions import quiet as QUIET  # noqa: E402
 from jev_interaction.judge import JevClient  # noqa: E402
 from jev_interaction.judge import bailian as B  # noqa: E402
 from jev_interaction.judge import questions as Q  # noqa: E402
 from jev_interaction.judge import state as S  # noqa: E402
 from jev_interaction.judge.client import probs as P  # noqa: E402
+from jev_interaction.policy import ThresholdPolicy  # noqa: E402
 from jev_interaction.profile import Profile  # noqa: E402
 from jev_interaction.server import paths  # noqa: E402
 
@@ -71,6 +73,7 @@ EN_DONE = ["Have you eaten yet?", "Can you look up my order?", "The weather is l
            "Can you cancel my order?", "Today was a rough day.", "Get some rest then.", "I'd like to change rooms.", "That movie was pretty good."]
 
 PACES = {p.name: p.description for p in DEFAULT_PACES}
+LEAD_AFTER = {p.name: p.lead_after_s for p in DEFAULT_PACES}
 PROVIDER = "jev"
 QUIET_S = 0.4
 
@@ -200,14 +203,13 @@ def decision_cases(last_words: bool, held_out: bool = False, provider: str = "je
             out.append({"d": "both talking", "lang": lang, "right": right, "q": q, "state": st,
                         "act": lambda a: floor_action(P(a, "floor")), "ok": lambda act, want=want: act in want})
         for recent, last, quiet_s, spoke, pace, right in K.QUIET[lang]:
-            allowed = ["go_on", "wait"] + (["check"] if quiet_s >= 10 else []) + (["hang_up"] if quiet_s >= 25 and spoke else [])
             text = header(p, pace, recent + [f"A: {last}"]) + quiet(p, last, quiet_s, spoke)
             said = [r.split(": ", 1)[1] for r in recent if r.startswith("user: ")]
-            q, st = ((B.quiet(), B.quiet_state(text, last, said[-1] if said else "", quiet_s, spoke, pace)) if bailian
-                     else ({"quiet": Q.quiet(p.short, pace)}, text))
-            probs = (lambda a: B.quiet_probs(a)) if bailian else (lambda a: P(a, "quiet"))
+            q, st = QUIET.facts(), B.quiet_state(text, last, said[-1] if said else "", quiet_s, spoke, pace)
+            allowed = QUIET.allowed(quiet_s, spoke, lead_after_s=LEAD_AFTER[pace], check_after_s=10, hangup_after_s=25)
             out.append({"d": "a silence", "lang": lang, "right": right, "q": q, "state": st,
-                        "act": lambda a, allowed=allowed, probs=probs: max(allowed, key=lambda k: probs(a).get(k, 0.0)),
+                        "act": lambda a, allowed=allowed, long=quiet_s >= 10: ThresholdPolicy(fallback="wait").choose(
+                            QUIET.probs(a, long=long, may_hang_up="hang_up" in allowed), allowed),
                         "ok": lambda act, right=right: act == right})
         for recent, said, right in K.PACE[lang]:
             q, st = turn({}, header(p, "normal", recent) + user_turn(p, [said], 400), 400, said)

@@ -10,6 +10,5 @@ manner: >
 policies:
   end_of_turn: sample
   listen: sample
-  quiet: sample
 voices: {dashscope: longcheng_v2}
 display: {title: Chatterbox, title_zh: 话唠阿乐, tagline: "Talks fast, reacts to everything, hates a silence", tagline_zh: "接话快、应声多，冷场一秒都忍不了", language: zh, accent: "#fb923c", order: 70, group: fun, listed: false}

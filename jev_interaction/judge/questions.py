@@ -9,7 +9,7 @@ agent's short name.
                                            listen      due / fits / quiet / answer_due
     both talk at once                      floor       carry_on / yield / finish_first / overrule / jump_in / aside
     the user talks, the agent leads        cut_in      cut_in / let_finish
-    quiet since the agent's last line      quiet       go_on / check / wait / hang_up
+    quiet since the agent's last line      quiet       small facts (decisions/quiet.py), not one question
     someone else can be put on the line    who         stay / one of the others (rides in the turn request)
 """
 from __future__ import annotations
@@ -131,6 +131,8 @@ def cut_in(name: str) -> dict:
 
 
 def quiet(name: str, pace: str) -> dict:
+    """The quiet as one question, as it was asked until 0.3: kept so logs recorded with it can be replayed. The engine
+    now asks facts and maps them (decisions/quiet.py)."""
     return {"type": "choice", "instructions": (
         f"It has been quiet on the line since {name}'s last line. The call is in the {pace} pace. Would {name}, being who they "
         f"are, say something now, or let the quiet be? If the last line asked the user something, the quiet is theirs; if it was "

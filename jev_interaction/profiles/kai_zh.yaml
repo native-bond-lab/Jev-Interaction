@@ -16,7 +16,6 @@ manner: >
 policies:
   end_of_turn: sample
   listen: sample
-  quiet: sample
   cut_in: sample
 voices: {dashscope: longcheng_v2}
 cast: [lyra_zh]      # who the caller can ask to be put on the line

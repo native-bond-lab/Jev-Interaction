@@ -107,14 +107,42 @@ async def test_a_sound_over_the_line_with_no_words_asks_nothing():
     assert not judge.asked and not events
 
 
+QUIET_FACTS = {"turn": {"theirs": 0.1, "ours": 0.9}, "busy": {"busy": 0.0, "not_busy": 1.0},
+               "bye": {"goodbye": 0.0, "going": 1.0}, "gone": {"unanswered": 0.0, "not_yet": 1.0}}
+
+
+def quiet_facts(**changed) -> dict:
+    """A fake judge's answers to the quiet facts, asked in both option orders (decisions/quiet.py)."""
+    facts = {**QUIET_FACTS, **changed}
+    return {**facts, **{k + "__r": v for k, v in facts.items()}}
+
+
 async def test_a_quiet_line_may_be_picked_up_and_hang_up_is_never_first():
-    s, events, _ = make({"quiet": {"go_on": 0.0, "check": 0.0, "wait": 0.0, "hang_up": 1.0}}, {"quiet": ArgmaxPolicy()})
-    s.ledger.agent("That's my story.")
+    s, events, _ = make(quiet_facts(bye={"goodbye": 0.95, "going": 0.05}))
+    s.ledger.agent("Bye then.")
+    await s.ask_quiet(30.0)                                              # the call has ended, but nothing was said into
+    done = [e for e in events if e.get("what") == "quiet"]               # the quiet yet: she checks first
+    assert done[-1]["action"] == "check" and not s.hanging_up and s.spoke_into_quiet == 1
+    s.speaking = False
     await s.ask_quiet(30.0)
-    assert not any(e["type"] == "line" for e in events)                  # hang-up not allowed before anything was said into it
-    s.spoke_into_quiet = 1
+    assert [e for e in events if e.get("what") == "quiet"][-1]["action"] == "hang_up" and s.hanging_up
+
+
+async def test_what_is_done_in_a_quiet_follows_whose_move_it_is_and_how_long_it_has_been():
+    async def after(quiet_s, pace="normal", **facts):
+        s, events, _ = make(quiet_facts(**facts))
+        s.pace = pace
+        s.ledger.agent("So that was my week.")
+        await s.ask_quiet(quiet_s)
+        return next(e["action"] for e in events if e.get("what") == "quiet")
+    theirs = {"turn": {"theirs": 0.9, "ours": 0.1}}
+    assert await after(4.0) == "wait" and await after(8.0) == "go_on"            # her own move: after the pace's lead_after_s
+    assert await after(4.0, "narrate") == "go_on" and await after(8.0, "patient") == "wait"
+    assert await after(8.0, **theirs) == "wait" and await after(12.0, **theirs) == "check"    # theirs: let it be, then check
+    assert await after(12.0, busy={"busy": 0.9, "not_busy": 0.1}) == "check"     # "one moment": theirs as well
+    s, events, _ = make({})                                                      # a judge that answers nothing: nothing said
     await s.ask_quiet(30.0)
-    assert any(e["type"] == "line" for e in events) and s.hanging_up
+    assert not any(e["type"] == "line" for e in events)
 
 
 def test_a_profile_brings_its_own_policies(tmp_path):
@@ -774,17 +802,16 @@ async def test_bailian_floor_points_at_the_words_said_over_the_line():
     assert any(e.get("what") == "floor" and e["action"] == "finish_first" for e in events)
 
 
-async def test_bailian_quiet_asks_small_questions_and_hangs_up_on_a_closed_call():
+async def test_a_quiet_is_asked_as_small_facts_about_fields_of_their_own_whatever_the_judge():
     small = {"turn": {"theirs": 0.2, "ours": 0.8}, "busy": {"busy": 0.0, "not_busy": 1.0},
-             "bye": {"goodbye": 0.95, "going": 0.05}, "gone": {"unanswered": 0.1, "not_yet": 0.9}, "long": {"pause": 0.0, "long": 1.0}}
-    s, events, judge = make(both_ways(small), {"quiet": ArgmaxPolicy()})
-    s.cfg.judge_provider = "bailian"
+             "bye": {"goodbye": 0.95, "going": 0.05}, "gone": {"unanswered": 0.1, "not_yet": 0.9}}
+    s, events, judge = make(both_ways(small))
     s.ledger.user("Okay, bye then")
     s.ledger.agent("Bye, take care.")
     s.spoke_into_quiet = 1
     await s.ask_quiet(30.0)
     asked, state = judge.asked[0]
-    assert {"turn", "busy", "bye", "gone", "long", "bye__r"} <= asked and "quiet" not in asked
+    assert asked == {"turn", "busy", "bye", "gone", "turn__r", "busy__r", "bye__r", "gone__r"}    # how long: the engine's clock
     assert state["user_last_words"] == "Okay, bye then" and state["agent_last_line"] == "Bye, take care."
     assert any(e.get("what") == "quiet" and e["action"] == "hang_up" for e in events)
 

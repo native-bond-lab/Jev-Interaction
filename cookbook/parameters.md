@@ -24,17 +24,19 @@ when it is every call.
 Each turn Jev also judges which pace the call is in. A pace says who holds the floor, and its timing is **blended** by
 Jev's probabilities: a call that is 60 % normal and 40 % patient waits in between.
 
-| pace | when | `max_wait_ms` | `yield_p` | `leads` | `cut_in` |
-|---|---|---|---|---|---|
-| `normal` | even back-and-forth | 1200 | 0.5 | | |
-| `patient` | the user needs room: upset, venting, thinking aloud | 2500 | 0.35 | | |
-| `narrate` | the agent carries the call: a story, an explanation | 1200 | 0.5 | yes | |
-| `eager` | the agent presses: a quarrel, a game, heated teasing | 1500 | 0.6 | yes | yes |
+| pace | when | `max_wait_ms` | `yield_p` | `leads` | `cut_in` | `lead_after_s` |
+|---|---|---|---|---|---|---|
+| `normal` | even back-and-forth | 1200 | 0.5 | | | 6 |
+| `patient` | the user needs room: upset, venting, thinking aloud | 2500 | 0.35 | | | 15 |
+| `narrate` | the agent carries the call: a story, an explanation | 1200 | 0.5 | yes | | 2.5 |
+| `eager` | the agent presses: a quarrel, a game, heated teasing | 1500 | 0.6 | yes | yes | 2.5 |
 
 - `max_wait_ms`: after this much quiet the agent answers anyway.
 - `yield_p`: how sure Jev must be that the user is taking the floor before the agent's line stops. Lower = yields sooner.
 - `leads`: the agent may talk on over the user's sounds; the floor question offers "take the floor back" and "short aside".
 - `cut_in`: the agent may cut in over the user's words.
+- `lead_after_s`: quiet after a line of the agent's that asked the user nothing: it picks its own thread up once this
+  much has passed (at the next quiet mark). Blended like the timing above.
 
 Your own paces replace these (the description is what Jev reads to tell them apart):
 
@@ -89,10 +91,14 @@ the words from the call's record.
 
 | field | recommended | what it does |
 |---|---|---|
-| `quiet_marks_s` | (1.5, 4, 10, 25, 60, 120, 240) | when the quiet question is asked (go on, check on them, wait, hang up) |
-| `quiet_jitter` | 0.3 | the marks move by up to this share, so silences do not feel timed |
+| `quiet_marks_s` | (1.5, 4, 10, 25, 60, 120, 240) | when a quiet is looked at: Jev is asked the facts (whose move it is, whether they are busy, whether goodbyes were said, whether the agent has called out with no answer) and the engine acts on them and on how long it has been |
+| `quiet_jitter` | 0.3 | the marks move by up to this share, so silences do not feel timed. This is the only chance in it: the same facts after the same quiet give the same action |
 | `check_min_quiet_s` | 10 | "are you still there?" only after this much quiet |
 | `hangup_min_quiet_s` | 25 | a hang-up only after this much quiet, and never as the first thing said into it |
+
+The move is the agent's own (its last line asked nothing): it goes on after the pace's `lead_after_s`. The move is the
+user's: it lets the quiet be, and checks on them after `check_min_quiet_s`. The call has ended: it hangs up once that
+is open. The `quiet` policy is a threshold by default; `sample` draws among the same actions if you want that back.
 
 ### The judge
 

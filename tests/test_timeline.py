@@ -107,7 +107,8 @@ async def test_every_question_asked_at_one_instant_reads_the_same_account_of_it(
     s.ledger.agent("So that was my week.")
     await s.ask_quiet(12.0)
     header = S.header(s.p, s.pace, s.ledger, s.cfg.judge_turns, s.cfg.judge_turn_chars)
-    assert judge.asked[-1][1] == header + S.now(s.now(quiet_s=12.0)) and "quiet for 12 s" in judge.asked[-1][1]
+    call = judge.asked[-1][1]["call"]                                    # the same text, beside the fields the facts point at
+    assert call == header + S.now(s.now(quiet_s=12.0)) and "quiet for 12 s" in call
 
 
 def test_now_says_which_of_the_four_moments_the_call_is_in():

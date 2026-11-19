@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **A quiet is asked as facts, and what to do follows from them and the clock.** The quiet question ("would the
+  agent, being who they are, say something now?") is no longer sent. Jev is asked four small things about the record,
+  each with its options in both orders: whose move the agent's last line leaves, whether the user said they need a
+  moment, whether goodbyes were said, whether the agent has been calling out with no answer. How long it has been is
+  the engine's clock, not a question. Its own move: the agent picks the thread up after the pace's new `lead_after_s`
+  (normal 6 s, patient 15, narrate and eager 2.5). The user's move: it lets the quiet be and checks on them after
+  `check_min_quiet_s`. An ended call: it hangs up once that is open, and checks first when nothing has been said into
+  the quiet yet. On the written moments of `tools/judge_bench.py --decisions`, Jev was right on 33% as one question
+  (it answered "let it be" to nearly everything) and is right on 100% as facts, tuning set and held-out set alike. The
+  `quiet` policy is a threshold by default, so the same quiet goes the same way and only the marks are jittered; the
+  shipped personas no longer draw it. One set of questions serves every judge here: `judge_provider` no longer
+  changes how a quiet is asked. `judge.questions.quiet` stays for replaying older logs.
 - **The call's record is one timeline, and every question reads the same "now".** `Ledger` keeps the call on one
   clock (seconds into the call): each turn has when it began and ended (`Turn.at`, `Turn.end`), the user's turns have
   where their voice stopped and came back (`Turn.pauses`, `Config.pause_mark_ms`), and what the engine judged and did
