@@ -610,7 +610,7 @@ async def test_jev_picks_the_moment_and_the_responder_the_words_of_what_is_put_i
 
     from jev_interaction.decisions.listen import LISTEN
     from jev_interaction.utterance import Utterance
-    s, events, _ = scripted_session(policies={"listen": ThresholdPolicy(default=0.5)})
+    s, events, _ = scripted_session(policies={"listen": ThresholdPolicy(default=0.5)}, listen_gap_jitter=0)
     said = lambda: [(e["kind"], e["text"]) for e in events if e["type"] == "listen"]  # noqa: E731
     due = {"listen": {"probabilities": {"due": 0.9, "quiet": 0.1}}}
     fits = {"listen": {"probabilities": {"fits": 0.9, "quiet": 0.1}}}

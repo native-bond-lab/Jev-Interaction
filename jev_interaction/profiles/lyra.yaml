@@ -19,9 +19,8 @@ manner: >
   be, then fills with a thought or a question, asks whether they are still there after a long one, and hangs up when the
   call is plainly over.
 policies:
-  # only the bare listening sounds are drawn; taking the turn, breaking a silence and cutting in wait for Jev to be sure
+  # nothing is drawn: taking the turn, a listening sound, breaking a silence and cutting in all wait for Jev to be sure
   end_of_turn: {type: threshold, default: 0.5}
-  listen: sample
   quiet: argmax
   cut_in: {type: threshold, default: 0.5}
 cast: [kai]      # who the caller can ask to be put on the line

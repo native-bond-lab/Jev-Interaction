@@ -16,6 +16,7 @@ from ..judge import questions as Q
 from ..judge import state as S
 from ..judge.client import probs as P
 from .base import Decision
+from .cut_in import CUT_IN
 from .handover import HANDOVER
 from .listen import LISTEN
 
@@ -26,7 +27,7 @@ class Turn(Decision):
 
     def on_words(self, s):
         if not s.speaking and not s.generating:
-            s._spawn(self.ask(s, utt_id=s.utt.id))
+            s._spawn(self.ask(s, utt_id=s.utt.id, words=True))
 
     def ready(self, s, ctx):
         return s.utt is not None
@@ -41,6 +42,9 @@ class Turn(Decision):
             qs.update(LISTEN.questions(s, ctx))
             if s.cfg.judge_provider == "bailian":
                 qs.update(B.listen())
+        ctx["may_cut"] = bool(ctx.get("words")) and CUT_IN.wanted(s, ctx)   # on new words, not on a quiet that grows
+        if ctx["may_cut"]:
+            qs.update(CUT_IN.questions(s, ctx))
         if HANDOVER.ready(s, ctx):
             qs.update(HANDOVER.questions(s, ctx))
         if s._offer_elsewhere():                                    # the only reader of `kind` is the "not said to me" choice
@@ -71,12 +75,29 @@ class Turn(Decision):
             return
         await s._update_pace(P(answers, "pace"))
         # a failed judge: p(finished) 0, so the turn is answered at the pace's longest wait
-        s.judged = {"finished": Q.finished(answers), "drawn": False,
+        finished = Q.finished(answers)
+        go = self.policy_for(s, ctx).draw(finished)                 # decided here, once, with the answer
+        s.judged = {"finished": finished, "go": go, "drawn": False,
                     "who": HANDOVER.chosen(s, answers, ctx) if HANDOVER.ready(s, ctx) else None}
-        if ctx["may_listen"]:
-            if s.cfg.judge_provider == "bailian":
-                answers = {**answers, "listen": {"probabilities": B.listen_probs(answers)}}
-            await LISTEN.apply(s, answers, ctx)
+        # one answer, one thing done. The turn is theirs to end: once it is judged finished the agent takes it when
+        # their voice stops (on_tick) and puts nothing in before that. Otherwise it may cut in, if this pace does;
+        # otherwise it may let something slip in; otherwise it stays silent
+        why = None
+        if go:
+            act = "answer"
+        elif ctx.get("may_cut") and CUT_IN.go(s, answers, ctx):
+            act = "cut_in"
+        else:
+            if ctx["may_listen"]:
+                if s.cfg.judge_provider == "bailian":
+                    answers = {**answers, "listen": {"probabilities": B.listen_probs(answers)}}
+                why = LISTEN.choose(s, answers, ctx)
+            act = "listen" if why else "nothing"
+        s.ledger.note("decision", what="turn", action=act, finished=round(finished, 3), listen=why)
+        if act == "cut_in":
+            await s.respond("cut_in")
+        elif why:
+            s._spawn(s.listen_in(why))
 
     async def on_tick(self, s, now):
         if s.utt is None or not s.utt.segments or s.silence_ms <= 0 or s.speaking or s.generating:
@@ -84,8 +105,8 @@ class Turn(Decision):
         pace = s.params()
         j = s.judged
         if j and not j["drawn"]:
-            j["drawn"] = True                 # one draw per Jev answer; new words or more quiet bring a new answer
-            go = self.policy_for(s, ctx={}).draw(j["finished"])
+            j["drawn"] = True                 # one decision per Jev answer; new words or more quiet bring a new answer
+            go = j["go"] if "go" in j else self.policy_for(s, ctx={}).draw(j["finished"])
             await s.send(type="decision", what="end_of_turn", finished=round(j["finished"], 2), go=go)
             if go:
                 await self.answer(s)

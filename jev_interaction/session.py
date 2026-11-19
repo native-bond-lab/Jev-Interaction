@@ -72,6 +72,7 @@ class Session:
         self.quiet_marks: list[float] = []
         self.spoke_into_quiet = 0
         self.listen_last = 0.0
+        self.listen_gap = self.cfg.listen_gap_s  # to the next sound that could be left out; moved after each one
         self.caller_levels: list[float] = []   # loudness of the utterances answered as the caller's (Config.far_db)
         self.embedder = embedder                # speaker embeddings for the caller's voiceprint; None: no voiceprint
         self.voiceprint = Voiceprint(self.cfg.voice_same, self.cfg.voice_other, self.cfg.far_db or 10.0, self.cfg.voice_verdict_ms)
@@ -503,6 +504,8 @@ class Session:
         line_id = uuid.uuid4().hex
         self.lines[line_id] = text
         utt.asides.append((at, text, line))
+        j = self.cfg.listen_gap_jitter
+        self.listen_gap = self.cfg.listen_gap_s * random.uniform(1 - j, 1 + j)
         await self.send(type="listen", id=line_id, text=text, kind=why, audio=f"/tts/{line_id}")
 
     async def _stop_line(self):

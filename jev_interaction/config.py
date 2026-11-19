@@ -4,7 +4,7 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass, field
 
-from .policy import Policy, SamplePolicy, ThresholdPolicy
+from .policy import Policy, ThresholdPolicy
 
 
 @dataclass
@@ -40,11 +40,13 @@ class Config:
     start_pace: str = "normal"
     opening_turns: int = 2             # the pace holds through the first turns unless the user asks for something else
 
-    # one policy per decision (see policy.py): sample for companions, thresholds for predictable agents
+    # one policy per decision (see policy.py). Thresholds by default: the same moment goes the same way, and what
+    # varies is when a thing may happen (quiet_jitter, listen_gap_jitter). SamplePolicy draws instead, for whoever
+    # wants that
     policies: dict[str, Policy] = field(default_factory=lambda: {
-        "end_of_turn": SamplePolicy(), "listen": SamplePolicy(),
+        "end_of_turn": ThresholdPolicy(), "listen": ThresholdPolicy(),
         "floor": ThresholdPolicy(fallback="carry_on"),   # yield's threshold comes from the (blended) pace
-        "cut_in": SamplePolicy(),
+        "cut_in": ThresholdPolicy(),
         "quiet": ThresholdPolicy(fallback="wait"),       # the same quiet goes the same way: the marks are jittered instead
         "who": ThresholdPolicy(fallback="stay")})        # someone else is put on the line only when Jev is sure
 
@@ -56,6 +58,8 @@ class Config:
                                        # call's record as a pause of theirs (Turn.pauses). Nothing is decided on it
     sound_close_ms: int = 1500         # a sound with no words behind it is over after this much quiet (a cough, a breath)
     listen_gap_s: float = 3.0          # at least this long between two listening sounds that could as well be left out
+    listen_gap_jitter: float = 0.3     # after each one the gap to the next moves by up to this share, so they do not come
+                                       # on a beat
     listen_min_gap_s: float = 1.0      # and no two things put in closer than this, whatever they are: they would run together
     listen_due_min: float = 0.5        # what the user is waiting for is put in when Jev is this sure, never left to a draw
     turn_reask_ms: tuple = (1000, 2000, 4000)   # quiet after words not judged finished: the turn question is asked again

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **One answer from Jev, one thing done; and nothing is drawn by default.** While the user has the turn, taking it,
+  cutting in and letting a sound slip in were three decisions, each made on its own: a sound could go out and the
+  reply follow it a tick later. They are one choice now (`decisions/turn.py`): judged finished, the agent takes the
+  turn when their voice stops and puts nothing in before that; otherwise it may cut in, in a pace that does (the
+  cut-in question rides in the turn request on new words instead of being a request of its own); otherwise it may put
+  a sound in; otherwise it stays silent. The choice is in the call's record (`decision`, `what: turn`). Every default
+  policy is a threshold (0.5): `end_of_turn`, `listen` and `cut_in` were draws. A draw against p(finished) spoke
+  into one unfinished sentence in ten when Jev said 0.1, and made a recorded call impossible to work through again.
+  What varies now is when a thing may happen, not whether a sure thing is done: the quiet marks were already
+  jittered, and the gap between two listening sounds is too (`Config.listen_gap_jitter`, 0.3). `SamplePolicy` is
+  still there for whoever wants a draw; the shipped personas no longer use it. Measured on Jev before and after
+  (`tools/judge_bench.py`, the cut-in question now sent the way the engine sends it): end of turn 97% → 96%,
+  listening 96% / 92% → 100% / 96%, cutting in 69% → 69%, the rest unchanged.
 - **A quiet is asked as facts, and what to do follows from them and the clock.** The quiet question ("would the
   agent, being who they are, say something now?") is no longer sent. Jev is asked four small things about the record,
   each with its options in both orders: whose move the agent's last line leaves, whether the user said they need a

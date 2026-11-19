@@ -26,7 +26,9 @@ class Listen(Decision):
     def questions(self, s, ctx):
         return {"listen": Q.listen(s.p.short)}
 
-    async def apply(self, s, answers, ctx):
+    def choose(self, s, answers, ctx) -> str | None:
+        """Which kind of thing to put in now, "due" or "fits", or None. Nothing is done here: the turn decision weighs
+        it with taking the turn and cutting in, and one of them happens (turn.py)."""
         lp = P(answers, "listen")
         due, fits = lp.get("due", 0.0), lp.get("fits", 0.0)           # quiet and answer_due are the mass for "nothing"
         finished = s.judged["finished"] if s.judged else 0.0
@@ -37,12 +39,16 @@ class Listen(Decision):
             due = 0.0
         if due >= s.cfg.listen_due_min:
             why = "due"
-        elif (time.monotonic() - s.listen_last >= s.cfg.listen_gap_s and finished < s.cfg.listen_finished_max
+        elif (time.monotonic() - s.listen_last >= s.listen_gap and finished < s.cfg.listen_finished_max
               and self.policy_for(s, ctx).draw(due + fits)):
             why = "fits"
         else:
             why = None
         s.ledger.note("decision", what="listen", due=round(due, 3), fits=round(fits, 3), action=why)
+        return why
+
+    async def apply(self, s, answers, ctx):
+        why = self.choose(s, answers, ctx)
         if why:
             s._spawn(s.listen_in(why))
 

@@ -81,6 +81,7 @@ the words from the call's record.
 
 | field | recommended | what it does |
 |---|---|---|
+| `listen_gap_jitter` | 0.3 | after each sound the gap to the next moves by up to this share, so they do not come on a beat |
 | `listen_due_min` | 0.5 | something the user is waiting for (an item said back, a count they asked for) is put in when Jev is this sure, never left to a draw |
 | `listen_gap_s` | 3.0 | at least this long between two sounds that could as well be left out |
 | `listen_min_gap_s` | 1.0 | nothing put in closer than this to the last, whatever it is |

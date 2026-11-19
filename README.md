@@ -131,7 +131,7 @@ Asked   listen: due · fits · quiet · answer_due
 
 Jev     fits 0.68 · quiet 0.27 · answer_due 0.05
 
-Policy  companion → sample        →  "fits"  →  the language model writes "Oh no." and the caller goes on
+Policy  companion → threshold 0.5 →  "fits"  →  the language model writes "Oh no." and the caller goes on
         support   → threshold 0.8 →  nothing clears the bar  →  silence
 ```
 
@@ -158,13 +158,13 @@ read.
 
 | profile | listening sounds | mid-sentence pauses | talked over | silence | policies |
 |---|---|---|---|---|---|
-| [companion](jev_interaction/profiles/companion.yaml) | often, varied | quick to react | stops, delighted | fills it | sample |
+| [companion](jev_interaction/profiles/companion.yaml) | often, varied | quick to react | stops, delighted | fills it | defaults |
 | [support](jev_interaction/profiles/support.yaml) | a short "okay" | waits (numbers being read) | stops at once | waits, then one check | thresholds |
-| [tutor](jev_interaction/profiles/tutor.yaml) | encouraging | very patient | finishes the explanation | offers a prompt | sample |
+| [tutor](jev_interaction/profiles/tutor.yaml) | encouraging | very patient | finishes the explanation | offers a prompt | defaults |
 | [interviewer](jev_interaction/profiles/interviewer.yaml) | none | lets thinking run | cuts in on rambling | waits for the answer | mixed |
 | [Vera · speaking coach](jev_interaction/profiles/vera.yaml) | almost none | lets silence work | finishes her sentence | gives the next exercise | thresholds |
-| [话唠阿乐 · chatterbox](jev_interaction/profiles/chatterbox_zh.yaml) | constant | jumps in | finishes his sentence | can't bear one | sample |
-| [小奶狗小言 · sweet puppy](jev_interaction/profiles/puppy_zh.yaml) | soft "mm, and then?" | waits | stops the moment you speak | asks if you're okay | sample |
+| [话唠阿乐 · chatterbox](jev_interaction/profiles/chatterbox_zh.yaml) | constant | jumps in | finishes his sentence | can't bear one | defaults |
+| [小奶狗小言 · sweet puppy](jev_interaction/profiles/puppy_zh.yaml) | soft "mm, and then?" | waits | stops the moment you speak | asks if you're okay | defaults |
 | [电商客服小安 · support (Chinese)](jev_interaction/profiles/support_zh.yaml) | a rare "好的" | never cuts in on an order number | stops at once | one check | thresholds |
 
 ```yaml

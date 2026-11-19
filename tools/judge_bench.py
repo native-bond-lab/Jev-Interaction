@@ -225,8 +225,11 @@ def decision_cases(last_words: bool, held_out: bool = False, provider: str = "je
             want = {"due": {"due"}, "none": {"sound", "nothing"}, "answer_due": {"nothing"}}[right]
             out.append({"d": "listening", "lang": lang, "right": right, "q": q, "state": st, "act": act, "ok": lambda act, want=want: act in want})
         for recent, segments, right in K.CUT_IN[lang]:
-            out.append({"d": "cutting in", "lang": lang, "right": right, "q": {"cut": Q.cut_in(p.short)},
-                        "state": header(p, "eager", recent) + user_turn(p, segments, 0),
+            q = {**Q.turn(p.short, "eager", PACES), "listen": Q.listen(p.short), "cut": Q.cut_in(p.short)}   # it rides in
+            st = header(p, "eager", recent) + user_turn(p, segments, 0)                                    # the turn request
+            if last_words:
+                q, st = {**q, **Q.last_words()}, S.with_last_words(st, " ".join(segments), 0)
+            out.append({"d": "cutting in", "lang": lang, "right": right, "q": q, "state": st,
                         "act": lambda a: "cut_in" if P(a, "cut").get("cut_in", 0.0) >= 0.5 else "let_finish", "ok": lambda act, right=right: act == right})
         for recent, said, right in K.WHO[lang]:
             q, st = turn({"who": Q.who(p.short, {other_id: (b.short, b.task)})},

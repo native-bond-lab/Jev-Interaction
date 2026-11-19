@@ -54,17 +54,17 @@ Jev gives a probability for every choice. A policy turns them into an action, pe
 
 | policy | does | use it for |
 |---|---|---|
-| `sample` | draws against the probabilities: the same moment goes a little differently each time | characters, anything that should feel alive |
-| `threshold` | acts only when a choice reaches `default` (or its own entry in `thresholds`); otherwise `fallback` | working lines that must be predictable |
+| `threshold` | acts only when a choice reaches `default` (or its own entry in `thresholds`); otherwise `fallback` | the default for every decision: the same moment goes the same way, and the bar is a number you can tune against recorded calls |
+| `sample` | draws against the probabilities: the same moment goes a little differently each time | if you want chance in a decision. Nothing shipped uses it: a draw speaks into one unfinished sentence in ten when Jev says 0.1 |
 | `argmax` | always the likeliest choice | when you want no randomness and no bar |
 
 The decisions you can set: `end_of_turn`, `listen`, `floor`, `cut_in`, `quiet`, `who`. Anything you leave out uses the
-`Config` default (sample, except `floor` and `who`, which are thresholds).
+`Config` default: a threshold of 0.5 for each (`floor` takes its bar for stopping from the pace).
 
 ```yaml
 policies:
   end_of_turn: {type: threshold, default: 0.7}     # answer only when Jev is 70 % sure they finished
-  listen: sample
+  listen: {type: threshold, default: 0.6}          # a little slower to put a sound in
   floor: {type: threshold, default: 0.35, fallback: carry_on}   # yields sooner than the pace says
   quiet: argmax
 ```
@@ -75,13 +75,12 @@ policies:
 |---|---|---|---|---|---|
 | support line | threshold 0.7 | threshold 0.8 | threshold 0.5 | argmax | predictable; no chatter |
 | interviewer | threshold 0.6 | (silent manner) | default | default | lets answers run |
-| tutor | sample | sample | default | sample | encouraging, varied |
-| character, every decision open | threshold 0.5 | sample | default | argmax | only the small sounds are drawn; taking the turn, breaking a silence and cutting in wait for Jev to be sure |
-| playful character | sample | sample | default | sample | the same moment goes differently each time |
+| tutor | default | default | default | default | the manner does the work: patient, encouraging |
+| character, every decision open | default | default | default | default | everything waits for Jev to be sure; the manner and the paces carry the character |
 
-The fourth row is how our own characters run: drawing every decision makes a character feel lively in a demo and
-erratic over a long call. Drawing only the listening sounds, and asking for confidence before anything that takes the
-floor, keeps the life and loses the misfires.
+Our own characters run on the defaults. Drawing a decision made a character feel lively in a demo and erratic over a
+long call, so nothing is drawn any more: what varies from one moment to the next is when a thing may happen (the
+quiet marks and the gap between listening sounds are jittered), not whether a sure thing is done.
 
 ## Listening with content (experimental)
 
@@ -90,7 +89,7 @@ Anything the agent puts in while the user talks is one decision. Jev only names 
 | moment | means | what happens |
 |---|---|---|
 | `due` | the user is waiting for it: a piece of a list just landed, or a thing they asked the agent to mark just came up | made when Jev is `listen_due_min` sure (0.5), never left to a draw |
-| `fits` | a spot for a small sound that could as well be left out | drawn by the `listen` policy, at most every `listen_gap_s` |
+| `fits` | a spot for a small sound that could as well be left out | made when the `listen` policy's bar is reached (0.5), at most every `listen_gap_s` (jittered by `listen_gap_jitter`) |
 | `quiet` | stay silent | nothing |
 | `answer_due` | they asked something; answer when they finish | nothing now |
 

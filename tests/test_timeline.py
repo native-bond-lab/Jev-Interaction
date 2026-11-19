@@ -97,8 +97,8 @@ async def test_every_question_asked_at_one_instant_reads_the_same_account_of_it(
         await asyncio.sleep(0.01)                                        # out before either answer is back
         return await answer(questions, state)
     judge.ask = over_the_network
-    await s.on_segment(Segment("and another thing about last night"))    # the turn question and the cut-in question
-    await asyncio.sleep(0.05)
+    s.utt.segments.append((0.0, "and another thing about last night"))
+    await asyncio.gather(s.ask("turn", utt_id=1), s.ask_cut_in(s.gen))   # two decisions asked at the same instant
     (asked_a, state_a), (asked_b, state_b) = judge.asked
     assert asked_a != asked_b and state_a == state_b
     assert "What the user has said so far" in state_a
@@ -128,9 +128,10 @@ async def test_what_jev_answered_and_what_was_done_with_it_are_in_the_record(tmp
     s.silence_ms = 400
     await s.tick()
     kinds = [(n.kind, n.data.get("purpose") or n.data.get("what")) for n in s.ledger.notes]
-    assert kinds == [("judge", "turn"), ("decision", "listen"), ("decision", "end_of_turn")]
-    judged, _, done = s.ledger.notes
-    assert judged.data["answers"]["done"] == TURN["done"] and done.data == {"what": "end_of_turn", "finished": 0.9, "go": True}
+    assert kinds == [("judge", "turn"), ("decision", "turn"), ("decision", "end_of_turn")]
+    judged, chose, done = s.ledger.notes
+    assert judged.data["answers"]["done"] == TURN["done"] and chose.data["action"] == "answer"
+    assert done.data == {"what": "end_of_turn", "finished": 0.9, "go": True}
     assert [n.at for n in s.ledger.notes] == sorted(n.at for n in s.ledger.notes)
 
     await s.close()
@@ -140,3 +141,28 @@ async def test_what_jev_answered_and_what_was_done_with_it_are_in_the_record(tmp
     rows = lines[-1]["timeline"]                                         # turns and notes, in the order they happened
     assert [("turn" if "turn" in r else r["note"]) for r in rows] == ["turn", "judge", "decision", "decision", "turn"]
     assert rows[0]["turn"]["text"] == "How was your day?" and rows[4]["turn"]["role"] == "agent"
+
+
+async def test_one_answer_from_jev_leads_to_one_thing_done_while_the_user_has_the_turn():
+    """Taking the turn, cutting in and letting a sound slip in are one choice: judged finished, the agent waits for
+    their voice to stop and puts nothing in; not finished, it may cut in (a pace that does); else a sound; else nothing."""
+    async def after(done, listen, cut=None, pace="normal", speech_ms=2000):
+        answers = {"done": {"finished": done, "continuing": 1 - done}, "listen": listen}
+        if cut is not None:
+            answers["cut"] = {"cut_in": cut, "let_finish": 1 - cut}
+        s, events, judge = scripted_session(answers, start_pace=pace)
+        s.utt = Utterance(1, 0.0, speech_ms=speech_ms)
+        await s.on_segment(Segment("and then the vase went over,"))
+        await asyncio.sleep(0.05)
+        chose = [n.data for n in s.ledger.notes if n.data.get("what") == "turn"]
+        assert len(judge.asked) == 1 and len(chose) == 1               # one request, one choice
+        return chose[0]["action"], judge.asked[0][0], [e["type"] for e in events if e["type"] in ("line", "listen")]
+    sound, silent = {"due": 0.0, "fits": 0.9, "quiet": 0.1}, {"due": 0.0, "fits": 0.1, "quiet": 0.9}
+    assert (await after(0.9, sound))[::2] == ("answer", [])              # finished: no sound first, the reply comes on the tick
+    assert (await after(0.2, sound))[::2] == ("listen", ["listen"])
+    assert (await after(0.2, silent))[::2] == ("nothing", [])
+    act, asked, said = await after(0.2, sound, cut=0.9, pace="eager")
+    assert act == "cut_in" and "cut" in asked and "listen" not in said and "line" in said    # she cuts in: no "mm" beside it
+    assert (await after(0.9, sound, cut=0.9, pace="eager"))[0] == "answer"                   # they finished: nothing to cut into
+    assert "cut" not in (await after(0.2, sound, pace="eager", speech_ms=600))[1]            # too little said to cut into
+    assert "cut" not in (await after(0.2, sound))[1]                                         # a pace that does not cut in
