@@ -4,10 +4,7 @@ Asked only in a pace that allows it (Pace.cut_in), once the user has been talkin
 """
 from __future__ import annotations
 
-import time
-
 from ..judge import questions as Q
-from ..judge import state as S
 from ..judge.client import probs as P
 from .base import Decision
 
@@ -26,14 +23,14 @@ class CutIn(Decision):
     def questions(self, s, ctx):
         return {"cut": Q.cut_in(s.p.short)}
 
-    def state(self, s, ctx):
-        return super().state(s, ctx) + S.user_turn(s.p.short, s.utt.segments, time.monotonic(), s.silence_ms, False, s.utt.asides)
-
     def current(self, s, ctx):
         return ctx["gen"] == s.gen and not s.speaking and not s.generating
 
     async def apply(self, s, answers, ctx):
-        if self.policy_for(s, ctx).draw(P(answers, "cut").get("cut_in", 0.0)):
+        p = P(answers, "cut").get("cut_in", 0.0)
+        go = self.policy_for(s, ctx).draw(p)
+        s.ledger.note("decision", what="cut_in", p=round(p, 3), go=go)
+        if go:
             await s.respond("cut_in")
 
 

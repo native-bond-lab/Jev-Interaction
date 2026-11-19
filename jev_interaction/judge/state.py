@@ -1,9 +1,52 @@
 """The text Jev reads. Every state opens the same way (who is on the call, the agent's task profile and manner, the pace,
-the recent turns) and then says what is happening on the line right now."""
+the recent turns) and then says what is happening on the line right now.
+
+"Right now" is one account, the same for every question asked at that instant (`Now`, built by `Session.now` from the
+call's record; `now` writes it out). No decision writes its own: a question is put to the call as it stands, so two
+questions asked together cannot have read two different calls, and a recorded state can be asked a new question later.
+
+There are two on the line and each is making sound or not, which gives the four moments a call can be in:
+
+    the agent     the user        what `now` says
+    quiet         talking         their words so far, segment by segment, and how long since the last sound (`user_turn`)
+    talking       talking         the line the agent is on and the words said over it (`overlap`)
+    quiet         quiet           the agent's last line and how long it has been quiet since (`quiet`)
+    talking       quiet           the line the agent is on, and that the user is listening
+"""
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 from ..ledger import Ledger
 from ..profile import Profile
+
+
+@dataclass(frozen=True)
+class Now:
+    """The call at one instant. Times are seconds into the call (Ledger.clock)."""
+    name: str                          # the agent on the line
+    at: float
+    agent_sounding: bool               # a line of the agent's is playing or on its way
+    agent_line: str                    # the line it is on, or its last one
+    user_open: bool = False            # the user has a turn in progress (ledger.open)
+    segments: tuple = ()               # its words so far: (when the recognizer closed them, the words)
+    heard: str = ""                    # everything made out of it, the piece not closed yet included
+    asides: tuple = ()                 # what the agent put in while they talked (Utterance.asides)
+    speech_ms: int = 0                 # how much voice the turn has had
+    silence_ms: int = 0                # how long since their last sound; 0 while the voice is going
+    quiet_s: float = 0.0               # nobody talking: how long since the agent's last line ended
+    spoke_into_quiet: int = 0          # how many times the agent has spoken into this quiet with nothing back
+    usual_reply_s: float | None = None  # how soon this user has usually started answering on this call (Ledger.reply_gaps)
+
+
+def now(m: Now) -> str:
+    if m.user_open:
+        if m.agent_sounding and m.heard:
+            return overlap(m.name, m.agent_line, m.heard, m.speech_ms)
+        return user_turn(m.name, list(m.segments), m.at, m.silence_ms, m.agent_sounding, list(m.asides))
+    if m.agent_sounding:               # no decision asks about this moment yet
+        return f'{m.name} is in the middle of saying: "{m.agent_line}"\nThe user is listening and has made no sound.'
+    return quiet(m.name, m.agent_line, m.quiet_s, m.spoke_into_quiet, m.usual_reply_s)
 
 
 def header(profile: Profile, pace: str, ledger: Ledger, turns: int, chars: int) -> str:

@@ -552,7 +552,7 @@ jev_interaction/
   profile.py          task profiles
   config.py           paces, timings, default policies
   presets.py          recommended · tested · default
-  ledger.py           the call's history, for both readers
+  ledger.py           the call's one record, on one clock: turns, their times, what was judged and done
   recorder.py         one JSON line per event, for replay
   adapters/           VAD · recognizer · responder · synthesizer; registry.py lists the providers per node
   prompts/            the responder's system prompt; speech/ holds one writing style per kind of voice

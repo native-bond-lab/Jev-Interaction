@@ -13,6 +13,7 @@ import time
 class Recorder:
     def __init__(self, path: str | pathlib.Path | None):
         self.f = None
+        self.clock = None            # set by the session: seconds into the call, written with every line as "at"
         if path:
             p = pathlib.Path(path)
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -20,7 +21,8 @@ class Recorder:
 
     def write(self, event: str, **data):
         if self.f:
-            self.f.write(json.dumps({"t": round(time.time(), 3), "event": event, **data}, ensure_ascii=False, default=str) + "\n")
+            at = {"at": self.clock()} if self.clock else {}
+            self.f.write(json.dumps({"t": round(time.time(), 3), **at, "event": event, **data}, ensure_ascii=False, default=str) + "\n")
             self.f.flush()
 
     def close(self):

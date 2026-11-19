@@ -45,8 +45,12 @@ class Decision:
         raise NotImplementedError
 
     def state(self, s: Session, ctx: dict) -> str:
-        """The text Jev reads. The header (who, the task profile, the pace, the recent turns) opens every state."""
-        return S.header(s.p, s.pace, s.ledger, s.cfg.judge_turns, s.cfg.judge_turn_chars)
+        """The text Jev reads: who, the task profile, the pace and the recent turns, then the call right now. It is the
+        same for every decision asked at this instant (`Session.now`, kept in `ctx["now"]`): a decision chooses its
+        questions, never its own account of the call. A subclass only reshapes it for a judge that wants the state as
+        an object (judge/bailian.py), from the same `ctx["now"]`."""
+        m = ctx["now"] = s.now(quiet_s=ctx.get("quiet_s"))
+        return S.header(s.p, s.pace, s.ledger, s.cfg.judge_turns, s.cfg.judge_turn_chars) + S.now(m)
 
     def allowed(self, s: Session, ctx: dict) -> Iterable[str] | None:
         """The choices that apply right now; None for all of them."""
@@ -76,7 +80,7 @@ class Decision:
         try:
             questions, state = self.questions(s, ctx), self.state(s, ctx)
             ctx.setdefault("gen", s.gen)
-            answers = await s._ask(self.name, questions, state)
+            answers = await s._ask(self.name, questions, state, now=ctx.get("now"))
             if s.cfg.judge_provider == "bailian":
                 answers = B.merge(answers)                         # questions asked both ways round: one answer each
             if self.current(s, ctx):

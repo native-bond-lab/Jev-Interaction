@@ -11,8 +11,6 @@ what `done` already says (correlation -0.92 with p(finished)) and the user went 
 """
 from __future__ import annotations
 
-import time
-
 from ..judge import bailian as B
 from ..judge import questions as Q
 from ..judge import state as S
@@ -51,8 +49,7 @@ class Turn(Decision):
         return qs
 
     def state(self, s, ctx):
-        text = super().state(s, ctx) + S.user_turn(s.p.short, s.utt.segments, time.monotonic(), s.silence_ms, s.speaking,
-                                                   s.utt.asides)
+        text = super().state(s, ctx)
         if not self.last_words(s):
             return text
         state = S.with_last_words(text, s.utt.text, s.silence_ms)
@@ -94,6 +91,7 @@ class Turn(Decision):
                 await self.answer(s)
                 return True
         if s.silence_ms >= pace.max_wait_ms + s.cfg.turn_last_ms:
+            s.ledger.note("decision", what="end_of_turn", finished=round(j["finished"], 2) if j else None, go="trailed")
             await self.answer(s, "trailed")   # a long silence after their words: the agent speaks, as a person does
             return True
         crossed = any(s.silence_ms - s.cfg.frame_ms < m <= s.silence_ms for m in s.cfg.turn_reask_ms)   # any mark, not only

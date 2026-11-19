@@ -143,10 +143,21 @@ def header(p, pace: str, recent: list[str], other: str = "") -> str:
     return f"Phone call between the user and {p.short}.\n{p.judge_header()}\nCurrent pace of the call: {pace}.\nRecent call:\n{lines}\n"
 
 
+AT = 60.0     # every written moment is a minute into its call
+
+
 def user_turn(p, segments: list[str], quiet_ms: int) -> str:
-    now = time.monotonic()
-    timed = [(now - quiet_ms / 1000 - 1.2 * (len(segments) - 1 - i), text) for i, text in enumerate(segments)]
-    return S.user_turn(p.short, timed, now, quiet_ms, False, ())
+    """The user has paused in a turn of theirs: the call right now, written by the engine's own `now` (judge/state.py)."""
+    timed = tuple((AT - quiet_ms / 1000 - 1.2 * (len(segments) - 1 - i), text) for i, text in enumerate(segments))
+    return S.now(S.Now(p.short, AT, False, "", user_open=True, segments=timed, heard=" ".join(segments), silence_ms=quiet_ms))
+
+
+def overlap(p, line: str, said: str, seconds: float) -> str:
+    return S.now(S.Now(p.short, AT, True, line, user_open=True, heard=said, speech_ms=int(seconds * 1000)))
+
+
+def quiet(p, last: str, quiet_s: float, spoke: int) -> str:
+    return S.now(S.Now(p.short, AT, False, last, quiet_s=quiet_s, spoke_into_quiet=spoke))
 
 
 def floor_action(probs: dict) -> str:
@@ -184,13 +195,13 @@ def decision_cases(last_words: bool, held_out: bool = False, provider: str = "je
         for line, said, seconds, right in K.FLOOR[lang]:
             crit = Q.floor_criteria(p.short, finish=True, overrule=False, aside=False, jump=True)
             want = {"carry_on": {"carry_on"}, "stop": {"yield", "jump_in"}, "answer": {"finish_first", "yield", "jump_in"}}[right]
-            text = header(p, "normal", hello + [f"A: {line}"]) + S.overlap(p.short, line, said, int(seconds * 1000))
+            text = header(p, "normal", hello + [f"A: {line}"]) + overlap(p, line, said, seconds)
             q, st = (B.floor(crit), B.floor_state(text, line, said)) if bailian else ({"floor": Q.floor(p.short, crit)}, text)
             out.append({"d": "both talking", "lang": lang, "right": right, "q": q, "state": st,
                         "act": lambda a: floor_action(P(a, "floor")), "ok": lambda act, want=want: act in want})
         for recent, last, quiet_s, spoke, pace, right in K.QUIET[lang]:
             allowed = ["go_on", "wait"] + (["check"] if quiet_s >= 10 else []) + (["hang_up"] if quiet_s >= 25 and spoke else [])
-            text = header(p, pace, recent + [f"A: {last}"]) + S.quiet(p.short, last, quiet_s, spoke, None)
+            text = header(p, pace, recent + [f"A: {last}"]) + quiet(p, last, quiet_s, spoke)
             said = [r.split(": ", 1)[1] for r in recent if r.startswith("user: ")]
             q, st = ((B.quiet(), B.quiet_state(text, last, said[-1] if said else "", quiet_s, spoke, pace)) if bailian
                      else ({"quiet": Q.quiet(p.short, pace)}, text))

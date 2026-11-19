@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **The call's record is one timeline, and every question reads the same "now".** `Ledger` keeps the call on one
+  clock (seconds into the call): each turn has when it began and ended (`Turn.at`, `Turn.end`), the user's turns have
+  where their voice stopped and came back (`Turn.pauses`, `Config.pause_mark_ms`), and what the engine judged and did
+  between the words is in it too (`Ledger.notes`: every answer from Jev with its probabilities, every action taken,
+  pace changes). The call log's last line carries the whole of it in order (`timeline`), every log line has `at`, and
+  a `judge` line has the moment it was asked about as fields (`now`), so a recorded call can be worked through again
+  under other thresholds or asked a new question. What Jev reads about the present is written in one place
+  (`judge/state.py`: `Now`, built by `Session.now`): a decision chooses its questions, never its own account of the
+  call. The text is word for word what each decision sent before (all 832 requests of `tools/judge_bench.py` are
+  byte-identical), so no answer changes. How soon a user usually answers is now read off the record
+  (`Ledger.reply_gaps`) instead of being counted beside it; a cough that opened no turn no longer counts as an answer.
+  Jev is not shown the times: asked the same pause with a user's earlier pauses written into the recent call, its
+  "have they finished" did not move (within 0.03), so a user's rhythm is the engine's to read, not the judge's.
 - **Questions worded for Bailian's judge.** `Config.judge_provider = "bailian"` (`JEV_PROVIDER=bailian`) sends Alibaba
   Cloud Bailian's `decision-model-preview` its own set of questions (`judge/bailian.py`); Jev keeps the engine's. The
   words a question is about go in a field of their own and the question points at it, every choice is asked in both

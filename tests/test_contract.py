@@ -16,7 +16,7 @@ EXPORTS = {"Session", "Profile", "Config", "Pace", "preset", "PRESETS", "JevClie
 SESSION_ARGS = ["profile", "send", "judge", "recognizer", "responder", "vad", "config", "recorder", "system_template",
                 "speech", "cast", "embedder"]
 CONFIG_FIELDS = {"language", "frame_ms", "sample_rate", "paces", "start_pace", "opening_turns", "policies", "voice_min_ms",
-                 "overlap_ask_ms", "sound_close_ms", "listen_gap_s", "listen_min_gap_s", "listen_due_min", "turn_reask_ms",
+                 "overlap_ask_ms", "pause_mark_ms", "sound_close_ms", "listen_gap_s", "listen_min_gap_s", "listen_due_min", "turn_reask_ms",
                  "turn_last_ms", "listen_finished_max", "quiet_marks_s", "quiet_jitter", "check_min_quiet_s",
                  "hangup_min_quiet_s", "judge_timeout_s", "judge_turns", "judge_turn_chars", "safe_words",
                  "listen_max_words", "voice_same", "voice_other", "voice_verdict_ms", "voice_enroll_ms", "not_for_me",

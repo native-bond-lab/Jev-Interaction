@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from ..judge import bailian as B
 from ..judge import questions as Q
-from ..judge import state as S
 from ..judge.client import probs as P
 from .base import Decision
 
@@ -30,14 +29,10 @@ class Quiet(Decision):
         return B.quiet() if s.cfg.judge_provider == "bailian" else {"quiet": Q.quiet(s.p.short, s.pace)}
 
     def state(self, s, ctx):
-        last = s.ledger.last_agent()
-        gaps = sorted(s.reply_gaps)
-        usual = gaps[len(gaps) // 2] if len(gaps) >= 2 else None
-        text = super().state(s, ctx) + S.quiet(s.p.short, last.text if last else "", ctx["quiet_s"], s.spoke_into_quiet, usual)
+        text, m = super().state(s, ctx), ctx["now"]
         if s.cfg.judge_provider == "bailian":
             said = B.earlier_user_lines(s.ledger, s.cfg.judge_turns)
-            return B.quiet_state(text, last.text if last else "", said[-1] if said else "", ctx["quiet_s"],
-                                 s.spoke_into_quiet, s.pace)
+            return B.quiet_state(text, m.agent_line, said[-1] if said else "", m.quiet_s, m.spoke_into_quiet, s.pace)
         return text
 
     def allowed(self, s, ctx):

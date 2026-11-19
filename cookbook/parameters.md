@@ -59,6 +59,7 @@ something else.
 | `judge_provider` | "jev" | whose wording of the questions. `"bailian"` (`JEV_PROVIDER=bailian`) sends Alibaba Cloud Bailian's decision model its own set: the `last_words` turn question, and both talking, quiet and "something is due" put as small questions about fields of their own, each asked in both option orders ([stacks](stacks.md#the-judge-on-the-mainland)). Jev keeps the engine's questions |
 | `turn_question` | "engine" | how "have they finished" is worded. `"last_words"` asks about the user's own words, sent in a field of their own, with the options in both orders; for judges that read the engine's wording poorly ([stacks](stacks.md#recommended-mainland-china)) |
 | `turn_last_ms` | 4000 | this far past the pace's longest wait the agent speaks anyway, and its line is told the user went silent (`trailed`) rather than finished |
+| `pause_mark_ms` | 600 | the user's voice stops this long inside their turn and comes back: kept in the call's record as a pause of theirs (`Turn.pauses`). Nothing is decided on it; it is there for reading a user's rhythm and for tuning |
 | `sound_close_ms` | 1500 | a sound with no words (a cough, a breath) is over after this much quiet |
 
 ### When both talk at once
