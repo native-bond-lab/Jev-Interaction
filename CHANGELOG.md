@@ -12,8 +12,11 @@
   task, says how far it has got when asked, tells you when it is done or needs your OK, and sleeps in between
   (`Config.sleep_when_idle`: it may ask after you once in a quiet, and sleeps where a call would be hung up). A prompt you typed in the harness yourself is told
   to you too once it has run 30 seconds. The first connector is for Claude Code (`connectors/claude-code/`, a plugin:
-  a channel for your words and Claude's `say`, hooks for what it is doing; `jev-interaction channel`). A permission
+  a channel for your words and Claude's `say`, hooks that report what it is doing through that same channel;
+  `jev-interaction channel`). A permission
   prompt is told to you and answered on your screen; `JEV_VOICE_APPROVALS=1` passes a spoken allow or deny back.
+  Only a session started with the channel on joins the hub, and words it does not take fail the task with the reason
+  instead of hanging. The call server says where it is in `~/.jev-interaction/hub`, so no port is fixed.
   Claude Code cannot be interrupted from outside, and its channels are a research preview that needs a launch flag.
   Checked against Claude Code 2.1.280 up to the model's turn; no signed-in round trip yet.
 - **Background tasks: the agent hands work off and keeps talking** (`jev_interaction/tasks.py`, `docs/tasks.md`).

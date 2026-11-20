@@ -4,8 +4,10 @@ One hub on this machine. On one side the voice (the Sessions on a call); on the 
 session: a thin piece that lives with the harness, pushes the user's words in and reports what happens. Every harness
 speaks the same small protocol to the hub, as JSON objects with a `type`:
 
-    connector -> hub    hello {harness, cwd, steer}     it is there (`steer`: "now" when more words reach the turn that
-                                                        is running, "turn" when they wait for it to end)
+    connector -> hub    hello {harness, cwd, steer,     it is there (`steer`: "now" when more words reach the turn that
+                               acks}                    is running, "turn" when they wait for it to end; `acks`: a
+                                                        pushed prompt is followed by a turn_start, so one that is not
+                                                        was not taken)
                         turn_start {text, ours}         a turn began; `ours`: it is one the hub pushed
                         progress {text}                 what it is doing now, in a few words
                         tool_done {}                    a tool call went through or was refused: a "may I" is over
@@ -28,6 +30,7 @@ with `voice_approvals` on; off (the default), the user is told and answers it on
 from __future__ import annotations
 
 import asyncio
+import pathlib
 import time
 import uuid
 from collections import deque
@@ -35,6 +38,28 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from .tasks import Task, Tell
+
+HUB_FILE = pathlib.Path.home() / ".jev-interaction" / "hub"     # where the call server with the hub says it is: one line,
+DEFAULT_HUB = "ws://127.0.0.1:8080/harness/ws"                  # its ws:// address, read by the connectors on this machine
+
+
+def announce(port: int) -> None:
+    """The call server with the hub is on this port: written where connectors look (they start on their own, from
+    inside a harness, and are told nothing)."""
+    try:
+        HUB_FILE.parent.mkdir(parents=True, exist_ok=True)
+        HUB_FILE.write_text(f"ws://127.0.0.1:{port}/harness/ws\n", encoding="utf-8")
+    except OSError:
+        pass                                    # connectors fall back to the default port
+
+
+def where() -> str:
+    """The hub's address for a connector: JEV_INTERACTION_HUB, or what the call server wrote, or the default port."""
+    import os
+    try:
+        return os.getenv("JEV_INTERACTION_HUB") or HUB_FILE.read_text(encoding="utf-8").strip() or DEFAULT_HUB
+    except OSError:
+        return DEFAULT_HUB
 
 
 @dataclass
@@ -46,6 +71,7 @@ class Job:
     owed: int = 1                # turns of the harness still to end before it has come back
     skip: int = 0                # turn ends that are not its own (a turn was already running when it was pushed)
     said: str = ""               # what the agent wrote for the user to hear
+    taken: asyncio.Event = field(default_factory=asyncio.Event)   # the harness showed a sign of life after the push
 
 
 @dataclass
@@ -55,6 +81,7 @@ class Link:
     send: Callable[[dict], Awaitable[None]]
     cwd: str = ""
     steer: str = "turn"
+    acks: bool = False           # a pushed prompt is followed by a turn_start (the connector says so in its hello)
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     busy: bool = False           # a turn is running
     reports: bool = False        # it tells the hub when turns end (a connector with events; without, `say` ends a task)
@@ -80,6 +107,8 @@ def _short(text: str, n: int = 160) -> str:
 
 
 class Hub:
+    TAKEN_S = 8.0                # an idle harness that acks takes pushed words within this, or it did not take them
+
     def __init__(self, *, kind: str = "agent", adopt_after_s: float = 30.0, voice_approvals: bool = False):
         self.kind = kind                          # the executor's name on the voice side
         self.adopt_after_s = adopt_after_s        # a turn the user typed is taken up as a task once it has run this long
@@ -123,13 +152,6 @@ class Hub:
             return self.links.get(link_id)
         return max(self.links.values(), key=lambda k: k.seen, default=None)
 
-    def find(self, harness: str, cwd: str = "") -> Link | None:
-        """The link an event from outside the connector's own socket belongs to (a hook): the one in that folder, or
-        the only one there is."""
-        mine = [k for k in self.links.values() if k.harness == harness]
-        same = [k for k in mine if cwd and k.cwd == cwd]
-        return same[-1] if same else mine[0] if len(mine) == 1 else None
-
     def post(self, link: Link, event: dict) -> None:
         """An event from the connector, handled in the order it came without making the sender wait."""
         link.seen = time.monotonic()
@@ -148,8 +170,11 @@ class Hub:
     # ------------------------------------------------------------------ what the harness reports
     async def event(self, link: Link, e: dict) -> None:
         kind = e.get("type")
+        for job in link.jobs:
+            job.taken.set()                       # anything at all from the harness: it is there and working
         if kind == "hello":
             link.cwd, link.steer = e.get("cwd") or link.cwd, e.get("steer") or link.steer
+            link.acks = bool(e.get("acks", link.acks))
         elif kind == "turn_start":
             await self._turn_start(link, e.get("text") or "", bool(e.get("ours")))
         elif kind == "turn_end":
@@ -261,13 +286,21 @@ class HarnessExecutor:
         if link is None:
             raise RuntimeError("no coding agent is connected on this computer")
         job = Job(task, tell, asyncio.get_running_loop().create_future())
+        waits = False
         if not given.get("observed"):
             job.skip = 1 if link.busy and not link.jobs else 0
+            waits = link.acks and not link.busy and not link.jobs     # idle: the words should be taken at once
             link.turn = None                      # a turn already running is not taken up apart from this one
             self.hub.pushed.append(task.about)
             await link.send({"type": "prompt", "task": str(task.id), "text": task.about})
         link.jobs.append(job)
         try:
+            if waits:
+                try:
+                    await asyncio.wait_for(job.taken.wait(), self.hub.TAKEN_S)
+                except asyncio.TimeoutError:
+                    raise RuntimeError(f"{link.harness} did not take the words; it may not be listening to the voice "
+                                       "(it has to be started with its voice channel on)") from None
             return await job.done
         except asyncio.CancelledError:
             if not given.get("observed") and link.id in self.hub.links:

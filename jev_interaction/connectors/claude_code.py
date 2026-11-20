@@ -6,8 +6,13 @@ Two halves, both set up by the plugin in connectors/claude-code/:
             `main`). It pushes the user's spoken words into the session as <channel source="jev" task="3"> events, gives
             Claude a `say` tool for words meant to be heard, and relays a permission prompt and its answer.
             https://code.claude.com/docs/en/channels-reference
-    out     hooks: Claude Code posts its own events (a prompt typed, a tool about to run, the turn ended) to the call
-            server, which reads them here (`events`).
+    out     hooks: Claude Code tells what it is doing (a prompt typed, a tool about to run, the turn ended) by calling
+            this same server's `hook` tool (hooks of type mcp_tool). So every event comes from the session it is about,
+            with no port for the hooks to know and no other Claude Code window to be mistaken for this one.
+
+Claude Code only delivers a channel's events in a session started with the channel on (`--channels`, or the development
+flag while this one is not on Anthropic's list). The plugin's server is started in every session all the same, so it
+looks at how the session was started (`listening`) and joins the hub only where words pushed in would be heard.
 
 What Claude Code cannot do from outside: a turn that is running cannot be interrupted, and words pushed while it runs
 wait for it to end. So a "steer" is a turn of its own, and a "cancel" only drops the task on the voice's side.
@@ -23,6 +28,8 @@ import os
 import re
 import sys
 import threading
+
+from ..harness import where
 
 HARNESS = "Claude Code"
 SERVER = "jev"                   # the MCP server's key in the plugin: the `source` of every <channel> event
@@ -83,6 +90,15 @@ def events(hook: dict) -> list[dict]:
     return []
 
 
+def hook_of(args: dict) -> dict:
+    """The arguments of a `hook` tool call (hooks.json fills them from the hook's own input, "${tool_name}" and so on)
+    as the hook payload `events` reads. A field the hook did not have comes through unfilled and counts as empty."""
+    got = {k: ("" if isinstance(v, str) and v.startswith("${") else v) for k, v in args.items()}
+    tool_input = {k: got[k] for k in ("description", "command", "file_path", "pattern") if got.get(k)}
+    return {"hook_event_name": got.get("event"), "prompt": got.get("prompt"), "tool_name": got.get("tool_name"),
+            "tool_input": tool_input, "last_assistant_message": got.get("last_assistant_message"), "error": got.get("error")}
+
+
 def asks(params: dict) -> dict:
     """A permission prompt relayed by Claude Code, as the hub's `ask`."""
     what, tool, shown = params.get("description") or "", params.get("tool_name") or "a tool", params.get("input_preview") or ""
@@ -90,10 +106,34 @@ def asks(params: dict) -> dict:
     return {"type": "ask", "id": params.get("request_id") or "", "text": text}
 
 
+def listening(pid: int | None = None) -> bool:
+    """Was this Claude Code session started with a channel on? Read off the command lines of the processes above this
+    one. True when that cannot be told (no `ps`, no Claude Code found above): a prompt nobody takes is noticed by
+    the hub."""
+    import subprocess
+    pid, found = pid or os.getppid(), False
+    try:
+        for _ in range(6):
+            if pid <= 1:
+                break
+            out = subprocess.run(["ps", "-o", "ppid=,command=", "-p", str(pid)], capture_output=True, text=True, timeout=3).stdout.strip()
+            if not out:
+                break
+            parent, _, command = out.partition(" ")
+            if "--channels" in command or "--dangerously-load-development-channels" in command:
+                return True
+            program = os.path.basename((command.split() or [""])[0]).lower()
+            found = found or "claude" in program or (program in ("node", "bun", "deno") and "claude" in command.lower())
+            pid = int(parent)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return True
+    return not found                              # Claude Code is above, and no channel was named when it was started
+
+
 # ---------------------------------------------------------------------- in: the channel process
 class Channel:
-    def __init__(self, url: str, cwd: str, out=None):
-        self.url, self.cwd = url, cwd
+    def __init__(self, url: str | None, cwd: str, out=None):
+        self.url, self.cwd = url, cwd             # None: wherever the call server says it is, looked up at each try
         self.out = out or sys.stdout
         self.hub = None                       # the socket to the call server, while it is up
         self._lock = threading.Lock()
@@ -124,6 +164,10 @@ class Channel:
             self.write({"id": mid, "result": {}})
         elif method == "tools/list":
             self.write({"id": mid, "result": {"tools": [SAY]}})
+        elif method == "tools/call" and params.get("name") == "hook":      # one of Claude Code's hooks, not the model:
+            for event in events(hook_of(params.get("arguments") or {})):   # passed on, and answered with no verdict
+                await self.to_hub(event)
+            self.write({"id": mid, "result": {"content": [{"type": "text", "text": "{}"}]}})
         elif method == "tools/call":
             args = params.get("arguments") or {}
             sent = params.get("name") == "say" and await self.to_hub({"type": "say", "task": str(args.get("task") or ""),
@@ -151,9 +195,9 @@ class Channel:
         import websockets
         while True:
             try:
-                async with websockets.connect(self.url, max_size=None) as ws:
+                async with websockets.connect(self.url or where(), max_size=None) as ws:
                     self.hub = ws
-                    await ws.send(json.dumps({"type": "hello", "harness": HARNESS, "cwd": self.cwd, "steer": "turn"}))
+                    await ws.send(json.dumps({"type": "hello", "harness": HARNESS, "cwd": self.cwd, "steer": "turn", "acks": True}))
                     async for raw in ws:
                         self.on_hub(json.loads(raw))
             except asyncio.CancelledError:
@@ -173,7 +217,8 @@ class Channel:
                 loop.call_soon_threadsafe(lines.put_nowait, line)
             loop.call_soon_threadsafe(lines.put_nowait, None)
         threading.Thread(target=read, daemon=True).start()
-        hub = loop.create_task(self.hub_loop())
+        on = self.url is not None or listening()  # an address given by hand is a test: joined whatever the session is
+        hub = loop.create_task(self.hub_loop() if on else asyncio.sleep(1e9))
         try:
             while (line := await lines.get()) is not None:
                 if line.strip():
@@ -186,6 +231,5 @@ class Channel:
 
 
 def main(url: str | None = None, cwd: str | None = None) -> int:
-    url = url or os.getenv("JEV_INTERACTION_HUB") or "ws://127.0.0.1:8080/harness/ws"
     asyncio.run(Channel(url, cwd or os.getenv("CLAUDE_PROJECT_DIR") or os.getcwd()).run())
     return 0

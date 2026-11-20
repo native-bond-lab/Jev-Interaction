@@ -136,26 +136,42 @@ async def test_with_no_harness_connected_or_one_that_goes_away_the_task_fails_an
     assert s.tasks[0].status == "failed" and "went away" in s.tasks[0].result
 
 
+async def test_words_an_idle_harness_does_not_take_fail_the_task_instead_of_hanging():
+    hub, s, events, link, sent = await desk()
+    link.acks, hub.TAKEN_S = True, 0.05           # Claude Code: a pushed prompt is followed by its turn starting
+    await s.start_task("agent", "fix it")
+    await asyncio.sleep(0.15)
+    assert s.tasks[0].status == "failed" and "did not take the words" in s.tasks[0].result
+    await s.start_task("agent", "fix it again")
+    await settle()
+    await tell(hub, link, type="turn_start", text="fix it again", ours=True)       # taken: it runs as long as it runs
+    await asyncio.sleep(0.15)
+    assert s.tasks[1].status == "running"
+
+
+def test_the_channel_joins_the_hub_only_in_a_session_started_with_a_channel_on(monkeypatch):
+    import subprocess
+    tree = {}
+
+    def ps(cmd, **_):
+        return subprocess.CompletedProcess(cmd, 0, stdout=tree.get(cmd[-1], ""))
+    monkeypatch.setattr(subprocess, "run", ps)
+    tree.update({"10": "1 /usr/local/bin/claude --dangerously-load-development-channels plugin:jev-voice@jev-interaction"})
+    assert CC.listening(10)
+    tree.update({"10": "9 /bin/sh -c jev-interaction channel", "9": "1 /usr/local/bin/claude --channels plugin:jev-voice@x"})
+    assert CC.listening(10)
+    tree.update({"10": "9 /bin/sh -c jev-interaction channel", "9": "1 /usr/local/bin/claude --resume abc"})
+    assert not CC.listening(10)                                          # an ordinary session: pushed words would be lost
+    tree.clear()
+    assert CC.listening(10)                                              # cannot tell: join, the hub notices a deaf one
+
+
 async def test_a_turn_that_breaks_off_on_an_error_fails_the_task_with_the_reason():
     hub, s, events, link, sent = await desk()
     await s.start_task("agent", "fix it")
     await settle()
     await tell(hub, link, type="turn_end", text="", error="API Error: Rate limit reached")
     assert s.tasks[0].status == "failed" and "Claude Code could not go on: API Error: Rate limit reached" in s.tasks[0].result
-
-
-def test_an_event_from_a_hook_finds_its_session_by_folder():
-    hub = H.Hub()
-
-    async def go():
-        async def send(e): ...
-        a = hub.add(H.Link("Claude Code", send, cwd="/work/a"))
-        assert hub.find("Claude Code", "/somewhere/else") is a           # the only one there is
-        b = hub.add(H.Link("Claude Code", send, cwd="/work/b"))
-        assert hub.find("Claude Code", "/work/b") is b and hub.find("Claude Code", "/work/a") is a
-        assert hub.find("Claude Code", "/somewhere/else") is None and hub.find("Codex", "/work/a") is None
-        hub.drop(a), hub.drop(b)
-    asyncio.run(go())
 
 
 # ---------------------------------------------------------------------- Claude Code's connector
@@ -208,6 +224,15 @@ async def test_the_channel_speaks_mcp_to_claude_code_and_passes_words_both_ways(
                              "params": {"content": "now run the suite", "meta": {"task": "2"}}}
     ch.on_hub({"type": "answer", "id": "abcde", "behavior": "allow"})
     assert written()[-1]["method"] == "notifications/claude/channel/permission" and written()[-1]["params"] == {"request_id": "abcde", "behavior": "allow"}
+    # Claude Code's hooks call the `hook` tool, which the model is never shown: each becomes the hub's events
+    hook = {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "hook", "arguments": {
+        "event": "PreToolUse", "tool_name": "Bash", "description": "Run the tests", "command": "npm test", "file_path": "${tool_input.file_path}"}}}
+    await ch.on_mcp(hook)
+    assert to_hub[-2:] == [{"type": "tool_done"}, {"type": "progress", "text": "running: Run the tests"}]
+    assert written()[-1]["result"]["content"][0]["text"] == "{}"         # no verdict: the hook only tells
+    await ch.on_mcp({"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "hook", "arguments": {
+        "event": "Stop", "last_assistant_message": "All done."}}})
+    assert to_hub[-1] == {"type": "turn_end", "text": "All done."}
     n = len(written())
     ch.on_hub({"type": "cancel", "task": "2"})                           # a running turn cannot be stopped from outside
     await ch.on_mcp({"jsonrpc": "2.0", "id": 9, "method": "resources/list"})

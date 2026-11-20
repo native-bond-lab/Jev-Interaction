@@ -31,7 +31,6 @@ from jev_interaction import Profile  # noqa: E402  (after .env, so adapters read
 from jev_interaction import harness as H  # noqa: E402
 from jev_interaction import preset as preset_config  # noqa: E402
 from jev_interaction.adapters import best_embedder, best_sound, best_vad, registry  # noqa: E402
-from jev_interaction.connectors import claude_code as CLAUDE_CODE  # noqa: E402
 from jev_interaction.recorder import Recorder  # noqa: E402
 from jev_interaction.server import personas as PERSONAS  # noqa: E402
 from jev_interaction.server import settings as S  # noqa: E402
@@ -61,6 +60,8 @@ SPENT = {"day": "", "seconds": 0.0}     # call time already used today (finished
 # join at /harness/ws; a call then has an "agent" kind of background task, sleeps when the line is quiet and is never
 # hung up. JEV_VOICE_APPROVALS=1 passes the user's spoken allow / deny back to the harness; off, they answer on screen
 HUB = H.Hub(voice_approvals=os.getenv("JEV_VOICE_APPROVALS", "0") == "1") if os.getenv("JEV_HARNESS", "0") == "1" else None
+if HUB is not None and os.getenv("JEV_SERVE_PORT"):
+    H.announce(int(os.environ["JEV_SERVE_PORT"]))     # so the connectors find this server, whatever port it is on
 
 
 def spent_today() -> float:
@@ -299,7 +300,7 @@ async def harness_link(ws: WebSocket):
     try:
         hello = json.loads(await ws.receive_text())
         link = HUB.add(H.Link(str(hello.get("harness") or "harness"), send, cwd=str(hello.get("cwd") or ""),
-                              steer=str(hello.get("steer") or "turn")))
+                              steer=str(hello.get("steer") or "turn"), acks=bool(hello.get("acks"))))
         LOG.info("harness joined: %s", link.harness)
         while True:
             HUB.post(link, json.loads(await ws.receive_text()))
@@ -309,20 +310,6 @@ async def harness_link(ws: WebSocket):
         if link is not None:
             HUB.drop(link)
             LOG.info("harness left: %s", link.harness)
-
-
-@app.post("/harness/claude-code/hook")
-async def claude_code_hook(request: Request):
-    """Claude Code's hooks post here (connectors/claude-code/hooks/hooks.json). Answered at once and with nothing: the
-    hooks only tell, they never decide anything in Claude Code."""
-    if not _this_machine(request.client, request.headers.get("origin", "")):
-        raise HTTPException(403, "Only from this machine, with JEV_HARNESS=1.")
-    hook = await request.json()
-    link = HUB.find(CLAUDE_CODE.HARNESS, str(hook.get("cwd") or ""))
-    if link is not None:
-        for event in CLAUDE_CODE.events(hook):
-            HUB.post(link, event)
-    return {}
 
 
 def same_origin(origin: str, host: str) -> bool:

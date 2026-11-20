@@ -13,14 +13,17 @@ Today there is one connector, for Claude Code. Codex and DeepSeek Harness speak 
 
 1. Install the package so that `jev-interaction` is on your PATH (Claude Code starts it):
    `pipx install "jev-interaction[server]"` or `uv tool install "jev-interaction[server]"`.
-2. Add `JEV_HARNESS=1` to `.env` and run `jev-interaction serve` (port 8080: the plugin's hooks post there).
+2. Add `JEV_HARNESS=1` to `.env` and run `jev-interaction serve` (any port: the server writes where it is to
+   `~/.jev-interaction/hub` and the connectors read it).
 3. In Claude Code: `/plugin marketplace add native-bond-lab/Jev-Interaction`, then
-   `/plugin install jev-voice@jev-interaction`.
+   `/plugin install jev-voice@jev-interaction`. Installing it for one project (scope `local` or `project`) is enough:
+   the plugin's server and hooks then run only in sessions of that project.
 4. Start Claude Code in your project with the channel on:
    `claude --dangerously-load-development-channels plugin:jev-voice@jev-interaction`
    and confirm "I am using this for local development". Channels are a research preview in Claude Code and this one is
    not on Anthropic's allowlist, which is why the flag is needed. On Team and Enterprise plans an admin has to enable
-   channels.
+   channels. Only a session started this way is put on the hub: other Claude Code windows, with or without the plugin,
+   are left alone.
 5. Open http://localhost:8080, start a call, and ask for something: "can you run the tests and fix what fails?"
 
 `GET /api/health` lists the harness sessions on the hub under `harness`.
@@ -44,7 +47,7 @@ needs your OK, and lies down when it sleeps. Click it (or Cmd/Ctrl+Shift+J) to p
 | add something while it works | passed on; Claude Code takes it up when the turn it is on ends |
 | Claude Code needs permission | you are told. With `JEV_VOICE_APPROVALS=1` your spoken allow or deny is passed back; without it you answer on your own screen, as always |
 | Claude Code finishes | Claude writes a sentence or two to be said (its `say` tool) and you are told at a quiet moment |
-| you typed a prompt in Claude Code yourself | if it runs longer than 30 seconds, you are told when it is done; a short one is left alone |
+| you typed a prompt in that Claude Code session yourself | if it runs longer than 30 seconds, you are told when it is done; a short one is left alone |
 | nothing happens for a while | it may ask after you once; a minute after your last exchange, or sooner when you do not answer, it sleeps: no question to Jev, no audio to the recognizer. Your voice or Claude Code's news wakes it |
 
 ## What Claude Code does not allow from outside
@@ -60,6 +63,8 @@ the top of `jev_interaction/harness.py`.
 
 ## Checked, and not yet
 
-Checked against Claude Code 2.1.280: the channel registers, a pushed prompt arrives as a turn, the hooks reach the hub,
-and a turn that breaks off fails the task with its reason. Not checked yet with a signed-in session: Claude calling
+Checked against Claude Code 2.1.280: the channel registers, a pushed prompt arrives as a turn, the hooks reach the hub
+through the channel's own `hook` tool (so only the session that has the channel is heard, however many others are
+open), and a turn that breaks off fails the task with its reason. Installed as a plugin from the marketplace file and started
+with `plugin:jev-voice@jev-interaction`, it found the call server by itself. Not checked yet with a signed-in session: Claude calling
 `say`, the permission relay, and a whole spoken round trip.

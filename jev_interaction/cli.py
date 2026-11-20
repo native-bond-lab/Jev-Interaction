@@ -24,6 +24,7 @@ def _serve(a: argparse.Namespace) -> int:
         os.environ["JEV_HOME"] = str(pathlib.Path(a.home).resolve())
     if a.preset:
         os.environ["JEV_PRESET"] = a.preset
+    os.environ["JEV_SERVE_PORT"] = str(a.port)
     from jev_interaction.server import paths
     if not paths.env_file().exists():
         print(f"No .env in {paths.home()} yet: the page walks you through the providers and keys.")
@@ -71,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
     R.add_arguments(r)
     r.set_defaults(run=lambda a: __import__("asyncio").run(R.run(a)))
     c = sub.add_parser("channel", help="Claude Code's connector: an MCP channel on stdio, started by the plugin")
-    c.add_argument("--hub", help="the call server's hub (default ws://127.0.0.1:8080/harness/ws, or JEV_INTERACTION_HUB)")
+    c.add_argument("--hub", help="the call server's hub (default: JEV_INTERACTION_HUB, or where the running server says it is)")
     c.add_argument("--cwd", help="the project folder of the Claude Code session")
     c.set_defaults(run=lambda a: __import__("jev_interaction.connectors.claude_code", fromlist=["main"]).main(a.hub, a.cwd))
     a = ap.parse_args(argv)

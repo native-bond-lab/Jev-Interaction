@@ -4,9 +4,14 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:8080/harness/claude-code/hook",
-            "timeout": 2
+            "type": "mcp_tool",
+            "server": "plugin:jev-voice:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "UserPromptSubmit",
+              "prompt": "${prompt}"
+            }
           }
         ]
       }
@@ -15,9 +20,18 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:8080/harness/claude-code/hook",
-            "timeout": 2
+            "type": "mcp_tool",
+            "server": "plugin:jev-voice:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "PreToolUse",
+              "tool_name": "${tool_name}",
+              "description": "${tool_input.description}",
+              "command": "${tool_input.command}",
+              "file_path": "${tool_input.file_path}",
+              "pattern": "${tool_input.pattern}"
+            }
           }
         ]
       }
@@ -26,9 +40,14 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:8080/harness/claude-code/hook",
-            "timeout": 2
+            "type": "mcp_tool",
+            "server": "plugin:jev-voice:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "PostToolUse",
+              "tool_name": "${tool_name}"
+            }
           }
         ]
       }
@@ -37,9 +56,14 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:8080/harness/claude-code/hook",
-            "timeout": 2
+            "type": "mcp_tool",
+            "server": "plugin:jev-voice:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "PostToolUseFailure",
+              "tool_name": "${tool_name}"
+            }
           }
         ]
       }
@@ -48,9 +72,14 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:8080/harness/claude-code/hook",
-            "timeout": 2
+            "type": "mcp_tool",
+            "server": "plugin:jev-voice:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "PermissionDenied",
+              "tool_name": "${tool_name}"
+            }
           }
         ]
       }
@@ -59,9 +88,14 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:8080/harness/claude-code/hook",
-            "timeout": 2
+            "type": "mcp_tool",
+            "server": "plugin:jev-voice:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "Stop",
+              "last_assistant_message": "${last_assistant_message}"
+            }
           }
         ]
       }
@@ -70,9 +104,15 @@
       {
         "hooks": [
           {
-            "type": "http",
-            "url": "http://127.0.0.1:8080/harness/claude-code/hook",
-            "timeout": 2
+            "type": "mcp_tool",
+            "server": "plugin:jev-voice:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "StopFailure",
+              "error": "${error}",
+              "last_assistant_message": "${last_assistant_message}"
+            }
           }
         ]
       }
