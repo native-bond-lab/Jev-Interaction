@@ -396,7 +396,7 @@
   // the start message, used in memory for this call only and forgotten when the call ends (the page says so, twice)
   const ENROLL_MIN_MS = 15000, ENROLL_MAX_MS = 30000;           // "Done" opens after 15 s (a solid print needs that much voice);
                                                                // at 30 s it is done anyway
-  const SCRIPT = 'Good good study, study day day up.\nLucky lucky me, happy happy us.';   // the same lines in every language (adam)
+  const SCRIPT = 'Good good study, study day day up.\nLucky lucky me, happy happy us.';   // the same lines in every language
   let voiceSent = false;
   const voiceprintOn = () => !!health && (health.voiceprint === 'ready' || health.voiceprint === 'loading');
   function base64Of(frames) {
