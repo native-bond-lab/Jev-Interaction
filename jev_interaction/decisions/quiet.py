@@ -17,7 +17,7 @@ that fails says nothing.
 
 While a background task is unfinished (tasks.py) the call has something to wait for: it is not hung up, and once the
 quiet has lasted Config.sleep_after_s the session goes to sleep and this question is not asked again until it wakes
-(Session.sleep).
+(Session.sleep). Under Config.sleep_when_idle the agent does not check on the user either: a quiet is them working.
 
 Asked as one question about the whole quiet ("would the agent, being who they are, say something now?"), Jev answered
 "let it be" to nearly every written moment (33% right on tools/judge_bench.py --decisions); asked the facts, 100%.
@@ -88,7 +88,9 @@ class Quiet(Decision):
     def allowed(self, s, ctx):
         out = allowed(ctx["quiet_s"], s.spoke_into_quiet, lead_after_s=s.params().lead_after_s,
                       check_after_s=s.cfg.check_min_quiet_s, hangup_after_s=s.cfg.hangup_min_quiet_s)
-        return [x for x in out if x != "hang_up"] if s.open_tasks() or s.cfg.sleep_when_idle else out
+        if s.cfg.sleep_when_idle:              # on a desk all day: a quiet is the user working, not a call gone dead
+            return [x for x in out if x not in ("check", "hang_up")]
+        return [x for x in out if x != "hang_up"] if s.open_tasks() else out
 
     def current(self, s, ctx):
         return ctx["gen"] == s.gen and not s.speaking and not s.generating and s.utt is None and not s.asleep

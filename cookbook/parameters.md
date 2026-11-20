@@ -115,7 +115,7 @@ none of them has been tuned on recorded calls yet.
 | `task_report_after_s` | 1.0 | a task's news is said into a quiet once it has lasted this long; while anyone is talking it rides with the next line instead |
 | `task_result_chars` | 1200 | what came back from a task is kept on the record up to this length; an executor should hand back what is worth saying, not a file |
 | `sleep_after_s` | 20 | a task is unfinished and nobody has made a sound for this long: the session sleeps. Nothing is asked of Jev and no audio goes to the recognizer until the user's voice, the task's news or the client wakes it. `None`: never |
-| `sleep_when_idle` | False | sleep after `sleep_after_s` of quiet with no task either, and never hang up: for a companion that stays on all day, not a phone call |
+| `sleep_when_idle` | False | sleep after `sleep_after_s` of quiet with no task either, and never hang up or ask "are you there?": for a companion that stays on all day, not a phone call |
 | `wake_voice_ms` | 400 | asleep, this much voice in a row wakes it. A sound with no words after it puts it back to sleep, with nothing asked |
 | `sleep_preroll_ms` | 1200 | asleep, the last of the audio is kept this far back and heard on waking, so the words that woke it are not lost |
 

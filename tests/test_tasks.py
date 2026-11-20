@@ -223,6 +223,16 @@ async def test_it_does_not_sleep_without_a_task_or_when_told_never_to():
     assert not s.asleep
 
 
+async def test_a_companion_on_a_desk_sleeps_with_no_task_and_never_checks_on_the_user_or_hangs_up():
+    s, events, judge = scripted_session(sleep_when_idle=True)
+    s.spoke_into_quiet = 1
+    assert QUIET.allowed(s, {"quiet_s": 60.0}) == ["wait", "go_on"]      # no "are you there?", no hang-up
+    await idle(s, ago=21.0)
+    s.quiet_marks = []
+    await s.tick()
+    assert s.asleep and events[-1] == {"type": "sleep", "why": "quiet"}
+
+
 async def test_the_users_voice_wakes_it_and_the_words_that_woke_it_are_heard():
     s, events, judge, ex, heard = await asleep_with_a_task()
     await s.on_audio(FRAME)                                              # quiet frames while asleep: kept, not sent

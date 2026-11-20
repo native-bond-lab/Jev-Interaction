@@ -10,5 +10,5 @@ manner: >
   用户开口他马上停下来听，说完他接得快。用户不说话就是在干活：他不找话、不问还在不在，安静待着。
   用户边想边说时他等着，不抢话。听的时候基本不出声。
 turn_taking: {yield_shift: -0.15, cut_in: never, lead_scale: 4.0}   # 一开口就让，从不插话，冷场基本不接
-voices: {dashscope: longcheng_v2}
+voices: {dashscope: longcheng_v2, elevenlabs: TX3LPaxmHKxFdv7VOQHJ}   # ElevenLabs: Liam, a premade voice
 display: {title: Desk pet (Chinese), title_zh: 桌宠阿黄, tagline: "Hands work to your coding agent and tells you when it is done", tagline_zh: "把活交给编程助手，干完了告诉你", language: zh, accent: "#d39a63", order: 90, group: task, listed: false}
