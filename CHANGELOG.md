@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **The Bailian judge measured on 0.3.0's questions** (`cookbook/stacks.md`, `deploy/mainland-china.env`): end of turn
+  90% right on 80 held-out pauses, 90% / 15% taken at its line; both talking 100%, a silence 95% (was 85%), listening
+  96%, the pace 75%, cutting in 62%. `tools/judge_bench.py` also prints the share over the words' line used with a
+  sound model (`words_min`).
 - **Make and change personas on the page.** On your own machine (or your own Docker), **New persona** and **Edit** under
   the cards: the name and card, `prompt` (for the language model), `manner` (for Jev), turn-taking and the voice, saved
   to `profiles/` in the working folder with every other key kept (`server/personas.py`, `/api/personas`). Writes are
