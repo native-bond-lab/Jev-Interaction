@@ -93,9 +93,9 @@ for personas that list a `cast`).
 a call that is "60% normal, 40% patient" waits in between.
 
 **The same engine, two personas.** Two personas from our product, a dominant and a submissive one, each with its own
-thresholds and timing (`turn_taking`: its line stops more or less readily, it always or never cuts in, it picks a quiet
-up sooner or later; in the engine these are the pace's `yield_p`, `cut_in` and `lead_after_s`), on the same written
-moments (`tools/persona_bench.py`, 628 requests to Jev):
+thresholds and timing (`turn_taking` in the persona's YAML: its line stops more or less readily, it always or never
+cuts in, it picks a quiet up sooner or later; every shipped persona has one, [cookbook](cookbook/role-policies.md#turn-taking)),
+on the same written moments (`tools/persona_bench.py`, 628 requests to Jev):
 
 - Everyday moments (132): they act alike where nothing calls for a difference: a silence 28 of 28 the same, both
   talking 30 of 32. Cutting in differs where it should: in the six sparring moments the dominant one cuts in and the
@@ -648,7 +648,6 @@ docs/                 the policy and architecture diagrams, benchmark charts, th
 - Turn the tested knobs on in our product's engine (here they are `Config` options), with a voiceprint beside the 10 dB rule (a quiet real caller must not become "someone else").
 - Judge v1.5 against a fixed clean answer (same reply in both runs).
 - The sound model's lines set on recorded calls and a held-out split, and a closer look at the tight 300 ms budget.
-- A persona's own thresholds and timing (`turn_taking`) read by the engine, not only by `tools/persona_bench.py`.
 - Full TurnBench dev (38 conversations) for thresholds, then the hidden test set; larger task-profile runs.
 - Benchmark harnesses in this repository, run against this package.
 

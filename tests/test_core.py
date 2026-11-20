@@ -862,3 +862,22 @@ async def test_bailian_turn_uses_the_last_words_wording_and_asks_what_was_set_up
     asked, state = judge.asked[0]
     assert {"done", "done_again", "listen", "rule", "hit", "ask", "rule__r"} <= asked
     assert state["user_latest_words"] == "I had an interview" and state["user_earlier_lines"] == ["Let me tell you about today"]
+
+
+def test_a_persona_takes_turns_its_own_way_on_top_of_the_pace():
+    from jev_interaction import Profile
+    from jev_interaction.config import DEFAULT_PACES
+    from jev_interaction.profile import TurnTaking
+    normal = next(p for p in DEFAULT_PACES if p.name == "normal")
+    dom = TurnTaking(yield_shift=0.15, cut_in="always", lead_scale=0.6).apply(normal)
+    sub = TurnTaking(yield_shift=-0.15, cut_in="never", lead_scale=1.6).apply(normal)
+    assert dom.yield_p > normal.yield_p > sub.yield_p and dom.cut_in and not sub.cut_in
+    assert dom.lead_after_s < normal.lead_after_s < sub.lead_after_s and dom.leads == normal.leads
+    assert TurnTaking().apply(normal) == normal and TurnTaking(yield_shift=5).apply(normal).yield_p == 0.9
+    with pytest.raises(ValueError):
+        TurnTaking(cut_in="sometimes")
+    s, _, _ = scripted_session(profile=Profile("Rex", turn_taking=TurnTaking(cut_in="always", lead_scale=0.5)))
+    assert s.params().cut_in and s.params().lead_after_s == normal.lead_after_s * 0.5     # the session reads it
+    for name in ("companion", "support", "vera", "lyra", "puppy_zh"):
+        assert isinstance(Profile.load(name).turn_taking, TurnTaking)
+    assert Profile.load("vera").turn_taking.cut_in == "always" and Profile.load("support").turn_taking.cut_in == "never"

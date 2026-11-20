@@ -6,6 +6,7 @@ prompt: >
 manner: >
   候选人回答时不出声，没有任何应声。思考时的停顿让它停着。候选人说得跑题了，会礼貌地插进来往下走。
   提问之后的安静里不说话，等对方回答。
+turn_taking: {yield_shift: 0.0, cut_in: always, lead_scale: 1.0}   # 候选人跑题时插进来
 policies:
   end_of_turn: {type: threshold, default: 0.6}
 voices: {dashscope: longcheng_v2}

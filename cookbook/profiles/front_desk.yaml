@@ -9,6 +9,7 @@ manner: >
   Listens with a short "mm-hm" or "okay" while the guest explains, and says back each detail they spell out (a name, a
   date, a room number) as it lands. Waits through pauses while the guest checks a confirmation email. Stops at once when
   talked over. After a long silence asks once whether they are still there.
+turn_taking: {yield_shift: -0.15, cut_in: never, lead_scale: 1.0}   # stops at once when talked over, never cuts in
 policies:
   end_of_turn: {type: threshold, default: 0.6}
   listen: {type: threshold, default: 0.7}

@@ -246,15 +246,17 @@ class Session:
 
     # ------------------------------------------------------------------ pace
     def params(self) -> Pace:
-        """The current pace, with its timing blended across paces by Jev's probabilities (no jump at the argmax)."""
+        """The current pace, with its timing blended across paces by Jev's probabilities (no jump at the argmax), as the
+        persona on the line takes it (Profile.turn_taking: a persona handed the line brings its own)."""
         base = self.cfg.pace(self.pace)
         probs = {k: v for k, v in self.pace_probs.items() if v > 0 and any(p.name == k for p in self.cfg.paces)}
         if not probs or self.user_turns < self.cfg.opening_turns:
-            return base
+            return self.p.turn_taking.apply(base)
         tot = sum(probs.values())
         mix = lambda attr: sum(v / tot * getattr(self.cfg.pace(k), attr) for k, v in probs.items())  # noqa: E731
-        return Pace(base.name, base.description, max_wait_ms=int(mix("max_wait_ms")), yield_p=mix("yield_p"),
-                    leads=base.leads, cut_in=base.cut_in, lead_after_s=mix("lead_after_s"))
+        return self.p.turn_taking.apply(Pace(base.name, base.description, max_wait_ms=int(mix("max_wait_ms")),
+                                             yield_p=mix("yield_p"), leads=base.leads, cut_in=base.cut_in,
+                                             lead_after_s=mix("lead_after_s")))
 
     async def _update_pace(self, probs: dict):
         self.pace_probs = probs

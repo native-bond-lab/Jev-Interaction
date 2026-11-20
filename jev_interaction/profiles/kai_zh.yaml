@@ -16,3 +16,4 @@ manner: >
 voices: {dashscope: longcheng_v2}
 cast: [lyra_zh]      # who the caller can ask to be put on the line
 display: {title: Companion (Chinese), title_zh: 陪伴, tagline: "All four paces, every decision open", tagline_zh: "四种节奏，所有决策都放开", language: zh, accent: "#ffb86b", order: 42, group: task, listed: false}
+turn_taking: {yield_shift: 0.0, cut_in: pace, lead_scale: 1.0}   # 跟着节奏走：他的习惯本来就随通话变化

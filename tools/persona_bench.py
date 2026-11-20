@@ -67,14 +67,8 @@ SCENES = [
 
 
 def tuned(pace, p):
-    """The pace as this persona takes it (`turn_taking` in its YAML): yield_shift moves how sure Jev must be before its
-    line stops; cut_in "always" lets it cut in and take the floor back in any pace, "never" in none; lead_scale scales how
-    long a quiet after its own line lasts before it picks the thread up."""
-    t = p.extra.get("turn_taking") or {}
-    cut = {"always": True, "never": False}.get(t.get("cut_in"), pace.cut_in)
-    return type(pace)(pace.name, pace.description, max_wait_ms=pace.max_wait_ms,
-                      yield_p=min(0.9, max(0.15, pace.yield_p + float(t.get("yield_shift", 0.0)))),
-                      leads=pace.leads, lead_after_s=pace.lead_after_s * float(t.get("lead_scale", 1.0)), cut_in=cut)
+    """The pace as this persona takes it: Profile.turn_taking, the same as the engine (Session.params)."""
+    return p.turn_taking.apply(pace)
 
 
 def pace_of(answers: dict) -> str:
