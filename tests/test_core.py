@@ -881,3 +881,18 @@ def test_a_persona_takes_turns_its_own_way_on_top_of_the_pace():
     for name in ("companion", "support", "vera", "lyra", "puppy_zh"):
         assert isinstance(Profile.load(name).turn_taking, TurnTaking)
     assert Profile.load("vera").turn_taking.cut_in == "always" and Profile.load("support").turn_taking.cut_in == "never"
+
+
+def test_bailian_asks_each_pace_against_the_plain_one_and_cuts_in_at_its_own_line():
+    from jev_interaction import Config
+    from jev_interaction.config import DEFAULT_PACES
+    from jev_interaction.judge import bailian as B
+    paces = {p.name: p.description for p in DEFAULT_PACES}
+    q = B.pace_facts(paces, "normal")
+    assert set(q) == {f"pace_{n}{r}" for n in ("patient", "narrate", "eager") for r in ("", "__r")}
+    narrate = q["pace_narrate"]["criteria"]
+    assert "not a question" not in narrate["yes"] and narrate["no"].startswith(paces["normal"])
+    assert "a question that a sentence or two answers" in narrate["no"]          # the "not" clause goes with the other option
+    assert list(q["pace_eager__r"]["criteria"]) == ["no", "yes"]
+    assert Q.pace_probs(B.merge({"pace_eager": {"probabilities": {"yes": 0.9, "no": 0.1}}}), list(paces), "normal")["eager"] > 0.5
+    assert Config(judge_provider="bailian").policies["cut_in"].default == 0.2 and Config().policies["cut_in"].default == 0.5

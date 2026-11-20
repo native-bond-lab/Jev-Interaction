@@ -76,6 +76,9 @@ class Config:
                                        # taken at or over this p(finished), by judge_provider (the end_of_turn policy's
                                        # line unless you give a policy of your own). Bailian's numbers sit nearer the
                                        # middle (about 0.35 on a sentence cut off mid-thought, where Jev says 0.1)
+    sparring_min: dict = field(default_factory=lambda: {"jev": 0.5, "bailian": 0.2})   # cutting in (in a pace that does):
+                                       # at or over this p(sparring), by judge_provider (the default cut_in policy's line).
+                                       # Bailian ranks the moments right but says 0.2 to 0.8 on real sparring
     turn_last_ms: int = 4000           # ... and this far past the pace's longest wait the agent speaks anyway
     listen_finished_max: float = 0.65  # no listening sound once Jev is this sure the user has finished
     quiet_marks_s: tuple = (1.5, 4.0, 10.0, 25.0, 60.0, 120.0)   # when the quiet question is asked (jittered)
@@ -126,11 +129,16 @@ class Config:
         if self.hold_release_ms is not None:
             warnings.warn("Config(hold_release_ms=...) is gone: the line is no longer paused", DeprecationWarning, stacklevel=3)
             self.hold_release_ms = None
-        if self.policies.get("end_of_turn") == ThresholdPolicy():   # the default policy: at the judge's own line
+        if self.policies.get("end_of_turn") == ThresholdPolicy():   # the default policies: at the judge's own lines
             self.policies["end_of_turn"] = ThresholdPolicy(default=self.finished_line())
+        if self.policies.get("cut_in") == ThresholdPolicy():
+            self.policies["cut_in"] = ThresholdPolicy(default=self.sparring_line())
 
     def finished_line(self) -> float:
         return self.finished_min.get(self.judge_provider, self.finished_min.get("jev", 0.5))
+
+    def sparring_line(self) -> float:
+        return self.sparring_min.get(self.judge_provider, self.sparring_min.get("jev", 0.5))
 
     def sound_line(self) -> float:
         return self.sound_min.get(self.language, self.sound_min.get("", 0.5))

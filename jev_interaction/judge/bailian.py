@@ -20,6 +20,7 @@ after any edit.
 from __future__ import annotations
 
 from .client import probs as P
+from .questions import PACE as QPACE
 
 AGAIN = "__r"     # the twin of a question, asked with its options in reverse order
 
@@ -128,6 +129,26 @@ ASKS = {"type": "choice", "instructions": "Look only at `user_latest_words`. Is 
         "the user telling something?", "criteria": {
             "asks": "a question or a request to the agent: it wants an answer",
             "tells": "the user telling something: a statement, a story, a piece of a list"}}
+
+
+# ---------------------------------------------------------------- which pace
+PACE_Q = "Look only at `user_latest_words`, what the user has just said. Which of the two describes it better?"
+
+
+def pace_facts(paces: dict[str, str], base: str) -> dict:
+    """Which pace, as one yes/no fact per pace but `base` (the keys and answers of questions.pace_facts, so
+    questions.pace_probs reads them), each put as a choice between that pace and the base pace. Asked "is this going
+    on?" one pace at a time, this judge said yes to most of them on plain chat, and the call left the normal pace on
+    questions like "is it expensive?"; with the base pace beside it as the other option it has something to choose.
+    What a pace's description says it is not ("...; not a question that a sentence or two answers") goes with the other
+    option: this judge reads the words of a "not" clause as a match."""
+    out = {}
+    for name, description in paces.items():
+        if name != base:
+            is_, _, not_ = description.partition("; not ")
+            plain = paces[base] + (f"; or {not_.strip()}" if not_ else "")
+            out.update(both(QPACE + name, {"type": "choice", "instructions": PACE_Q, "criteria": {"yes": is_, "no": plain}}))
+    return out
 
 
 def listen() -> dict:

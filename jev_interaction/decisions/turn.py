@@ -34,7 +34,8 @@ class Turn(Decision):
 
     def questions(self, s, ctx):
         paces = {p.name: p.description for p in s.cfg.paces}
-        qs = {"done": Q.done(s.p.short), **Q.pace_facts(paces, s.cfg.start_pace)}
+        facts = B.pace_facts if s.cfg.judge_provider == "bailian" else Q.pace_facts
+        qs = {"done": Q.done(s.p.short), **facts(paces, s.cfg.start_pace)}
         if self.last_words(s):                                      # the same decision, worded about the words themselves
             qs.update(Q.last_words())
         ctx["may_listen"] = LISTEN.ready(s, ctx)

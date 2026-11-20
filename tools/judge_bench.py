@@ -82,8 +82,10 @@ QUIET_S = 0.4
 
 
 def turn_questions(p) -> dict:
-    """What every turn request asks: have they finished, and one fact for each pace but the starting one."""
-    return {"done": Q.done(p.short), **Q.pace_facts(PACES, "normal")}
+    """What every turn request asks: have they finished, and one fact for each pace but the starting one (in the
+    judge's own wording, as decisions/turn.py)."""
+    facts = B.pace_facts if PROVIDER == "bailian" else Q.pace_facts
+    return {"done": Q.done(p.short), **facts(PACES, "normal")}
 
 
 def cases(held_out: bool = False, bare: bool = False) -> list[dict]:
@@ -242,7 +244,8 @@ def decision_cases(last_words: bool, held_out: bool = False, provider: str = "je
                 q = {**q, **Q.last_words()}
             st["user_words_so_far"] = " ".join(segments)
             out.append({"d": "cutting in", "lang": lang, "right": right, "q": q, "state": st,
-                        "act": lambda a: "cut_in" if P(a, "spar").get("sparring", 0.0) >= 0.5 else "let_finish",
+                        "act": lambda a, line=Config(judge_provider=provider).sparring_line():
+                            "cut_in" if P(a, "spar").get("sparring", 0.0) >= line else "let_finish",
                         "ok": lambda act, right=right: act == right})
         for recent, said, right in K.WHO[lang]:
             q, st = turn({"who": Q.who(p.short, {other_id: (b.short, b.task)})},

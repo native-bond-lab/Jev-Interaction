@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Bailian reads the pace and cutting in better.** With `JEV_PROVIDER=bailian` each pace is asked as a choice between it
+  and the plain pace (`judge/bailian.py`, `pace_facts`; what a pace says it is not goes with the plain option), and
+  cutting in has a line of its own, 0.2 (`Config.sparring_min`): this judge ranks sparring right with lower numbers.
+  Held out: the pace 75% → 92%, cutting in 62% → 88%; the other decisions unchanged.
 - **The Bailian judge measured on 0.3.0's questions** (`cookbook/stacks.md`, `deploy/mainland-china.env`): end of turn
   90% right on 80 held-out pauses, 90% / 15% taken at its line; both talking 100%, a silence 95% (was 85%), listening
   96%, the pace 75%, cutting in 62%. `tools/judge_bench.py` also prints the share over the words' line used with a

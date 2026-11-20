@@ -138,16 +138,17 @@ sent as the engine sends it and scored on the action the engine would take. The 
 (`tools/judge_cases.py`) and checked on 108 others kept apart from the wording (`tools/judge_cases_heldout.py`,
 `--held-out`); the held-out column is the one to trust. "Engine questions" is the engine's 0.2 wording with
 `JEV_TURN_QUESTION=last_words`; "0.2" and "0.3.0" are `JEV_PROVIDER=bailian` on each release's questions (0.3.0 asks the
-pace, cutting in and a silence as small facts for every judge). 0.3.0 measured 2026-11-20 from a mainland network.
+pace, cutting in and a silence as small facts for every judge); "now" adds the Bailian wording of the pace and its own
+line for cutting in (below). Measured 2026-11-20 from a mainland network.
 
-| decision | Jev, 0.3.0 questions | Bailian, engine questions, held out | Bailian 0.2, held out | **Bailian 0.3.0, held out** |
-|---|---|---|---|---|
-| both talking at once | 97% (tuning set) | 54% | 100% | **100%** (24 of 24) |
-| speaking into a silence | 100% | 40% | 85% | **95%** (19 of 20) |
-| listening: is something due | 96% | 67% | 96% | **96%** (23 of 24) |
-| which pace | 100% | 75% | 71% | **75%** (18 of 24) |
-| cutting in while the user talks (eager pace) | 100% | 56% | 56% | **62%** (10 of 16) |
-| handing the line to someone else | 100% | 100% | 100% | not run |
+| decision | Jev, 0.3.0 questions | Bailian, engine questions, held out | Bailian 0.2, held out | Bailian 0.3.0, held out | **Bailian now, held out** |
+|---|---|---|---|---|---|
+| both talking at once | 97% (tuning set) | 54% | 100% | 100% | **100%** (24 of 24) |
+| speaking into a silence | 100% | 40% | 85% | 95% | **95%** (19 of 20) |
+| listening: is something due | 96% | 67% | 96% | 96% | **96%** (23 of 24) |
+| which pace | 100% | 75% | 71% | 75% | **92%** (22 of 24) |
+| cutting in while the user talks (eager pace) | 100% | 56% | 56% | 62% | **88%** (14 of 16) |
+| handing the line to someone else | 100% | 100% | 100% | not run | not run |
 
 Read with these in mind:
 
@@ -164,10 +165,15 @@ Read with these in mind:
   asked for.
 - **On 0.3.0's questions** a silence got better on the Bailian model (85% → 95%: the four facts about a quiet grew out
   of its own set), and both talking and listening held.
-- **Which pace** and **cutting in** are where it still falls short of Jev. The pace: it reads the eager, patient and
-  narrate moments well (5 or 6 of 6 each) but sends most plain chat (4 of 6) to another pace; Jev gets all 24. Cutting
-  in: it lets the user finish every time it should (8 of 8) but cuts in on only 2 of the 8 sparring moments, where Jev
-  cuts in on all of them. The facts are worded for Jev; a wording of these two for the Bailian model is the next step.
+- **Which pace.** Asked Jev's way ("is this going on?", one pace at a time) it said yes to most paces on plain chat
+  and left the normal pace on questions like "is it expensive?" (normal 2 of 6 held out). `JEV_PROVIDER=bailian` now
+  puts each pace as a choice between it and the plain pace, pointed at `user_latest_words`, and what a pace's
+  description says it is not ("not a question that a sentence or two answers") goes with the plain option
+  (`judge/bailian.py`, `pace_facts`): tuning set 21 → 30 of 32, held out 75% → 92% (normal 6 of 6). What it still
+  misses: "talk me to sleep, I won't say anything" reads as the user needing room, not as a story to listen to.
+- **Cutting in.** It ranks the sparring moments right but says 0.2 to 0.8 on them (0.01 to 0.15 on the ones to hear
+  out), so at Jev's line it cut in on 2 of 8. Its line is 0.2 (`Config.sparring_min`, set on the 16 tuning moments: 10
+  → 15): held out 62% → 88%, still letting the user finish every time it should (8 of 8) and cutting in on 6 of 8.
 - These are written moments, not calls, and the presets' thresholds were set on Jev's probabilities; only
   p(finished) has been fitted to the Bailian model's own numbers so far. Run the benchmark against your own judge
   before you rely on it, and again after any change to the wording: on the Bailian model a few changed words in the
