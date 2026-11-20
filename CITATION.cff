@@ -17,8 +17,8 @@ authors:
 repository-code: "https://github.com/native-bond-lab/Jev-Interaction"
 url: "https://huggingface.co/spaces/pupunpu/Jev-Interaction"
 license: Apache-2.0
-version: "0.2.0"
-date-released: "2026-11-16"
+version: "0.3.0"
+date-released: "2026-11-20"
 keywords:
   - full-duplex
   - spoken dialogue

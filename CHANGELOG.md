@@ -1,6 +1,51 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-11-20
+
+Highlights: a new call policy built on three principles: two parties and four moments, one timeline that every model
+reads, one action per moment with no case left out. Jev is asked small facts and nothing is drawn: thresholds, in one
+place. The sound of the voice has a say in "have they finished" (SmartTurn v3.2, both must agree), the voiceprint can
+start from 20 seconds read before the call and is deleted at hang-up, and both take models of your own. A judge for
+mainland China with a ready-made setup. The voice's key is `TTS_API_KEY`.
+
+Breaking: every default policy is a threshold (`SamplePolicy` is still there to choose); `JEV_PROVIDER=bailian` takes
+the turn at p(finished) 0.725; the turn, quiet and cut-in requests carry different questions (older logs replay with
+`judge.questions.turn`, `quiet` and `cut_in`). `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` still work.
+
+- **The policy, drawn and written down.** `docs/policy.svg` (and `docs/policy.zh-CN.svg`, drawn by
+  `tools/draw_policy.py`): the ears give signals only, everything goes on one timeline, who is making sound picks one of
+  four moments, Jev answers small facts, one action follows, the language model writes the words. The README's policy
+  section says the three principles and what follows from them.
+- **The sound of the voice has a say in "have they finished"** (`pip install "jev-interaction[sound]"`, on in the
+  Docker image). At each frame of a pause SmartTurn v3.2 (BSD-2, about 8 MB, CPU) reads the last 8 s of audio. With
+  `Config.sound_rule = "and"` (the default) the turn is taken only when the words (`words_min`, 0.8) and the sound
+  (`sound_min`: zh 0.8, en 0.4) both say finished; words judged finished that the sound keeps calling unfinished are
+  answered after `sound_wait_ms` (2 s). Every reading and every turn it held back is in the call log. On eot-bench
+  v1.0 (revision `ca9d98a`) at 2% false cutoffs: Chinese 1050 ms (Jev alone 1119, VoxTurn 1078, closed LiveKit v1
+  1006), English 1248 ms (Jev alone 1552, VoxTurn 1000); at a 300 ms budget it cuts off more than the trained audio
+  models (README, "End of turn"). The lines were set on the same splits.
+- **The sound model and the voiceprint take models of your own.** Two optional registry nodes, `sound` (`SoundModel`:
+  `ready`, `warm`, `score`) and `voiceprint` (`Embedder`), picked with `JEV_SOUND` / `JEV_VOICEPRINT` (`off` turns
+  either off); SmartTurn and ECAPA are the built-in ones and `/api/health` names the one in use
+  (`docs/adapters.md`).
+- **The voiceprint can start before the call.** When the server has a voiceprint, the page asks for two short lines
+  read aloud three times (15 to 30 s), sends them with `start` (`voice`, base64 PCM16), and says on screen that the
+  sample is used for this call only and deleted when the call ends. Only the embeddings are kept, in memory; they are
+  cleared in `Session.close`, and the page says so again after hang-up (`voiceprint` event: `enrolled` / `skipped`).
+- **A line cut off is recorded as what was heard and what was not.** The page reports what it showed of a line
+  (audio tags taken out, never ahead of the voice: a streamed line's duration is first only the part loaded), and the
+  record keeps that as the agent's words; the rest goes to the responder as a note it never said
+  (`Turn.unheard`), so it can bring it up again if it matters.
+- **The voice's key is `TTS_API_KEY`** (and the voice id `TTS_VOICE_ID`), on the settings page, in `.env.example` and
+  the docs. `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` are read into them when they are unset, so existing
+  deployments and their secrets keep working.
+- **A ready-made setup for mainland China.** `deploy/mainland-china.env`: one Bailian key for the judge, Qwen,
+  Paraformer and CosyVoice, the two values to fill in marked, each number in it with where it was measured
+  (`cookbook/stacks.md`).
+- **Do two personas take turns differently, and only where they should?** `tools/persona_bench.py` asks the written
+  moments once per persona and compares what each would do. Two personas from our product (a dominant and a
+  submissive one, each with its own thresholds and timing) act alike in everyday moments and differently in 6 of 16
+  moments of a scene of control, each the way round one would expect.
 
 - **Bailian takes the turn at a line of its own, not by a draw.** On a sentence cut off mid-thought Bailian's
   `decision-model-preview` says about 0.35 where Jev says about 0.1, so a draw against it spoke into one unfinished

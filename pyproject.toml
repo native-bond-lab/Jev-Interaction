@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jev-interaction"
-version = "0.2.0"
+version = "0.3.0"
 description = "A full-duplex voice framework whose turn-taking is a set of plain-language decisions judged by Jev, not a trained model."
 readme = "README.md"
 license = "Apache-2.0"
