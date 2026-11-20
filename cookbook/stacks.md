@@ -45,6 +45,7 @@ Why these:
 ## Recommended (mainland China)
 
 One Alibaba Cloud Bailian key for all four nodes: its decision model as the judge, Qwen, Paraformer and CosyVoice.
+The same, as a whole file to copy to `.env`: [`deploy/mainland-china.env`](../deploy/mainland-china.env).
 
 ```bash
 JEV_API_KEY=...            # the Bailian key
@@ -156,7 +157,12 @@ Read with these in mind:
   time I mention a cat"): 0 of 8. Asked separately whether such a rule was set earlier and whether the latest words
   bring it up (the two answers multiplied), it finds 7 of 8 held-out ones and still stays quiet where nothing was
   asked for.
-- **Which pace** and **cutting in** are not reworded yet: on the engine's questions the Bailian model rarely picks
+- **Measured on 0.2's questions.** 0.3.0 asks the pace, cutting in and a silence as small facts for every judge
+  (one yes/no fact per pace; sparring or telling; four facts about a quiet, which grew out of the Bailian set), and
+  `JEV_PROVIDER=bailian` no longer has a quiet set of its own. The rows above for a silence, the pace and cutting in
+  are from before that change and have not been measured on the Bailian model since; run
+  `python tools/judge_bench.py --decisions --held-out` with `JEV_PROVIDER=bailian` before relying on them.
+- **Which pace** and **cutting in** were not reworded for 0.2: on the engine's questions the Bailian model rarely picks
   the eager pace and rarely cuts in. A question on the user's words alone did better in a first trial and is the next
   step.
 - These are written moments, not calls, and the presets' thresholds were set on Jev's probabilities; only
