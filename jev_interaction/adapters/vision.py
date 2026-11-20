@@ -23,7 +23,8 @@ CHANGED = ("You are the eyes of {name}, who is on a video call with the user. Th
            "({before}); the second is now. In one short sentence in {language}, say what is different in the second: "
            "what the user did, picked up, showed or put down, who or what came or went. Anything that is in both "
            "pictures is not new, however it was described before, and so is the same thing a little moved, turned or lit "
-           "differently. Plain facts, no guessing at feelings. If nothing a person on the call would notice has "
+           "differently. Say it as what happened on the call (\"the user has picked up a red mug\"), never about "
+           "pictures. Plain facts, no guessing at feelings. If nothing a person on the call would notice has "
            "changed, answer exactly: nothing")
 MOVING = (" The second picture is one still from a movement the user has kept up for {s:.0f} s (the camera saw them moving "
           "all that time): say what they are doing, such as waving at the camera or walking about.")
