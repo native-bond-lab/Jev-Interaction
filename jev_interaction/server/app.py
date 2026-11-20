@@ -46,8 +46,8 @@ MAX_CALL_S = float(os.getenv("MAX_CALL_SECONDS", "0"))      # 0 = no limit
 ENROLL_MAX_BYTES = 35 * 16000 * 2        # at most 35 s of voice before the call is read for the voiceprint
 DAY_BUDGET_S = 60 * float(os.getenv("MAX_CALL_MINUTES_PER_DAY", "0"))   # 0 = no limit; all calls together, per UTC day
 VAD_NAME = type(best_vad()).__name__     # which ear this server has: TenVAD, or EnergyVAD without the ten-vad package
-EMBEDDER = best_embedder()               # the caller's voiceprint: ECAPA when speechbrain is installed (loads in the background)
-SOUND = best_sound()                     # "have they finished" from the voice: SmartTurn when onnxruntime is installed (background load)
+EMBEDDER = best_embedder()               # the caller's voiceprint: JEV_VOICEPRINT's provider, ECAPA by default (loads in the background)
+SOUND = best_sound()                     # "have they finished" from the voice: JEV_SOUND's provider, SmartTurn by default (background load)
 MAX_WAITING = int(os.getenv("MAX_WAITING_CALLS", "20"))     # callers held in line when every line is taken; more than this hear busy
 LOG = logging.getLogger("uvicorn.error")   # uvicorn's own logger: the lines land beside its access log
 ACTIVE = {"calls": 0}
@@ -148,7 +148,8 @@ def health():
     return {"ready": not missing, "missing": missing, "preset": os.getenv("JEV_PRESET", "recommended"),
             "vad": VAD_NAME, "voiceprint": voiceprint_state(), "sound": sound_state(),
             "providers": {"judge": os.getenv("JEV_MODEL", "jev-latest"), "llm": llm, "asr": registry.selected("asr"),
-                          "tts": registry.selected("tts")}, "speech": registry.speech_style()}
+                          "tts": registry.selected("tts"), "sound": registry.selected("sound") if SOUND else None,
+                          "voiceprint": registry.selected("voiceprint") if EMBEDDER else None}, "speech": registry.speech_style()}
 
 
 def _who(request) -> tuple[str | None, str, str]:

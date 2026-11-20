@@ -41,6 +41,17 @@ class Synthesizer(Protocol):
         ...
 
 
+class SoundModel(Protocol):
+    """Has the user finished, from the sound of their voice alone (adapters/smart_turn.py): `score` gets the last
+    seconds of the line from the user (16 kHz PCM16, the pause so far included) and returns p(the turn is over), or
+    None while the model is not ready. It runs in a worker thread, once per frame of a pause. The turn decision weighs
+    it with the words (Config.sound_rule)."""
+    @property
+    def ready(self) -> bool: ...
+    def warm(self) -> None: ...
+    def score(self, pcm: bytes) -> float | None: ...
+
+
 class Embedder(Protocol):
     """Speaker embeddings for the caller's voiceprint (voiceprint.py). `embed` runs in a worker thread; it returns a
     unit-length vector, or None while the model is not ready or the clip is too short."""

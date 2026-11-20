@@ -24,7 +24,8 @@ CONFIG_FIELDS = {"language", "frame_ms", "sample_rate", "paces", "start_pace", "
                  "sound_rule", "sound_min", "words_min", "sound_wait_ms"}
 PACE_FIELDS = {"name", "description", "max_wait_ms", "yield_p", "leads", "cut_in", "lead_after_s"}
 PROTOCOLS = {"VAD": {"is_voice"}, "Recognizer": {"connect", "send", "segments", "close"}, "Responder": {"lines"},
-             "Synthesizer": {"audio"}, "Embedder": {"ready", "warm", "embed"}}
+             "Synthesizer": {"audio"}, "Embedder": {"ready", "warm", "embed"},
+             "SoundModel": {"ready", "warm", "score"}}
 POLICIES = {"end_of_turn", "listen", "floor", "cut_in", "quiet", "who"}
 CLIENT_MESSAGES = {"start", "playback", "heard"}
 SERVER_EVENTS = {"line", "listen", "user", "stop", "finish_line", "decision", "persona", "pace", "error", "queue", "ready",

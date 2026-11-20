@@ -91,3 +91,27 @@ def test_the_model_input_is_whispers_log_mel_of_the_last_8_seconds():
     x = features(np.sin(np.linspace(0, 2000, 20 * 16000)).astype(np.float32))    # 20 s in: only the last 8 count
     assert x.shape == (1, 80, 800) and x.dtype == np.float32 and np.isfinite(x).all()
     assert features(np.zeros(100, dtype=np.float32)).shape == (1, 80, 800)       # short audio is padded with silence
+
+
+def test_a_sound_model_or_voiceprint_of_your_own_plugs_in_through_the_registry(monkeypatch):
+    from jev_interaction import adapters as A
+    from jev_interaction.adapters import registry as R
+    from jev_interaction.testing import FakeEmbedder, FakeSound
+    mine = FakeSound(0.9)
+    R.register("sound", "mine", lambda **_: mine, label="My sound model")
+    R.register("voiceprint", "mine", lambda **_: FakeEmbedder(), label="My voiceprint")
+    try:
+        monkeypatch.setattr(A, "_LOCAL", {})
+        monkeypatch.setenv("JEV_SOUND", "mine")
+        monkeypatch.setenv("JEV_VOICEPRINT", "mine")
+        assert A.best_sound() is mine and A.best_sound() is mine            # built once per process
+        assert isinstance(A.best_embedder(), FakeEmbedder)
+        monkeypatch.setenv("JEV_SOUND", "off")
+        monkeypatch.setenv("JEV_VOICEPRINT", "0")
+        assert A.best_sound() is None and A.best_embedder() is None
+        monkeypatch.setenv("JEV_SOUND", "on")
+        assert R.selected("sound") == "smart-turn" and R.selected("voiceprint") is None
+        assert "JEV_SOUND" not in R.missing_settings()                      # optional: never a setup step
+    finally:
+        R._PROVIDERS.pop(("sound", "mine"))
+        R._PROVIDERS.pop(("voiceprint", "mine"))

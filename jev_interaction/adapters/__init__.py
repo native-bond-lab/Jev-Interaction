@@ -4,11 +4,12 @@
     Recognizer   closed segments of words            ScribeRealtime (ElevenLabs); any streaming ASR
     Responder    the agent's lines, streamed          OpenAICompatResponder (xAI, OpenAI, local servers)
     Synthesizer  audio for a line                     ElevenLabsTTS; any TTS
+    SoundModel   "finished?" from the voice alone     SmartTurn v3.2 (onnxruntime, optional); none: the words alone
     Embedder     speaker embeddings (voiceprint)      EcapaEmbedder (speechbrain, optional); none: no voiceprint
 Response latency is mostly the responder's first line: a faster model there makes the whole call faster, and the
 interaction decisions do not change.
 """
-from .base import VAD, Embedder, Recognizer, Responder, Segment, Synthesizer
+from .base import VAD, Embedder, Recognizer, Responder, Segment, SoundModel, Synthesizer
 from .energy_vad import EnergyVAD
 
 
@@ -21,38 +22,41 @@ def best_vad() -> VAD:
         return EnergyVAD()
 
 
-_EMBEDDER: list = []
+_LOCAL: dict = {}
+
+
+def _local(kind: str):
+    """The process's model for an optional node (registry.OPTIONAL): the provider its setting names, built once and
+    warmed in the background; None when the node is off or its package is not installed."""
+    import logging
+
+    from . import registry
+    name = registry.selected(kind)
+    if not name:
+        return None
+    if (kind, name) not in _LOCAL:
+        try:
+            model = registry.create(kind, name)
+        except Exception as exc:  # noqa: BLE001 - a plugin that fails to build must not stop the server
+            logging.getLogger(__name__).warning("%s %r not available: %s", kind, name, exc)
+            model = None
+        if model is not None:
+            model.warm()
+        _LOCAL[(kind, name)] = model
+    return _LOCAL[(kind, name)]
 
 
 def best_embedder() -> Embedder | None:
-    """The process's ECAPA embedder when speechbrain is installed and JEV_VOICEPRINT is not 0, loading in the
-    background; None otherwise (calls run without a voiceprint, as before)."""
-    import importlib.util
-    import os
-    if os.getenv("JEV_VOICEPRINT", "1") == "0" or importlib.util.find_spec("speechbrain") is None:
-        return None
-    if not _EMBEDDER:
-        from .ecapa import EcapaEmbedder
-        _EMBEDDER.append(EcapaEmbedder())
-        _EMBEDDER[0].warm()
-    return _EMBEDDER[0]
+    """Speaker embeddings for the caller's voiceprint: JEV_VOICEPRINT names the provider (ecapa, built in, when
+    speechbrain is installed; or one you register as "voiceprint"); "0" turns it off. None: no voiceprint."""
+    return _local("voiceprint")
 
 
-_SOUND: list = []
+def best_sound() -> SoundModel | None:
+    """"Have they finished" from the sound of the voice: JEV_SOUND names the provider (smart-turn, built in, when
+    onnxruntime is installed; or one you register as "sound"); "off" turns it off. None: the turn goes by the words."""
+    return _local("sound")
 
 
-def best_sound():
-    """The process's sound model for "have they finished" (SmartTurn v3.2) when onnxruntime is installed and JEV_SOUND
-    is not "off", loading in the background; None otherwise (the turn goes by the words, as before)."""
-    import importlib.util
-    import os
-    if os.getenv("JEV_SOUND", "smart-turn") in ("off", "0", "") or importlib.util.find_spec("onnxruntime") is None:
-        return None
-    if not _SOUND:
-        from .smart_turn import SmartTurn
-        _SOUND.append(SmartTurn())
-        _SOUND[0].warm()
-    return _SOUND[0]
-
-
-__all__ = ["VAD", "Recognizer", "Responder", "Synthesizer", "Embedder", "Segment", "EnergyVAD", "best_vad", "best_embedder", "best_sound"]
+__all__ = ["VAD", "Recognizer", "Responder", "Synthesizer", "Embedder", "SoundModel", "Segment", "EnergyVAD", "best_vad",
+           "best_embedder", "best_sound"]

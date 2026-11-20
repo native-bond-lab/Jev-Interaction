@@ -25,6 +25,10 @@ KINDS = {"judge": ("Judge", "法官 (Jev)"), "llm": ("Language model", "大模�
 SELECTOR = {"asr": "ASR_PROVIDER", "tts": "TTS_PROVIDER"}     # nodes with a choice of provider, and the setting that picks it
 # Nodes with a single built-in provider use it; speech is the user's choice, never picked for them.
 DEFAULT: dict[str, str | None] = {"judge": "jev", "llm": "openai-compatible", "asr": None, "tts": None}
+# Optional local models beside the four nodes: on when their package is installed, never a setup step. The setting
+# names the provider; "off" (or "0") turns the node off, "on" (or "1") is the built-in one.
+OPTIONAL = {"sound": ("Sound model", "声音模型"), "voiceprint": ("Voiceprint", "声纹")}
+OPTIONAL_SELECTOR = {"sound": ("JEV_SOUND", "smart-turn"), "voiceprint": ("JEV_VOICEPRINT", "ecapa")}
 
 
 @dataclass(frozen=True)
@@ -67,8 +71,8 @@ def register(kind: str, name: str, factory: Callable[..., Any], settings: list[S
     """Add (or replace) a provider. `factory(**options)` builds it; options are node-specific (language=, voice=).
     A synthesizer's `speech()` names the speaking style its voices take: "plain", "audio_tags", or a style registered
     with register_style()."""
-    if kind not in KINDS:
-        raise ValueError(f"unknown node {kind!r}; one of {sorted(KINDS)}")
+    if kind not in KINDS and kind not in OPTIONAL:
+        raise ValueError(f"unknown node {kind!r}; one of {sorted(KINDS) + sorted(OPTIONAL)}")
     p = Provider(kind, name, factory, list(settings), label or name, docs, key_pattern, speech)
     _PROVIDERS[(kind, name)] = p
     return p
@@ -93,6 +97,10 @@ def selected(kind: str) -> str | None:
     """The provider name chosen for a node: its selector setting, or the node's only built-in; None when not chosen."""
     if kind in SELECTOR:
         return (os.getenv(SELECTOR[kind]) or "").strip().lower() or DEFAULT[kind]
+    if kind in OPTIONAL:
+        name, default = OPTIONAL_SELECTOR[kind]
+        v = (os.getenv(name) or "").strip().lower() or default
+        return None if v in ("off", "0", "false", "no") else default if v in ("on", "1", "true", "yes") else v
     return DEFAULT[kind]
 
 
@@ -299,3 +307,29 @@ register("tts", "elevenlabs", _eleven_tts, [
 register("tts", "dashscope", _cosyvoice, [
     DASHSCOPE_KEY, Setting("DASHSCOPE_TTS_VOICE", "Voice", "音色", default="longxiaochun_v2"),
     Setting("DASHSCOPE_TTS_MODEL", "Model", "模型", default="cosyvoice-v2")], label="CosyVoice (Alibaba Cloud Bailian)", **DASHSCOPE)
+
+
+# ---------------------------------------------------------------- optional local models (no keys; CPU)
+def _installed(module: str) -> bool:
+    import importlib.util
+    return importlib.util.find_spec(module) is not None
+
+
+def _smart_turn(**_):
+    """SmartTurn v3.2 (BSD-2-Clause, ~8 MB, CPU): `pip install "jev-interaction[sound]"`. None without onnxruntime."""
+    if not _installed("onnxruntime"):
+        return None
+    from .smart_turn import SmartTurn
+    return SmartTurn()
+
+
+def _ecapa(**_):
+    """ECAPA-TDNN speaker embeddings (speechbrain): `pip install "jev-interaction[voiceprint]"`. None without it."""
+    if not _installed("speechbrain"):
+        return None
+    from .ecapa import EcapaEmbedder
+    return EcapaEmbedder()
+
+
+register("sound", "smart-turn", _smart_turn, label="SmartTurn v3.2")
+register("voiceprint", "ecapa", _ecapa, label="ECAPA-TDNN (speechbrain)")
