@@ -104,6 +104,21 @@
     <footer class="sheet-foot" id="setupFoot"></footer>
   </section>
 </div>
+<div class="sheet-wrap" id="enroll" hidden>
+  <div class="sheet-backdrop"></div>
+  <section class="sheet enroll" role="dialog" aria-modal="true" aria-labelledby="enrollTitle">
+    <h2 id="enrollTitle"></h2>
+    <p class="enroll-hint" id="enrollHint"></p>
+    <blockquote class="enroll-script" id="enrollScript"></blockquote>
+    <div class="enroll-meter" aria-hidden="true"><span id="enrollLevel"></span></div>
+    <p class="enroll-time" id="enrollTime" aria-live="polite"></p>
+    <p class="enroll-note" id="enrollNote"></p>
+    <footer class="enroll-actions">
+      <button type="button" class="ghost" id="enrollSkip"></button>
+      <button type="button" class="primary" id="enrollGo"></button>
+    </footer>
+  </section>
+</div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
 <footer class="foot chrome">

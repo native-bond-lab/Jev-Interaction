@@ -3,7 +3,8 @@
     pip install "jev-interaction[server]"; jev-interaction serve      then open http://localhost:8080
     (from a clone: ./scripts/setup.sh)
 
-WebSocket /ws: first message {"type": "start", "profile": "companion", "language": "en"}, then binary 200 ms PCM16
+WebSocket /ws: first message {"type": "start", "profile": "companion", "language": "en"} (optionally "voice": a few
+seconds of the caller's voice, base64 PCM16 16 kHz, for the voiceprint; kept for this call only), then binary 200 ms PCM16
 16 kHz frames and JSON client messages; events come back as JSON. The protocol is in docs/protocol.md.
 
 Providers come from the environment: ASR_PROVIDER / TTS_PROVIDER = elevenlabs (default) or dashscope (mainland China),
@@ -12,6 +13,7 @@ any OpenAI-compatible LLM (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL), and JEV_PRESET
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -27,7 +29,7 @@ paths.load_env()
 
 from jev_interaction import Profile  # noqa: E402  (after .env, so adapters read the keys)
 from jev_interaction import preset as preset_config  # noqa: E402
-from jev_interaction.adapters import best_embedder, best_vad, registry  # noqa: E402
+from jev_interaction.adapters import best_embedder, best_sound, best_vad, registry  # noqa: E402
 from jev_interaction.recorder import Recorder  # noqa: E402
 from jev_interaction.server import settings as S  # noqa: E402
 from jev_interaction.session import Session  # noqa: E402
@@ -41,9 +43,11 @@ WHOLE: OrderedDict[str, asyncio.Task] = OrderedDict()         # line id -> its w
 MAX_WHOLE = 64
 MAX_CALLS = int(os.getenv("MAX_CONCURRENT_CALLS", "0"))     # 0 = no limit; set it for a public demo (e.g. a HF Space)
 MAX_CALL_S = float(os.getenv("MAX_CALL_SECONDS", "0"))      # 0 = no limit
+ENROLL_MAX_BYTES = 35 * 16000 * 2        # at most 35 s of voice before the call is read for the voiceprint
 DAY_BUDGET_S = 60 * float(os.getenv("MAX_CALL_MINUTES_PER_DAY", "0"))   # 0 = no limit; all calls together, per UTC day
 VAD_NAME = type(best_vad()).__name__     # which ear this server has: TenVAD, or EnergyVAD without the ten-vad package
-EMBEDDER = best_embedder()               # the caller's voiceprint: ECAPA when speechbrain is installed (loads in the background)
+EMBEDDER = best_embedder()               # the caller's voiceprint: JEV_VOICEPRINT's provider, ECAPA by default (loads in the background)
+SOUND = best_sound()                     # "have they finished" from the voice: JEV_SOUND's provider, SmartTurn by default (background load)
 MAX_WAITING = int(os.getenv("MAX_WAITING_CALLS", "20"))     # callers held in line when every line is taken; more than this hear busy
 LOG = logging.getLogger("uvicorn.error")   # uvicorn's own logger: the lines land beside its access log
 ACTIVE = {"calls": 0}
@@ -122,6 +126,14 @@ def profiles():
     return sorted((c for c in cards if c["listed"]), key=lambda c: (c["order"], c["id"]))
 
 
+def sound_state() -> str:
+    """off (not installed or JEV_SOUND=off) | loading | ready | failed, and the rule it is used with"""
+    if SOUND is None:
+        return "off"
+    state = "ready" if SOUND.ready else ("failed" if getattr(SOUND, "error", "") else "loading")
+    return f"{state} ({os.getenv('JEV_SOUND_RULE', 'and')})"
+
+
 def voiceprint_state() -> str:
     """off (not installed or JEV_VOICEPRINT=0) | loading | ready | failed"""
     if EMBEDDER is None:
@@ -134,9 +146,10 @@ def health():
     missing = registry.missing_settings()
     llm = f"{os.getenv('LLM_MODEL', '')} @ {os.getenv('LLM_BASE_URL', '')}" if os.getenv("LLM_BASE_URL") else None
     return {"ready": not missing, "missing": missing, "preset": os.getenv("JEV_PRESET", "recommended"),
-            "vad": VAD_NAME, "voiceprint": voiceprint_state(),
+            "vad": VAD_NAME, "voiceprint": voiceprint_state(), "sound": sound_state(),
             "providers": {"judge": os.getenv("JEV_MODEL", "jev-latest"), "llm": llm, "asr": registry.selected("asr"),
-                          "tts": registry.selected("tts")}, "speech": registry.speech_style()}
+                          "tts": registry.selected("tts"), "sound": registry.selected("sound") if SOUND else None,
+                          "voiceprint": registry.selected("voiceprint") if EMBEDDER else None}, "speech": registry.speech_style()}
 
 
 def _who(request) -> tuple[str | None, str, str]:
@@ -253,6 +266,9 @@ async def call(ws: WebSocket):
         await ws.close(code=4429)
         return
     start = json.loads(await ws.receive_text())
+    # a few seconds of the caller's voice said before the call, for the voiceprint: used in memory for this call, never
+    # written or logged, and forgotten when the call ends (Session.close)
+    voice = start.pop("voice", None)
     pid = str(start.get("profile") or "companion").rsplit("/", 1)[-1].removesuffix(".yaml")   # an id, or an old-style path
     path = paths.profiles().get(pid)
     if path is None:
@@ -288,7 +304,7 @@ async def call(ws: WebSocket):
     language = start.get("language") or (profile.extra.get("display") or {}).get("language", "en")
     cfg = preset_config(os.getenv("JEV_PRESET", "recommended"), language=language,
                         turn_question=os.getenv("JEV_TURN_QUESTION") or "engine",
-                        judge_provider=os.getenv("JEV_PROVIDER") or "jev")
+                        judge_provider=os.getenv("JEV_PROVIDER") or "jev", sound_rule=os.getenv("JEV_SOUND_RULE") or "and")
     synth = make_synthesizer(profile, pid)
     # who else can be put on this line (the persona's `cast`): the caller asks, Jev hears it, the session hands over
     cast = {pid: profile, **{c: Profile.load(paths.profiles()[c]) for c in profile.extra.get("cast") or [] if c in paths.profiles()}}
@@ -312,8 +328,17 @@ async def call(ws: WebSocket):
     try:
         judge = registry.create("judge")
         session = Session(profile, send=send, judge=judge, recognizer=make_recognizer(language),
-                          responder=registry.create("llm"), vad=best_vad(), config=cfg, cast=cast, embedder=EMBEDDER,
+                          responder=registry.create("llm"), vad=best_vad(), config=cfg, cast=cast, embedder=EMBEDDER, sound=SOUND,
                           recorder=Recorder(paths.runs_dir() / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl" if RECORD else None))
+        if voice and EMBEDDER is not None:
+            try:
+                pcm = base64.b64decode(voice)[:ENROLL_MAX_BYTES]
+            except (ValueError, TypeError):
+                pcm = b""
+            voice = None
+            made = await session.enroll_sample(pcm)
+            pcm = b""
+            await ws.send_text(json.dumps({"type": "voiceprint", "state": "enrolled" if made else "skipped"}))
         try:
             await session.start()
         except Exception as exc:  # noqa: BLE001 - e.g. the recognizer refused the key: tell the page, end the call

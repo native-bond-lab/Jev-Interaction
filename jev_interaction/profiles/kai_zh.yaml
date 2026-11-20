@@ -13,11 +13,6 @@ manner: >
   他照讲不停；对方就故事问一句，他一两个字答完接着讲；只有对方真的想要别的，他才停下。斗嘴或吵架时他紧逼：句子短、
   接得快，对方闹着顶嘴他就把话抢回来，听到让他来劲的事会直接插进来。冷场先让它安静一会儿，再用一个念头或一个问题接上，
   安静很久了会问一声还在不在，电话明显聊完了就挂。
-policies:
-  end_of_turn: sample
-  listen: sample
-  quiet: sample
-  cut_in: sample
 voices: {dashscope: longcheng_v2}
 cast: [lyra_zh]      # who the caller can ask to be put on the line
 display: {title: Companion (Chinese), title_zh: 陪伴, tagline: "All four paces, every decision open", tagline_zh: "四种节奏，所有决策都放开", language: zh, accent: "#ffb86b", order: 42, group: task, listed: false}

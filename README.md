@@ -87,9 +87,11 @@ tested below, Jev-Interaction is first on 3 metrics and in the top three on 8.
 
 **Where it trails, and where we would love help.**
 
-- **Pure timing from sound.** On eot-bench (6th of 13) and TurnBench end of turn (8th of 16) the leaders are small audio
-  models trained on that kind of conversation; Jev reads words. A small audio model as one more line of Jev's state is
-  the obvious next step.
+- **Pure timing from sound.** On eot-bench (6th of 13 from words alone) and TurnBench end of turn (8th of 16) the
+  leaders are small audio models trained on that kind of conversation. The engine now pairs Jev with an open audio
+  model and answers only when both say finished: in Chinese, at 2% false cutoffs, that waits less than VoxTurn but
+  more than the closed LiveKit v1, and at a tight 300 ms it still cuts in more often than either; in English VoxTurn
+  alone is best ([details](#end-of-turn-livekit-eot-bench)).
 - **Speed after an interruption.** 1.7 s, against 0.3–1.5 s for end-to-end models; most of it is the language model
   writing its first line, so a faster model or an earlier first sentence closes much of the gap.
 - **Synthetic pauses** (0.14 on Full-Duplex-Bench v1.0): it answers clauses that sound finished.
@@ -115,41 +117,63 @@ zero-shot, it is already state of the art on the decisions that take understandi
 | long calls | no session cap | a session cap (OpenAI Realtime: 60 min) or audio tokens filling the context (Gemini Live: about 15 min of audio before compression drops or summarizes old turns) | no session cap: each decision and each reply is a fresh request over a text history, about 200 tokens per minute of speech |
 | speed | the language model's | the fastest: 0.3–1.5 s to answer after an interruption on Full-Duplex-Bench v1.0 | 1.7 s after an interruption, mostly the language model writing its first line |
 
-## How one moment is decided
+## The policy
 
-The caller is mid-story and pauses for breath. The session writes down what is on the line and asks:
+![The call policy: the ears give signals, everything goes on one timeline, who is making sound picks one of four moments, Jev answers small facts, thresholds pick one action, the language model writes the words](docs/policy.svg)
 
-```text
-State   Phone call between the user and Mara.
-        Who Mara is: a companion character … On the call: a noisy, eager listener …
-        Current pace of the call: normal.
-        Recent call: …
-        What the user has said so far: 0.6 s ago "and then my manager pulls me into a meeting"
-        Right now the user has been quiet for 0.4 s.
+Jev-Interaction is an interaction engine, not a voice-activity detector. Jev never hears audio and never decides that
+someone is speaking; the ears do that (voice activity, the recognizer, a sound model, a voiceprint) and their output is
+only signals. What the engine decides is what to do with the moment: answer, wait, slip in an "mm-hm", cut in, carry on
+over an interruption, pick a quiet up, hang up. Three principles shape it.
 
-Asked   listen: due · fits · quiet · answer_due
+1. **Two parties, four moments.** The agent and the user each make sound or not, which gives four moments: the user
+   has the turn, both are quiet, both are talking, the agent is talking. Each moment has its own set of actions, and
+   nothing else.
+2. **One timeline, one "now".** The call is one record that only grows: the words, the signals, every answer from Jev,
+   every action taken, each on the same clock (`Ledger`). Every judgement and the model that writes the lines read the
+   same present from it (`judge/state.py`, `Now`); no decision keeps its own account of the call.
+3. **One action per moment, no case left out.** In any moment there is one set of choices that do not overlap, and
+   every situation belongs to exactly one of them. One answer from Jev, one thing done.
 
-Jev     fits 0.68 · quiet 0.27 · answer_due 0.05
+What follows from them:
 
-Policy  companion → sample        →  "fits"  →  the language model writes "Oh no." and the caller goes on
-        support   → threshold 0.8 →  nothing clears the bar  →  silence
-```
+- **Questions are small facts about the user and the call, one thing each:** "have they finished?", "did they say
+  'one moment'?", "is this sparring or telling?". Never "what would the agent do?". A fact is the same whoever the
+  agent is.
+- **Thresholds, not dice.** Nothing is drawn: the same moment goes the same way, and a recorded call can be worked
+  through again. The thresholds sit in one place (`Config`), to be tuned on data.
+- **The persona sets the thresholds and the timing, never the questions:** how readily its line stops, whether it cuts
+  in, how soon it picks a quiet up.
+- **Jev picks the moment, the language model picks the words.** No rule makes Jev's decision for it, and Jev never
+  writes a line.
 
-The same question, the same kind of answer; the profile decides how it is read.
-
-## The decisions
-
-| when | question | choices |
+| moment | Jev is asked | one action |
 |---|---|---|
-| the user pauses | `turn` | finished / continuing · which pace |
-| the user talks on | `listen` | something they are waiting for is due · a spot that fits a sound · quiet · an answer is due (Jev picks the moment, the language model the words) |
-| both talk at once | `floor` | carry on · yield · finish the sentence · take the floor back · react at once · short aside |
-| the agent leads | `cut_in` | cut in · let them finish |
-| the line is quiet | `quiet` | go on · check on them · wait · hang up |
-| the caller asks for someone else | `who` | stay · put them on (experimental; personas that list a `cast`) |
+| the user has the turn | have they finished · which pace (one yes/no fact per pace) · is something they asked for due · sparring or telling | take the turn (when the words and the sound agree) · cut in (in a pace that does) · slip in a sound · stay silent |
+| quiet | does the agent's last line leave them a move · did they say they need a moment · were goodbyes said · has the agent called out with no answer | let it be · pick the thread up · check on them · hang up (the facts and the clock decide) |
+| both talking | what their words over the line are: a reaction, a "stop", or something of their own | carry on · stop and listen · finish the sentence · take the floor back · react at once |
+| the agent is talking | nothing | nothing to decide |
 
-**Paces** (normal, patient, narrate, eager) say who holds the floor. Their timing is blended by Jev's probabilities
-instead of switching at the most likely one, so a call that is "60% normal, 40% patient" waits in between.
+The caller asking for someone else is one more fact in the first moment (`who`: stay, or put them on; experimental,
+for personas that list a `cast`).
+
+**Paces** (normal, patient, narrate, eager) say who holds the floor. Their timing is blended by Jev's probabilities, so
+a call that is "60% normal, 40% patient" waits in between.
+
+**The same engine, two personas.** Two personas from our product, a dominant and a submissive one, each with its own
+thresholds and timing (`turn_taking`: its line stops more or less readily, it always or never cuts in, it picks a quiet
+up sooner or later; in the engine these are the pace's `yield_p`, `cut_in` and `lead_after_s`), on the same written
+moments (`tools/persona_bench.py`, 628 requests to Jev):
+
+- Everyday moments (132): they act alike where nothing calls for a difference: a silence 28 of 28 the same, both
+  talking 30 of 32. Cutting in differs where it should: in the six sparring moments the dominant one cuts in and the
+  submissive one lets them finish.
+- A scene of control (16 moments): they act differently in 6, each the way round one would expect. "Make me." over an
+  order: the dominant one takes the floor back, the submissive one carries on; defiant rambling: one cuts in, the other
+  lets them finish. Where they should act alike, they do: a real "stop, I'm not okay" stops both, an upset user is let
+  finish by both, a quiet after an order is waited out by both.
+- The facts Jev gave about the user barely moved between the two (0.002 to 0.048 on average): the questions are the
+  same, only the thresholds differ.
 
 ## Task profiles
 
@@ -158,13 +182,13 @@ read.
 
 | profile | listening sounds | mid-sentence pauses | talked over | silence | policies |
 |---|---|---|---|---|---|
-| [companion](jev_interaction/profiles/companion.yaml) | often, varied | quick to react | stops, delighted | fills it | sample |
+| [companion](jev_interaction/profiles/companion.yaml) | often, varied | quick to react | stops, delighted | fills it | defaults |
 | [support](jev_interaction/profiles/support.yaml) | a short "okay" | waits (numbers being read) | stops at once | waits, then one check | thresholds |
-| [tutor](jev_interaction/profiles/tutor.yaml) | encouraging | very patient | finishes the explanation | offers a prompt | sample |
+| [tutor](jev_interaction/profiles/tutor.yaml) | encouraging | very patient | finishes the explanation | offers a prompt | defaults |
 | [interviewer](jev_interaction/profiles/interviewer.yaml) | none | lets thinking run | cuts in on rambling | waits for the answer | mixed |
 | [Vera · speaking coach](jev_interaction/profiles/vera.yaml) | almost none | lets silence work | finishes her sentence | gives the next exercise | thresholds |
-| [话唠阿乐 · chatterbox](jev_interaction/profiles/chatterbox_zh.yaml) | constant | jumps in | finishes his sentence | can't bear one | sample |
-| [小奶狗小言 · sweet puppy](jev_interaction/profiles/puppy_zh.yaml) | soft "mm, and then?" | waits | stops the moment you speak | asks if you're okay | sample |
+| [话唠阿乐 · chatterbox](jev_interaction/profiles/chatterbox_zh.yaml) | constant | jumps in | finishes his sentence | can't bear one | defaults |
+| [小奶狗小言 · sweet puppy](jev_interaction/profiles/puppy_zh.yaml) | soft "mm, and then?" | waits | stops the moment you speak | asks if you're okay | defaults |
 | [电商客服小安 · support (Chinese)](jev_interaction/profiles/support_zh.yaml) | a rare "好的" | never cuts in on an order number | stops at once | one check | thresholds |
 
 ```yaml
@@ -222,7 +246,8 @@ how to write for the voice you pick: voices that perform audio tags (ElevenLabs 
 | language model | grok-4.3, reasoning off, temperature 0.7 | qwen-plus via DashScope |
 | recognition | ElevenLabs Scribe v3 Live | Paraformer realtime v2 |
 | voice | ElevenLabs eleven_v4_turbo (audio tags) | CosyVoice v2, per-persona voices (plain words) |
-| keys | Jev, xAI, ElevenLabs | one Bailian (DashScope) key |
+| keys | Jev, the language model (xAI), TTS (ElevenLabs; `TTS_API_KEY`) | one Bailian (DashScope) key |
+| ready-made file | the bottom of `.env.example` | [`deploy/mainland-china.env`](deploy/mainland-china.env): copy to `.env`, fill in two values |
 
 **Presets.** `JEV_PRESET=recommended` (default) is the timing our product runs on today; `tested` adds the knobs
 measured below; `default` is the library defaults. In code: `jev_interaction.preset("recommended", language="en")`
@@ -298,7 +323,7 @@ class Laugh(Decision):
 
 ```python
 register(Laugh())                                 # jev_interaction.decisions; or add it to DECISIONS there
-config = Config(policies={**Config().policies, "laugh": SamplePolicy()})
+config = Config(policies={**Config().policies, "laugh": ThresholdPolicy(default=0.6)})
 ```
 
 Nothing else changes: the session offers every registered decision each new segment of words (`on_words`) and each
@@ -400,6 +425,52 @@ It stays off: the trade-off is visible, measured and reversible, which is the po
 
 Mid-table: ahead of AssemblyAI, SmartTurn, Cartesia, OpenAI Realtime and Deepgram at 5%, well behind detectors trained
 on audio of this kind of conversation. About 11,000 Jev calls, about one dollar.
+
+**Words and sound together, in the engine.** Words arrive half a second after the sound, so for the first moments of
+a pause a text judge has nothing new to read; an audio model hears how the voice ended but not what was said, and the
+two miss on different pauses (in English each cut people off on about 85 of 850 mid-turn pauses, only 11 of them the
+same). Since 0.3.0 the engine asks both: Jev on the words, a sound model on the last 8 s of audio (SmartTurn v3.2 by
+default, BSD-2, on the CPU; [your own](docs/adapters.md#the-sound-model-and-the-voiceprint) plugs in the same way). By
+default the turn is taken only when both say finished: cutting someone off is the worse mistake (`Config.sound_rule =
+"and"`).
+
+Scored on eot-bench **v1.0** (dataset revision `ca9d98a`; the benchmark's main branch is now v1.1, with 1,888 more
+English rows, which we have not run), English validation (400 turns, 11,191 points) and Chinese validation (344
+turns, 9,441 points), from each model's predictions at every scoring point. Lower is better in every column.
+
+| Chinese | wait at 2% false cutoffs | wait at 5% | false cutoffs at 300 ms |
+|---|---|---|---|
+| **Jev + SmartTurn v3.2, both must agree (the engine's default)** | **1050 ms** | **783 ms** | 32.2% |
+| Jev, words only | 1119 ms | 839 ms | 34.5% |
+| SmartTurn v3.2, sound only | 1274 ms | 891 ms | 40.1% |
+| VoxTurn v1 (non-commercial licence) | 1078 ms | 806 ms | 25.0% |
+| LiveKit Turn Detector v1 (closed, LiveKit Agents only) | 1006 ms | 799 ms | 20.6% |
+
+| English | wait at 2% false cutoffs | wait at 5% | false cutoffs at 300 ms |
+|---|---|---|---|
+| **Jev + SmartTurn v3.2, both must agree (the engine's default)** | **1248 ms** | **835 ms** | 29.6% |
+| Jev, words only | 1552 ms | 924 ms | 36.7% |
+| SmartTurn v3.2, sound only | 1763 ms | 1045 ms | 32.8% |
+| VoxTurn v1 (non-commercial licence) | 1000 ms | 462 ms | 8.5% |
+| LiveKit Turn Detector v1 (closed, LiveKit Agents only) | 991 ms | 543 ms | 9.9% |
+
+What this says, the losses included:
+
+- **Chinese.** Requiring both waits less than either half alone at every budget. At 2% false cutoffs it waits less
+  than VoxTurn (1050 against 1078 ms) but more than the closed LiveKit v1 (1006 ms); at 5% it waits less than both
+  (783 against 806 and 799 ms). At a tight 300 ms it loses clearly: 32% of mid-turn pauses cut off, against 25% and
+  21%. The sound model needs a stretch of quiet to be sure, and the words are not in yet.
+- **English.** VoxTurn alone is the best of everything here, the closed LiveKit v1 included. Requiring both takes Jev
+  from 1552 to 1248 ms at 2%, still far behind the trained audio models.
+- **Why SmartTurn.** It is the audio model we may ship: VoxTurn is CC BY-NC, LiveKit v1 may only be used inside
+  LiveKit Agents. Another one plugs in through the registry.
+- **How far to trust it.** The rule and its lines (`sound_min` by language, `words_min`) were chosen on these same
+  splits; there is no held-out split and no test on recorded calls yet. Every reading of the sound model and every
+  turn it held back is in the call log, to set the lines on your own calls.
+
+SmartTurn and VoxTurn are read all through the pause, as the engine reads SmartTurn. LiveKit v1 is read once at 0.2 s
+and held, as on the benchmark's leaderboard; read all through the pause it waits longer (1026 ms in Chinese, 1460 ms in
+English, at 2%). VoxTurn read the leaderboard's way: 1131 / 830 ms in Chinese, 982 / 669 ms in English.
 
 ### Being talked over: Full-Duplex-Bench v1.5
 
@@ -535,9 +606,10 @@ logged with the state Jev read and the probabilities it returned. What the trace
 | recognizer | streaming, closed segments | `ScribeRealtime` (ElevenLabs), `ParaformerRealtime` (Alibaba Cloud Bailian) |
 | responder | `lines(messages) -> async lines` | `OpenAICompatResponder` |
 | synthesizer | `audio(text) -> async bytes` | `ElevenLabsTTS`, `CosyVoiceTTS` (Alibaba Cloud Bailian) |
-| speaker embedder (optional) | `embed(pcm) -> unit vector`, `ready`, `warm()` | `EcapaEmbedder` (`[voiceprint]` extra): the caller's voiceprint, learned during the call |
+| sound model (optional) | `score(pcm) -> p(finished)`, `ready`, `warm()` | `SmartTurn` (`[sound]` extra): has the user finished, from the voice; `JEV_SOUND` picks a registered one |
+| speaker embedder (optional) | `embed(pcm) -> unit vector`, `ready`, `warm()` | `EcapaEmbedder` (`[voiceprint]` extra): the caller's voiceprint, from 20 s read before the call and the call itself, cleared at hang-up; `JEV_VOICEPRINT` picks a registered one |
 | judge | `ask(questions, state) -> probabilities` | `JevClient` |
-| policy | `choose(probs, allowed)`, `draw(p)` | `SamplePolicy`, `ThresholdPolicy`, `ArgmaxPolicy` |
+| policy | `choose(probs, allowed)`, `draw(p)` | `ThresholdPolicy` (every default), `ArgmaxPolicy`, `SamplePolicy` (draws, for whoever wants them) |
 
 ## Layout
 
@@ -552,9 +624,9 @@ jev_interaction/
   profile.py          task profiles
   config.py           paces, timings, default policies
   presets.py          recommended · tested · default
-  ledger.py           the call's history, for both readers
+  ledger.py           the call's one record, on one clock: turns, their times, what was judged and done
   recorder.py         one JSON line per event, for replay
-  adapters/           VAD · recognizer · responder · synthesizer; registry.py lists the providers per node
+  adapters/           VAD · recognizer · responder · synthesizer · sound model · voiceprint; registry.py lists the providers
   prompts/            the responder's system prompt; speech/ holds one writing style per kind of voice
   profiles/           the built-in personas
   server/             call server (WebSocket, line audio, profiles, health, settings) and its page (web/)
@@ -563,8 +635,10 @@ jev_interaction/
   cli.py              `jev-interaction serve` / `init` / `replay`
 scripts/setup.sh      one-click local setup (--china: domestic PyPI mirror)
 deploy/huggingface/   Hugging Face Space card; scripts/push_hf_space.sh publishes it
+deploy/mainland-china.env  the setup that measured best in mainland China, ready to copy to .env
+tools/                judge_bench · persona_bench · draw_policy (docs/policy.svg) and other measurement scripts
 cookbook/             stacks · parameters · role policies: recipes, not defaults
-docs/                 architecture diagram and benchmark charts
+docs/                 the policy and architecture diagrams, benchmark charts, the protocol
 ```
 
 ## Roadmap
@@ -573,11 +647,16 @@ docs/                 architecture diagram and benchmark charts
 - A second recognizer behind the existing protocols.
 - Turn the tested knobs on in our product's engine (here they are `Config` options), with a voiceprint beside the 10 dB rule (a quiet real caller must not become "someone else").
 - Judge v1.5 against a fixed clean answer (same reply in both runs).
-- A small audio turn model as one more line in Jev's state, for the pure-timing benchmarks (eot-bench, TurnBench EOT).
+- The sound model's lines set on recorded calls and a held-out split, and a closer look at the tight 300 ms budget.
+- A persona's own thresholds and timing (`turn_taking`) read by the engine, not only by `tools/persona_bench.py`.
 - Full TurnBench dev (38 conversations) for thresholds, then the hidden test set; larger task-profile runs.
 - Benchmark harnesses in this repository, run against this package.
 
 ## FAQ
+
+**Is Jev a voice-activity detector here?** No. Jev never hears audio. Voice activity, the recognizer, the sound
+model and the voiceprint are the ears and give signals; Jev answers small facts about the user and the call, and the
+policy turns them into one action per moment ([the policy](#the-policy)).
 
 **Is Jev required?** The judge is one protocol (`ask(questions, state)`). Jev is what this was built and measured with;
 another judge that returns probabilities per choice fits the same slot.
@@ -602,7 +681,7 @@ If Jev-Interaction helps your research, please cite it. GitHub's **Cite this rep
   author  = {Yang, Hengjie and Wu, Zipeng},
   title   = {Jev-Interaction: full-duplex voice turn-taking as plain-language decisions},
   year    = {2026},
-  version = {0.2.0},
+  version = {0.3.0},
   url     = {https://github.com/native-bond-lab/Jev-Interaction},
   license = {Apache-2.0}
 }
@@ -620,7 +699,7 @@ authors of Full-Duplex-Bench, LiveKit eot-bench and TurnBench for open benchmark
 runs at scale on real calls with real users, with the same design of decisions, questions, paces and policies, and
 Jev judges every moment. Every benchmark number above was measured on that engine.
 
-**This repository: 0.2, alpha.** The decision layer is the tested part. The browser client is a
+**This repository: 0.3, alpha.** The decision layer is the tested part. The browser client is a
 minimal stand-in; bring your own VAD, recognizer, language model and voice through the protocols in
 [Swappable pieces](#swappable-pieces). Jev is a hosted API (`JEV_API_KEY`).
 

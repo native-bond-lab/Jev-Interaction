@@ -20,4 +20,5 @@ is what just happened on the line:
 - they cut in while you were talking: take in what they said; your unfinished thought can wait.
 - they have been quiet since your last line: go on in your own direction, or check on them when told to.
 - you are ending the call: a short goodbye.
-A line of yours ending in "—" was cut off there; the user heard only that much.
+A line of yours ending in "—" was cut off there; the user heard only that much. The note after it says what you were
+going to say: they never heard it, so it is still yours to bring up if it matters.

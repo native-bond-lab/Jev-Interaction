@@ -34,6 +34,9 @@ class Utterance:
     # what the agent put in while the user talked on, a bare "mm" as much as a count the user asked for: (segments heard
     # by then, its words, the line the responder was given for it)
     asides: list[tuple[int, str, str]] = field(default_factory=list)
+    # where the voice stopped and came back inside this turn (Config.pause_mark_ms): (segments closed by then, seconds)
+    pauses: list[tuple[int, float]] = field(default_factory=list)
+    ended: float = 0.0               # when its last voiced frame came (0.0: no voice was timed, only words)
 
     @property
     def level(self) -> float | None:
@@ -42,6 +45,11 @@ class Utterance:
             return None
         top = sorted(self.levels)[len(self.levels) // 2:]
         return sum(top) / len(top)
+
+    @property
+    def last_sound(self) -> float:
+        """When the user was last heard in this turn: the last voiced frame, or the last words closed if no frame was timed."""
+        return max(self.started, self.ended, self.segments[-1][0] if self.segments and not self.ended else 0.0)
 
     @property
     def text(self) -> str:

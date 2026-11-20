@@ -12,7 +12,6 @@ from __future__ import annotations
 import time
 
 from ..judge import questions as Q
-from ..judge import state as S
 from ..judge.client import probs as P
 from .base import Decision
 
@@ -27,12 +26,9 @@ class Listen(Decision):
     def questions(self, s, ctx):
         return {"listen": Q.listen(s.p.short)}
 
-    def state(self, s, ctx):
-        segments = s.utt.segments if s.utt else []
-        return super().state(s, ctx) + S.user_turn(s.p.short, segments, time.monotonic(), s.silence_ms, s.speaking,
-                                                    s.utt.asides if s.utt else ())
-
-    async def apply(self, s, answers, ctx):
+    def choose(self, s, answers, ctx) -> str | None:
+        """Which kind of thing to put in now, "due" or "fits", or None. Nothing is done here: the turn decision weighs
+        it with taking the turn and cutting in, and one of them happens (turn.py)."""
         lp = P(answers, "listen")
         due, fits = lp.get("due", 0.0), lp.get("fits", 0.0)           # quiet and answer_due are the mass for "nothing"
         finished = s.judged["finished"] if s.judged else 0.0
@@ -42,10 +38,19 @@ class Listen(Decision):
         if not new_words:
             due = 0.0
         if due >= s.cfg.listen_due_min:
-            s._spawn(s.listen_in("due"))
-        elif (time.monotonic() - s.listen_last >= s.cfg.listen_gap_s and finished < s.cfg.listen_finished_max
+            why = "due"
+        elif (time.monotonic() - s.listen_last >= s.listen_gap and finished < s.cfg.listen_finished_max
               and self.policy_for(s, ctx).draw(due + fits)):
-            s._spawn(s.listen_in("fits"))
+            why = "fits"
+        else:
+            why = None
+        s.ledger.note("decision", what="listen", due=round(due, 3), fits=round(fits, 3), action=why)
+        return why
+
+    async def apply(self, s, answers, ctx):
+        why = self.choose(s, answers, ctx)
+        if why:
+            s._spawn(s.listen_in(why))
 
 
 LISTEN = Listen()

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from ..judge import bailian as B
 from ..judge import questions as Q
-from ..judge import state as S
 from ..judge.client import probs as P
 from ..policy import ThresholdPolicy
 from .base import Decision
@@ -49,9 +48,8 @@ class Floor(Decision):
         return {"floor": Q.floor(s.p.short, criteria)}
 
     def state(self, s, ctx):
-        line = s.ledger.last_agent().text if s.ledger.last_agent() else ""
-        text = super().state(s, ctx) + S.overlap(s.p.short, line, s.utt.heard, s.utt.speech_ms)
-        return B.floor_state(text, line, s.utt.heard) if s.cfg.judge_provider == "bailian" else text
+        text, m = super().state(s, ctx), ctx["now"]
+        return B.floor_state(text, m.agent_line, m.heard) if s.cfg.judge_provider == "bailian" else text
 
     def allowed(self, s, ctx):
         return ctx["criteria"]                    # the choices this pace was offered
@@ -96,7 +94,7 @@ class Floor(Decision):
         await s.send(type="decision", what="floor", action=action, probs=probs)
         if action == "carry_on":
             if s.speaking and s.utt is not None:            # said over a line that goes on: into the call's record at once
-                s.ledger.said_over(s.utt.text)              # (not a turn to answer); the next sound starts from nothing
+                s.ledger.said_over(s.utt.text, s.utt)       # (not a turn to answer); the next sound starts from nothing
                 s.utt, s.judged = None, None
             elif s.utt is not None:
                 s.utt.over_ms = s.utt.over_ask_at = 0

@@ -31,8 +31,8 @@ def env_path() -> pathlib.Path:
 # values as comments; a test keeps them in step.
 REFERENCES = [
     {"id": "global", "title": "Recommended (global)", "title_zh": "推荐组合（海外）",
-     "note": "Proven at scale in our product: xAI grok-4.3 with reasoning off, ElevenLabs Scribe v3 Live and eleven_v4_turbo. Keys: Jev, xAI, ElevenLabs.",
-     "note_zh": "在我们产品的规模化通话里验证过：xAI grok-4.3（关闭思考）、ElevenLabs Scribe v3 Live 实时识别和 eleven_v4_turbo 合成。需要 Jev、xAI、ElevenLabs 三把密钥。"},
+     "note": "Proven at scale in our product: xAI grok-4.3 with reasoning off, ElevenLabs Scribe v3 Live and eleven_v4_turbo. Keys: Jev, the language model (xAI) and TTS (ElevenLabs).",
+     "note_zh": "在我们产品的规模化通话里验证过：xAI grok-4.3（关闭思考）、ElevenLabs Scribe v3 Live 实时识别和 eleven_v4_turbo 合成。需要 Jev、语言模型（xAI）、TTS（ElevenLabs）三把密钥。"},
     {"id": "china", "title": "Recommended (mainland China)", "title_zh": "推荐组合（中国大陆）",
      "note": "All four nodes on Alibaba Cloud Bailian with one key: its decision model as the judge (set the endpoint to your "
              "workspace's own address), Qwen, Paraformer and CosyVoice. cookbook/stacks.md has what we measured.",
@@ -235,7 +235,7 @@ async def test(node: str, make_recognizer, make_synthesizer) -> dict:
             if R.selected("asr") == "elevenlabs":
                 import httpx  # the realtime socket accepts a bad key at connect time: check the key itself
                 async with httpx.AsyncClient(timeout=15) as http:
-                    r = await http.get("https://api.elevenlabs.io/v1/user", headers={"xi-api-key": os.getenv("ELEVENLABS_API_KEY", "")})
+                    r = await http.get("https://api.elevenlabs.io/v1/user", headers={"xi-api-key": os.getenv("TTS_API_KEY", "")})
                     if r.status_code != 200:
                         raise RuntimeError(f"elevenlabs {r.status_code}: {r.text[:120]}")
             rec = make_recognizer(os.getenv("TEST_LANGUAGE", "en"))

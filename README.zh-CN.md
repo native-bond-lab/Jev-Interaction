@@ -59,7 +59,7 @@
 
 **落后的地方，也是最欢迎大家一起做的地方。**
 
-- **只靠声音判断节奏：** eot-bench（13 个里第 6）和 TurnBench 判断说完了（16 个里第 8），领先的都是用这类对话训练过的小声音模型；Jev 读的是文字。把一个小声音模型的判断作为 Jev 状态里的一条线索，是最直接的下一步。
+- **只靠声音判断节奏：** eot-bench（只看文字时 13 个里第 6）和 TurnBench 判断说完了（16 个里第 8），领先的都是用这类对话训练过的小声音模型。引擎现在让 Jev 和一个开源声音模型一起判断，两个都说说完了才接话：中文误切 2% 时，等得比 VoxTurn 短，比闭源的 LiveKit v1 长；300 毫秒这一档误切仍比它们多；英文上 VoxTurn 单独最好（[详情](#说完没livekit-eot-bench)）。
 - **被插话后回话的速度：** 1.7 秒，端到端模型是 0.3–1.5 秒；大部分时间花在大模型写第一句上，换更快的模型、更早送出第一句就能补回不少。
 - **合成停顿**（Full-Duplex-Bench v1.0 上 0.14）：听起来像说完的分句，它会接话。
 
@@ -82,40 +82,39 @@
 | 长通话 | 没有会话上限 | 会话有上限（OpenAI Realtime 60 分钟），或音频把上下文占满（Gemini Live 约 15 分钟音频后要压缩，丢掉或概括早先的话） | 没有会话上限：每次决策、每次回答都是对文字记录的一次新请求，一分钟说话约 200 个 token |
 | 速度 | 取决于大模型 | 最快：Full-Duplex-Bench v1.0 上被插话后 0.3–1.5 秒回话 | 被插话后 1.7 秒，主要是大模型写第一句的时间 |
 
-## 一个时刻是怎么判断的
+## 通话策略（policy）
 
-用户讲到一半，停下来喘口气。系统把线上的情况写下来，然后提问：
+![通话策略：耳朵只给信号，所有东西记在一条时间线上，谁在出声分出四个时刻，Jev 回答小事实，阈值选出一个动作，语言模型写台词](docs/policy.zh-CN.svg)
 
-```text
-状态   Phone call between the user and Mara.
-       Who Mara is: a companion character … On the call: a noisy, eager listener …
-       Current pace of the call: normal.
-       Recent call: …
-       What the user has said so far: 0.6 s ago "and then my manager pulls me into a meeting"
-       Right now the user has been quiet for 0.4 s.
+Jev-Interaction 是一个交互引擎，不是人声检测（VAD）。Jev 不听音频，也不判断有没有人在说话；那是耳朵的事（人声检测、语音识别、声音模型、声纹），耳朵只给信号。引擎决定的是这一刻怎么做：接话、等、垫一声"嗯"、插话、被打断时接着说、冷场时接上、挂断。它按三条原则搭起来：
 
-提问   listen: due · fits · quiet · answer_due
+1. **两方对偶。** 模型和用户各自出声或不出声，组合成四个时刻：用户在说、两边都安静、两人同时说、模型在说。每个时刻有自己的一组动作，别的没有。
+2. **一条线性的上下文。** 整通电话是一份只追加、不分叉的记录：说的话、信号、Jev 的每个回答、做过的每个动作，都在同一个时钟上（`Ledger`）。每个判断和写台词的模型读的是同一个"此刻"（`judge/state.py` 的 `Now`）；没有哪个决策自己另记一套。
+3. **互斥穷尽。** 任何时刻只有一组互不重叠的选项，任何情况都恰好归其中一个管。Jev 回答一次，只做一件事。
 
-Jev    fits 0.68 · quiet 0.27 · answer_due 0.05
+由此而来的几条做法：
 
-策略   陪伴 → 按概率抽签        →  "fits"  →  大模型写一句 "Oh no."，用户接着讲
-       客服 → 阈值 0.8           →  没有选项过线  →  不出声
-```
+- **问的是关于用户和通话的小事实，一题一件事：**"说完了吗？""他说了'等一下'吗？""是在斗嘴还是在讲事？"。从不问"模型这时会怎么做"。事实不随角色变。
+- **用阈值，不抽签。** 同一个时刻永远同样处理，录下来的通话可以原样重走。阈值集中在一处（`Config`），之后用数据调。
+- **人设决定阈值和时机，不改题目：**它的话多容易被打断、插不插话、冷场多久接上。
+- **Jev 定时机，语言模型定内容。** 规则不替 Jev 做决定，Jev 也不写台词。
 
-同一道题、同样形状的答案，怎么读由任务配置决定。
-
-## 决策一览
-
-| 什么时候 | 题目 | 选项 |
+| 时刻 | 问 Jev | 一个动作 |
 |---|---|---|
-| 用户停顿 | `turn` | 说完了 / 还要说 · 当前节奏 |
-| 用户还在说 | `listen` | 用户在等的东西该给了 · 有个空当适合出一声 · 不出声 · 该回答了（Jev 选时机，大模型写内容） |
-| 两人同时说话 | `floor` | 继续 · 让路 · 说完这句 · 把话头拿回来 · 立刻接话 · 简短回应 |
-| 由角色主导时 | `cut_in` | 插话 · 让对方说完 |
-| 冷场 | `quiet` | 接着说 · 问问还在不在 · 等着 · 挂电话 |
-| 来电者要找别人 | `who` | 不换 · 换人接（实验性；角色配置里列了 `cast` 才有） |
+| 用户在说 | 说完了吗 · 哪种节奏（每种节奏一道是非题） · 他要的东西该给了吗 · 斗嘴还是讲事 | 接话（字和声音都说说完了） · 插话（节奏允许时） · 垫一声 · 不出声 |
+| 安静 | 模型上一句留给他接吗 · 他说了要等一下吗 · 道过别了吗 · 喊过了没人应吗 | 让它安静 · 接着自己的话头 · 问一声还在吗 · 挂断（事实加时钟决定） |
+| 两人同时说 | 他压着说的是什么：附和、喊停，还是自己的话 | 接着说 · 停下来听 · 说完这半句 · 把话头拿回来 · 立刻回应 |
+| 模型在说 | 不问 | 没有要决定的 |
 
-**节奏**（normal、patient、narrate、eager）表示谁掌握话头。各节奏的等待时间按 Jev 给的概率加权混合，不在最大的那个上硬切：Jev 判断"六成普通、四成耐心"时，等待时间就落在两者之间。
+来电者要找别人，是第一个时刻里多出来的一个事实（`who`：不换，或换人接；实验性，角色配置里列了 `cast` 才有）。
+
+**节奏**（normal、patient、narrate、eager）表示谁掌握话头。各节奏的等待时间按 Jev 给的概率加权混合：Jev 判断"六成普通、四成耐心"时，等待时间就落在两者之间。
+
+**同一个引擎，换两个人设。** 我们产品里的两个角色，一个支配型（Dom）、一个顺从型（Sub），各带自己的阈值和时机（`turn_taking`：话多容易被打断、插不插话、冷场多久接上；在引擎里就是节奏的 `yield_p`、`cut_in`、`lead_after_s`），用同一批写好的时刻测（`tools/persona_bench.py`，628 次 Jev 请求）：
+
+- 日常时刻（132 个）：没理由不同的地方表现一样：冷场 28/28 相同，两人同时说 30/32 相同。插话只在该不同的地方不同：6 个斗嘴的时刻里，Dom 插话，Sub 让对方说完。
+- 一场主导的戏（16 个时刻）：6 个时刻表现不同，方向都符合预期。命令说到一半用户来一句"Make me."：Dom 把话头拿回来，Sub 接着说；用户挑衅地一直说：一个插话，一个让他说完。该一样的地方一样：真的"停，我不舒服"两个都停，用户难过时两个都让他说完，下完命令后的安静两个都等着。
+- 两边 Jev 给出的用户事实几乎没变（平均差 0.002 到 0.048）：题目一样，只有阈值不同。
 
 ## 任务配置
 
@@ -123,13 +122,13 @@ Jev    fits 0.68 · quiet 0.27 · answer_due 0.05
 
 | 配置 | 应声 | 说到一半停顿 | 被打断 | 冷场 | 策略 |
 |---|---|---|---|---|---|
-| [陪伴](jev_interaction/profiles/companion.yaml) | 常有，花样多 | 很快接话 | 立刻停，很高兴 | 主动填上 | 抽签 |
+| [陪伴](jev_interaction/profiles/companion.yaml) | 常有，花样多 | 很快接话 | 立刻停，很高兴 | 主动填上 | 默认 |
 | [客服](jev_interaction/profiles/support.yaml) | 简短一声"好" | 等着（对方可能在念号码） | 立刻停 | 等着，久了问一次 | 阈值 |
-| [家教](jev_interaction/profiles/tutor.yaml) | 鼓励的声音 | 非常耐心 | 先讲完这句 | 给个提示 | 抽签 |
+| [家教](jev_interaction/profiles/tutor.yaml) | 鼓励的声音 | 非常耐心 | 先讲完这句 | 给个提示 | 默认 |
 | [面试官](jev_interaction/profiles/interviewer.yaml) | 不出声 | 让对方想 | 跑题就打断 | 等回答 | 混合 |
 | [Vera · 演讲教练](jev_interaction/profiles/vera.yaml) | 几乎不出声 | 让沉默替她说话 | 先说完这句 | 直接给下一个练习 | 阈值 |
-| [话唠阿乐](jev_interaction/profiles/chatterbox_zh.yaml) | 不停应声 | 抢着接话 | 先说完这句 | 一秒都忍不了 | 抽签 |
-| [小奶狗小言](jev_interaction/profiles/puppy_zh.yaml) | 轻轻"嗯，然后呢" | 耐心等 | 你一开口就停 | 问你怎么啦 | 抽签 |
+| [话唠阿乐](jev_interaction/profiles/chatterbox_zh.yaml) | 不停应声 | 抢着接话 | 先说完这句 | 一秒都忍不了 | 默认 |
+| [小奶狗小言](jev_interaction/profiles/puppy_zh.yaml) | 轻轻"嗯，然后呢" | 耐心等 | 你一开口就停 | 问你怎么啦 | 默认 |
 | [电商客服小安](jev_interaction/profiles/support_zh.yaml) | 偶尔一句"好的" | 报订单号时绝不打断 | 立刻停 | 只问一次 | 阈值 |
 
 ```yaml
@@ -179,7 +178,8 @@ docker compose up             # 打开 http://localhost:8080
 | 大模型 | grok-4.3，关闭思考，温度 0.7 | 通过百炼调用 qwen-plus |
 | 语音识别 | ElevenLabs Scribe v3 Live | Paraformer realtime v2 |
 | 音色 | ElevenLabs eleven_v4_turbo（音频标签） | CosyVoice v2，每个角色可配音色（纯文字） |
-| 需要的密钥 | Jev、xAI、ElevenLabs | 一把百炼（DashScope）密钥 |
+| 需要的密钥 | Jev、语言模型（xAI）、TTS（ElevenLabs；`TTS_API_KEY`） | 一把百炼（DashScope）密钥 |
+| 现成的配置文件 | `.env.example` 末尾 | [`deploy/mainland-china.env`](deploy/mainland-china.env)：复制成 `.env`，填两个值 |
 
 **预设。** `JEV_PRESET=recommended`（默认）是我们产品现在用的时间参数；`tested` 在此基础上打开下文测过的旋钮；`default` 是库的默认值。代码里用 `jev_interaction.preset("recommended", language="zh")`（旧名 `production` 仍可用）。每个参数的作用见 [cookbook/parameters.md](cookbook/parameters.md)。
 
@@ -250,7 +250,7 @@ class Laugh(Decision):
 
 ```python
 register(Laugh())                                 # jev_interaction.decisions; 或直接写进那里的 DECISIONS
-config = Config(policies={**Config().policies, "laugh": SamplePolicy()})
+config = Config(policies={**Config().policies, "laugh": ThresholdPolicy(default=0.6)})
 ```
 
 别的地方都不用改：会话在每段新识别出的话（`on_words`）和每 100 毫秒一次的 tick（`on_tick`）上把所有注册过的决策过一遍，并把状态、题目和答案记进日志。`allowed` 用来收窄此刻可选的选项，`state` 用来补充 Jev 读到的内容；`jev_interaction/decisions/` 里的五个内置决策就是例子。用 `jev-interaction replay runs/*.jsonl --purpose laugh` 拿录下的通话重放，看它的答案落在哪里。
@@ -334,6 +334,35 @@ cfg = Config(overlap_ask_ms=1000, listen_max_words=3, not_for_me=True, far_db=10
 </picture>
 
 排在中游：误切 5% 这一档好于 AssemblyAI、SmartTurn、Cartesia、OpenAI Realtime 和 Deepgram，明显不如直接听音频、专门在这类对话上训练的模型。约 1.1 万次 Jev 调用，约 1 美元。
+
+**文字和声音一起判断，已经进了引擎。** 识别出的字比声音晚半秒到，停顿刚开始时只看文字的判断没有新东西可读；声音模型听得到语气怎么收的，却不知道说了什么。两者错在不同的停顿上（英文里各自在 850 个话没说完的停顿中误切约 85 个，重合的只有 11 个）。从 0.3.0 起引擎两个都问：Jev 看字，声音模型听最后 8 秒音频（默认 SmartTurn v3.2，BSD-2 许可，跑在 CPU 上；[你自己的模型](docs/adapters.md#the-sound-model-and-the-voiceprint)也能同样接进来）。默认两个都说说完了才接话：把人话打断比回得慢更糟（`Config.sound_rule = "and"`）。
+
+测的是 eot-bench **v1.0**（数据集版本 `ca9d98a`；评测的 main 分支现在是 v1.1，多了 1,888 行英文，我们没有跑），英文验证集（400 段发言、11,191 个打分点）和中文验证集（344 段、9,441 个打分点），用每个模型在每个打分点上的预测来算。每一列都是越小越好。
+
+| 中文 | 误切 2% 要等多久 | 误切 5% 要等多久 | 300 毫秒时的误切率 |
+|---|---|---|---|
+| **Jev + SmartTurn v3.2，两个都说完才接（引擎默认）** | **1050 毫秒** | **783 毫秒** | 32.2% |
+| Jev，只看文字 | 1119 毫秒 | 839 毫秒 | 34.5% |
+| SmartTurn v3.2，只听声音 | 1274 毫秒 | 891 毫秒 | 40.1% |
+| VoxTurn v1（非商用许可） | 1078 毫秒 | 806 毫秒 | 25.0% |
+| LiveKit Turn Detector v1（闭源，只能在 LiveKit Agents 里用） | 1006 毫秒 | 799 毫秒 | 20.6% |
+
+| 英文 | 误切 2% 要等多久 | 误切 5% 要等多久 | 300 毫秒时的误切率 |
+|---|---|---|---|
+| **Jev + SmartTurn v3.2，两个都说完才接（引擎默认）** | **1248 毫秒** | **835 毫秒** | 29.6% |
+| Jev，只看文字 | 1552 毫秒 | 924 毫秒 | 36.7% |
+| SmartTurn v3.2，只听声音 | 1763 毫秒 | 1045 毫秒 | 32.8% |
+| VoxTurn v1（非商用许可） | 1000 毫秒 | 462 毫秒 | 8.5% |
+| LiveKit Turn Detector v1（闭源，只能在 LiveKit Agents 里用） | 991 毫秒 | 543 毫秒 | 9.9% |
+
+怎么读，输的地方也写上：
+
+- **中文。** 两个都说完才接，在每一档都比任何一个单独用等得短。误切 2% 时比 VoxTurn 短（1050 对 1078 毫秒），比闭源的 LiveKit v1 长（1006 毫秒）；误切 5% 时比两者都短（783 对 806、799 毫秒）。300 毫秒这一档明显输：话没说完的停顿里误切 32%，它们是 25% 和 21%。声音模型要听到一段安静才拿得准，字也还没到。
+- **英文。** VoxTurn 单独用是这里最好的，闭源的 LiveKit v1 也不如它。两个都说完才接，让 Jev 在误切 2% 时从 1552 毫秒降到 1248 毫秒，离训练过的声音模型还差很远。
+- **为什么用 SmartTurn。** 它是我们能随代码发出去的声音模型：VoxTurn 是 CC BY-NC，LiveKit v1 只能在 LiveKit Agents 里用。别的模型可以通过注册表接进来。
+- **可信到什么程度。** 规则和两条线（按语言的 `sound_min`、`words_min`）是在这两份数据上选的，没有留出集，也还没在录下来的真实通话上测过。声音模型的每次读数、每次它拦下的接话都记在通话日志里，可以用你自己的通话来调。
+
+SmartTurn 和 VoxTurn 都是在整个停顿里反复读，和引擎读 SmartTurn 的方式一样。LiveKit v1 按排行榜的方式在 0.2 秒读一次就不再变；整个停顿反复读的话等得更久（误切 2% 时中文 1026 毫秒、英文 1460 毫秒）。VoxTurn 按排行榜的方式读：中文 1131 / 830 毫秒，英文 982 / 669 毫秒。
 
 ### 被插话：Full-Duplex-Bench v1.5
 
@@ -447,9 +476,10 @@ cfg = Config(overlap_ask_ms=1000, listen_max_words=3, not_for_me=True, far_db=10
 | 语音识别 | 流式，按段输出 | `ScribeRealtime`（ElevenLabs）、`ParaformerRealtime`（阿里云百炼） |
 | 大模型 | `lines(messages)`，逐句流式 | `OpenAICompatResponder` |
 | 语音合成 | `audio(text)`，流式字节 | `ElevenLabsTTS`、`CosyVoiceTTS`（阿里云百炼） |
-| 声纹（可选） | `embed(pcm)` 返回单位向量、`ready`、`warm()` | `EcapaEmbedder`（`[voiceprint]` 可选依赖）：通话中自动学会来电者的声音 |
+| 声音模型（可选） | `score(pcm)` 返回说完的概率、`ready`、`warm()` | `SmartTurn`（`[sound]` 可选依赖）：从声音听是不是说完了；`JEV_SOUND` 可选别的已注册模型 |
+| 声纹（可选） | `embed(pcm)` 返回单位向量、`ready`、`warm()` | `EcapaEmbedder`（`[voiceprint]` 可选依赖）：通话前念约 20 秒加通话中学会来电者的声音，挂断即删；`JEV_VOICEPRINT` 可选别的已注册模型 |
 | 法官 | `ask(questions, state)` | `JevClient` |
-| 策略 | `choose(probs, allowed)`、`draw(p)` | 抽签、阈值、取最大 |
+| 策略 | `choose(probs, allowed)`、`draw(p)` | 阈值（全部默认）、取最大、抽签（想要抽签的自己选） |
 
 ## 目录
 
@@ -464,9 +494,9 @@ jev_interaction/
   profile.py          任务配置
   config.py           节奏、时间参数、默认策略
   presets.py          recommended · tested · default 预设
-  ledger.py           通话记录
+  ledger.py           整通电话的一份记录，一个时钟：每轮话、它们的时间、判断过什么、做过什么
   recorder.py         每个事件一行 JSON，供重放
-  adapters/           VAD · 识别 · 大模型 · 合成；registry.py 是每个节点的服务商表
+  adapters/           VAD · 识别 · 大模型 · 合成 · 声音模型 · 声纹；registry.py 是服务商表
   prompts/            大模型的系统提示；speech/ 里每类音色一种写法
   profiles/           内置角色
   server/             通话服务（WebSocket、音频、角色、健康检查、设置）和网页（web/）
@@ -475,8 +505,10 @@ jev_interaction/
   cli.py              `jev-interaction serve` / `init` / `replay`
 scripts/setup.sh      一键本地部署（--china 走国内 PyPI 镜像）
 deploy/huggingface/   Hugging Face Space 说明；scripts/push_hf_space.sh 负责发布
+deploy/mainland-china.env  中国大陆实测最好的一套配置，复制成 .env 就能用
+tools/                judge_bench · persona_bench · draw_policy（画 docs/policy.svg）等测量脚本
 cookbook/             配置 · 参数 · 角色 policy：推荐做法，不是默认值
-docs/                 架构图和基准图表
+docs/                 策略图、架构图、基准图表、协议
 ```
 
 ## 路线图
@@ -485,11 +517,14 @@ docs/                 架构图和基准图表
 - 在现有接口后面接第二路识别。
 - 在我们产品的引擎里打开测过的旋钮（本仓库里已是 `Config` 选项），10 dB 规则要和声纹一起用（说话轻的真实来电者不能被当成别人）。
 - v1.5 用固定的干净版本回答重新评（两次用同一个回答）。
-- 加一个小的声音轮次模型，作为 Jev 状态里的一条线索，用在纯节奏的基准上（eot-bench、TurnBench 说完了）。
+- 在真实通话录音和留出集上调声音模型的线，再细看 300 毫秒这一档。
+- 引擎直接读人设自己的阈值和时机（`turn_taking`），不只是 `tools/persona_bench.py` 读。
 - TurnBench 跑完整 dev 集（38 段）定阈值，再提交隐藏测试集；更大规模的任务配置评测。
 - 把测试脚本放进本仓库，用本仓库的代码跑。
 
 ## 常见问题
+
+**Jev 在这里是当 VAD 用的吗？** 不是。Jev 不听音频。人声检测、语音识别、声音模型和声纹是耳朵，只给信号；Jev 回答关于用户和通话的小事实，策略把它们变成每个时刻的一个动作（[通话策略](#通话策略policy)）。
 
 **一定要用 Jev 吗？** 法官只是一个接口（`ask(questions, state)`）。这个框架是用 Jev 搭建和测量的；其他能按选项给出概率的法官也能接进来。
 
@@ -508,7 +543,7 @@ docs/                 架构图和基准图表
   author  = {Yang, Hengjie and Wu, Zipeng},
   title   = {Jev-Interaction: full-duplex voice turn-taking as plain-language decisions},
   year    = {2026},
-  version = {0.2.0},
+  version = {0.3.0},
   url     = {https://github.com/native-bond-lab/Jev-Interaction},
   license = {Apache-2.0}
 }
@@ -522,7 +557,7 @@ docs/                 架构图和基准图表
 
 **规模化运行。** Native Bond Lab 是一个由消费级语音产品驱动的应用实验室。产品里的语音通话引擎面对真实用户、真实通话规模化运行，决策、题目、节奏和策略的设计都一样，每个时刻都由 Jev 判断。上面所有的基准数字都是在那套引擎上测的。
 
-**本仓库：0.2，alpha。** 决策层是测过的部分。网页客户端只是最简单的示例实现；VAD、语音识别、大模型和声音都可以按[可替换的部件](#可替换的部件)里的接口换成你自己的。Jev 是托管 API（`JEV_API_KEY`）。
+**本仓库：0.3，alpha。** 决策层是测过的部分。网页客户端只是最简单的示例实现；VAD、语音识别、大模型和声音都可以按[可替换的部件](#可替换的部件)里的接口换成你自己的。Jev 是托管 API（`JEV_API_KEY`）。
 
 | | |
 |---|---|

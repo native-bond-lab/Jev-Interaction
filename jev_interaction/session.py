@@ -22,6 +22,7 @@ import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from dataclasses import asdict
 
 from . import speaking
 from .adapters.base import VAD, Recognizer, Responder, Segment
@@ -29,6 +30,7 @@ from .config import Config, Pace
 from .decisions import DECISIONS, Decision
 from .judge import JevClient
 from .judge.client import probs as P
+from .judge.state import Now
 from .ledger import Ledger, Turn
 from .profile import Profile
 from .recorder import Recorder
@@ -42,9 +44,10 @@ class Session:
     def __init__(self, profile: Profile, *, send: Callable[[dict], Awaitable[None]], judge: JevClient, recognizer: Recognizer,
                  responder: Responder, vad: VAD, config: Config | None = None, recorder: Recorder | None = None,
                  system_template: str = SYSTEM_TEMPLATE, speech: str | None = None, cast: dict[str, Profile] | None = None,
-                 embedder=None):
+                 embedder=None, sound=None):
         self.p, self.cfg, self.send_event = profile, config or Config(), send
         self.judge, self.asr, self.llm, self.vad = judge, recognizer, responder, vad
+        self.ledger = Ledger()                   # the call's one record, on one clock (ledger.py)
         self.rec = recorder or Recorder(None)
         if speech is None:                       # how to write for the voice in use: the synthesizer's speaking style
             from .adapters import registry
@@ -55,7 +58,6 @@ class Session:
         # a Config(policies=...) written before a decision existed keeps that decision's default
         self.cast = dict(cast or {})             # id -> profile: everyone who can be on this line (Session.hand_over)
         self.decisions: dict[str, Decision] = dict(DECISIONS)       # asked in this order on new words and on each tick
-        self.ledger = Ledger()
         self.lines: dict[str, str] = {}          # line id -> text, fetched by the client from the TTS route
         self.replies: dict[int, Turn] = {}       # gen -> the agent's turn in the record, for the client's `heard`
         self.pace, self.pace_probs, self.transition = self.cfg.start_pace, {}, None
@@ -70,10 +72,14 @@ class Session:
         self.quiet_marks: list[float] = []
         self.spoke_into_quiet = 0
         self.listen_last = 0.0
-        self.reply_gaps: list[float] = []
+        self.listen_gap = self.cfg.listen_gap_s  # to the next sound that could be left out; moved after each one
         self.caller_levels: list[float] = []   # loudness of the utterances answered as the caller's (Config.far_db)
         self.embedder = embedder                # speaker embeddings for the caller's voiceprint; None: no voiceprint
         self.voiceprint = Voiceprint(self.cfg.voice_same, self.cfg.voice_other, self.cfg.far_db or 10.0, self.cfg.voice_verdict_ms)
+        self.sound = sound                       # "have they finished" from the voice (adapters/smart_turn.py); None: words alone
+        self.audio_tail = bytearray()            # the last 8 s of the line from the user, pauses included, for the sound model
+        self.heard_sound: tuple[int, int, float] | None = None   # (utterance id, ms of quiet it was scored at, p(finished))
+        self._sound_busy = False
         self.hanging_up = False
         self.busy: set[str] = set()              # decisions with a question out to Jev right now
         self._tasks: set[asyncio.Task] = set()
@@ -82,6 +88,7 @@ class Session:
     # ------------------------------------------------------------------ lifecycle
     async def start(self, greet: bool = True):
         await self.asr.connect()
+        self.ledger.started = time.monotonic()   # the call's clock starts when the line is up
         self._spawn(self._segments_loop())
         self._spawn(self._tick_loop())
         self._reset_quiet()
@@ -96,7 +103,10 @@ class Session:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         await self.asr.close()
-        self.rec.write("end", ledger=[t.__dict__ for t in self.ledger.turns])
+        if self.embedder is not None:
+            self.voiceprint.clear()               # the caller's voice is kept for this call only
+            self.rec.write("voice_cleared")
+        self.rec.write("end", ledger=[t.__dict__ for t in self.ledger.turns], timeline=self.ledger.timeline())
         self.rec.close()
 
     def _spawn(self, coro):
@@ -111,14 +121,21 @@ class Session:
             exc = t.exception()
             self.rec.write("task_error", error=f"{type(exc).__name__}: {str(exc)[:200]}")
 
+    NOTED = ("decision", "pace", "persona", "stop", "finish_line", "hangup", "listen")   # what the engine did, as it is
+                                                                                        # told to the client: kept in the record
     async def send(self, **event):
         self.rec.write("send", **event)
+        if event.get("type") in self.NOTED:
+            self.ledger.note(event["type"], **{k: v for k, v in event.items() if k not in ("type", "audio")})
         await self.send_event(event)
 
     # ------------------------------------------------------------------ inputs
     async def on_audio(self, pcm: bytes):
         await self.asr.send(pcm)
         step = self.cfg.frame_ms
+        if self.sound is not None:
+            self.audio_tail += pcm
+            del self.audio_tail[:-self.SOUND_WINDOW]
         if hasattr(self.vad, "voiced_ms"):       # how much of the frame is voice, the bar raised while the agent's line plays
             heard = self.vad.voiced_ms(pcm, self.speaking)
             voiced = heard >= self.cfg.voice_min_ms
@@ -128,21 +145,28 @@ class Session:
         if voiced:
             if self.utt is None:
                 self._open_utterance()
+            elif self.silence_ms >= self.cfg.pause_mark_ms:     # their voice is back after a pause inside the turn
+                self.utt.pauses.append((len(self.utt.segments), self.silence_ms / 1000))
+            self.utt.ended = time.monotonic()
             self.utt.speech_ms += heard
             self.utt.levels.append(frame_db(pcm))
             self._hear_voice(pcm, heard)
             self.silence_ms = 0
+            self.heard_sound = None               # the voice is back: the last reading of the pause no longer holds
             if self.speaking:
                 self.utt.over_ms += heard         # only voice over the line counts, not what came before it
                 self._over()
         elif self.utt is not None:
             self.silence_ms += step
+            self._hear_pause()
             if not self.utt.heard and self.silence_ms >= self.cfg.sound_close_ms:
                 self.utt = None                   # a sound and nothing after it: nobody's turn
 
     async def on_client(self, msg: dict):
         if msg.get("type") == "playback":
             self.speaking = msg.get("state") == "playing"
+            if not self.speaking:
+                self.ledger.agent_ended(but=self.replies.get(self.gen) if self.generating else None)
             if not self.speaking and not self.generating:
                 self.idle_since = time.monotonic()
                 self._reset_quiet()
@@ -152,12 +176,21 @@ class Session:
             heard = (msg.get("text") or "").strip()
             turn = self.replies.get(msg.get("gen"))
             if turn is not None:                  # the client names the reply: all of it that was played, "" for none
-                if heard != turn.text:
-                    turn.text, turn.cut = heard, True
+                self._cut(turn, heard)
             else:                                 # a client that sends no gen: the last reply, and only what it heard
                 last = self.ledger.last_agent()
-                if last and heard and heard != last.text:
-                    last.text, last.cut = heard, True
+                if last and heard:
+                    self._cut(last, heard)
+
+    @staticmethod
+    def _cut(turn, heard: str) -> None:
+        """A reply the user heard only part of: the record keeps what they heard as its words and the rest as unheard.
+        The client shows and measures the words without audio tags, so that is what is compared."""
+        whole = speaking.plain(turn.text)
+        if heard in (turn.text, whole):
+            return
+        turn.unheard = whole[len(heard):].strip() if whole.startswith(heard) else ""
+        turn.text, turn.cut = heard, True
 
     async def _segments_loop(self):
         async for seg in self.asr.segments():
@@ -206,11 +239,8 @@ class Session:
         return len(heard) >= 2 and any(heard in norm(line) for line in list(self.lines.values())[-6:])
 
     def _open_utterance(self):
-        now = time.monotonic()
-        if not self.speaking and not self.generating and self.ledger.last_is_agent() and 0 < now - self.idle_since < 60:
-            self.reply_gaps = (self.reply_gaps + [now - self.idle_since])[-20:]
         self.utt_seq += 1
-        self.utt = Utterance(self.utt_seq, now, over=self.speaking)
+        self.utt = Utterance(self.utt_seq, time.monotonic(), over=self.speaking)
         self.judged = None
         self.silence_ms = 0
 
@@ -224,7 +254,7 @@ class Session:
         tot = sum(probs.values())
         mix = lambda attr: sum(v / tot * getattr(self.cfg.pace(k), attr) for k, v in probs.items())  # noqa: E731
         return Pace(base.name, base.description, max_wait_ms=int(mix("max_wait_ms")), yield_p=mix("yield_p"),
-                    leads=base.leads, cut_in=base.cut_in)
+                    leads=base.leads, cut_in=base.cut_in, lead_after_s=mix("lead_after_s"))
 
     async def _update_pace(self, probs: dict):
         self.pace_probs = probs
@@ -269,6 +299,35 @@ class Session:
         if before < mark <= u.speech_ms or (u.speech_ms > mark and before // self.VOICE_EVERY_MS != u.speech_ms // self.VOICE_EVERY_MS):
             self._spawn(self._judge_voice(u))
 
+    SOUND_WINDOW = 8 * 16000 * 2         # 8 s of 16 kHz PCM16: all the sound model hears
+
+    def sound_ready(self) -> bool:
+        return self.sound is not None and self.cfg.sound_rule != "off" and getattr(self.sound, "ready", True)
+
+    def _hear_pause(self) -> None:
+        """A frame of quiet after the user's words: the sound model reads the last 8 s (one reading at a time; a frame
+        that comes while one is running is skipped, the next one is read). Each reading goes on the call's record."""
+        u = self.utt
+        if not self.sound_ready() or self._sound_busy or u is None or not u.segments or self.speaking:
+            return
+        self._sound_busy = True
+        self._spawn(self._read_sound(u.id, self.silence_ms, bytes(self.audio_tail)))
+
+    async def _read_sound(self, utt_id: int, quiet_ms: int, pcm: bytes) -> None:
+        try:
+            p = await asyncio.to_thread(self.sound.score, pcm)
+        finally:
+            self._sound_busy = False
+        if p is None or self.utt is None or self.utt.id != utt_id or self.silence_ms < quiet_ms:
+            return                                # the model is not ready, or the voice came back meanwhile
+        self.heard_sound = (utt_id, quiet_ms, p)
+        self.ledger.note("judge", purpose="sound", p=round(p, 3), quiet_ms=quiet_ms)
+
+    def sound_p(self) -> float | None:
+        """The latest reading of this pause, None when there is none yet."""
+        h = self.heard_sound
+        return h[2] if h and self.utt is not None and h[0] == self.utt.id else None
+
     async def _embed(self, u: Utterance):
         if self.embedder is None or not self.embedder.ready:
             return None
@@ -281,6 +340,42 @@ class Session:
         who = self.voiceprint.judge(emb, u.level, u.speech_ms)
         u.who = {**who, "emb": emb}
         self.rec.write("voice", utt=u.id, **who)
+
+    ENROLL_SECONDS_PER_PART = 4          # the voiced part of a sample is cut into pieces of about this long, 2 to 4 of them:
+                                         # at least two, so a stranger can be told from the first words (voiceprint.MIN_ENROLL)
+
+    async def enroll_sample(self, pcm: bytes, wait_s: float = 5.0) -> int:
+        """A few seconds the caller says before the call (16 kHz PCM16, lines read aloud): the print starts from it. Only
+        the frames with voice in them count (reading starts late and stops to breathe). Waits up to `wait_s` for a model
+        still loading; without one the print is learned from the call as before. Returns the entries made. The audio is
+        not kept: only the embeddings, in memory, until the call ends."""
+        if self.embedder is None or not pcm:
+            return 0
+        waited = 0.0
+        while not self.embedder.ready and waited < wait_s:
+            await asyncio.sleep(0.2)
+            waited += 0.2
+        if not self.embedder.ready:
+            return 0
+        frame = self.cfg.sample_rate * 2 * self.cfg.frame_ms // 1000
+        frames = [pcm[i:i + frame] for i in range(0, len(pcm) - frame + 1, frame)]
+        if not frames:
+            return 0
+        dbs = [frame_db(f) for f in frames]
+        loud = sorted(dbs)[len(dbs) // 2:]
+        level = sum(loud) / len(loud)
+        voiced = b"".join(f for f, d in zip(frames, dbs) if d >= max(level - 20.0, -55.0))
+        seconds = len(voiced) / (self.cfg.sample_rate * 2)
+        parts = max(2, min(4, int(seconds // self.ENROLL_SECONDS_PER_PART)))
+        step = len(voiced) // parts // 2 * 2
+        n = 0
+        for k in range(parts):
+            emb = await asyncio.to_thread(self.embedder.embed, voiced[k * step:(k + 1) * step])
+            if emb is not None:
+                self.voiceprint.add(-1 - k, emb, level)
+                n += 1
+        self.rec.write("voice_enroll", source="sample", n=len(self.voiceprint.entries), voiced_s=round(seconds, 1))
+        return n
 
     async def _enroll(self, u: Utterance) -> None:
         """An answered utterance teaches the caller's print, unless it was judged someone else's."""
@@ -301,9 +396,24 @@ class Session:
         self.utt, self.judged = None, None
 
     # ------------------------------------------------------------------ judgements
-    async def _ask(self, purpose: str, questions: dict, state: str | dict) -> dict:
+    def now(self, quiet_s: float | None = None) -> Now:
+        """The call at this instant, read off its record: the one account every question asked now is put to
+        (judge/state.py). `quiet_s`: the quiet as the caller measured it, when it asks about a quiet of its own."""
+        t = time.monotonic()
+        u, last = self.utt, self.ledger.last_agent()
+        gaps = sorted(self.ledger.reply_gaps())
+        return Now(name=self.p.short, at=self.ledger.clock(t), agent_sounding=self.speaking or self.generating,
+                   agent_line=last.text if last else "", user_open=u is not None,
+                   segments=tuple((self.ledger.clock(at), words) for at, words in u.segments) if u else (),
+                   heard=u.heard if u else "", asides=tuple(u.asides) if u else (), speech_ms=u.speech_ms if u else 0,
+                   silence_ms=self.silence_ms if u else 0, quiet_s=t - self.idle_since if quiet_s is None else quiet_s,
+                   spoke_into_quiet=self.spoke_into_quiet, usual_reply_s=gaps[len(gaps) // 2] if len(gaps) >= 2 else None)
+
+    async def _ask(self, purpose: str, questions: dict, state: str | dict, now: Now | None = None) -> dict:
         """Jev's answers, or {} when the judge fails or is slow: every decision then takes its fallback (floor -> carry on,
-        turn -> the pace's max wait, quiet -> nothing), so a judge error never freezes the call."""
+        turn -> the pace's max wait, quiet -> nothing), so a judge error never freezes the call. The answer goes into
+        the call's record with its probabilities (and into the log with the state it was given), so what was done with
+        it can be worked out again later under other thresholds."""
         t = time.monotonic()
         try:
             answers = await asyncio.wait_for(self.judge.ask(questions, state), self.cfg.judge_timeout_s)
@@ -311,8 +421,10 @@ class Session:
             self.rec.write("judge_error", purpose=purpose, error=f"{type(exc).__name__}: {str(exc)[:200]}")
             await self.send(type="error", what="judge", purpose=purpose, text=f"{type(exc).__name__}: {str(exc)[:120]}")
             return {}
-        self.rec.write("judge", purpose=purpose, ms=int((time.monotonic() - t) * 1000), state=state, questions=questions,
-                       answers={k: P(answers, k) for k in questions})
+        ms, given = int((time.monotonic() - t) * 1000), {k: P(answers, k) for k in questions}
+        self.ledger.note("judge", purpose=purpose, asked=self.ledger.clock(t), ms=ms, answers=given)
+        self.rec.write("judge", purpose=purpose, ms=ms, state=state, questions=questions, answers=given,
+                       now=asdict(now) if now else None)
         return answers
 
     async def ask(self, name: str, **ctx):
@@ -361,6 +473,16 @@ class Session:
         return speaking.data_line(pace, event, self.cfg.language)
 
     @property
+    def rec(self) -> Recorder:
+        return self._rec
+
+    @rec.setter
+    def rec(self, recorder: Recorder):
+        """The call log, every line of it stamped with the call's clock."""
+        self._rec = recorder
+        recorder.clock = self.ledger.clock
+
+    @property
     def utt(self) -> Utterance | None:
         """The user's turn in progress. It lives in the ledger, with the rest of the call (Ledger.open)."""
         return self.ledger.open
@@ -407,7 +529,7 @@ class Session:
             self.utt = None
             self.judged = None
         else:
-            self.ledger.user("", line, who=self.p.short)
+            self.ledger.user("", line, who=self.p.short).at = self.ledger.clock()   # no words of theirs: the line she was given
         messages = [{"role": "system", "content": self.system}, *self.ledger.messages(self.p.short)]
         turn = self.ledger.agent("", who=self.p.short)
         self.replies[gen] = turn
@@ -442,6 +564,7 @@ class Session:
                 if not turn.text:
                     self.speaking = False
                     self.idle_since = time.monotonic()
+                    turn.end = self.ledger.clock()
 
     async def listen_in(self, why: str = "fits"):
         """What the agent lets slip in while the user talks on. Jev chose the moment (`why`: "due", the user is waiting
@@ -467,6 +590,8 @@ class Session:
         line_id = uuid.uuid4().hex
         self.lines[line_id] = text
         utt.asides.append((at, text, line))
+        j = self.cfg.listen_gap_jitter
+        self.listen_gap = self.cfg.listen_gap_s * random.uniform(1 - j, 1 + j)
         await self.send(type="listen", id=line_id, text=text, kind=why, audio=f"/tts/{line_id}")
 
     async def _stop_line(self):
@@ -475,6 +600,7 @@ class Session:
         last = self.ledger.last_agent()
         if last:
             last.cut = True
+        self.ledger.agent_ended()
         await self.send(type="stop", gen=self.gen)
 
     async def safe_word(self, text: str):

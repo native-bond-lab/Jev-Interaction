@@ -41,7 +41,7 @@ def make(answers, policies=None):
 
 
 TURN = {"done": {"finished": 0.9, "continuing": 0.1},
-        "pace": {"normal": 0.6, "patient": 0.4, "narrate": 0, "eager": 0},
+        "pace_patient": {"yes": 0.4, "no": 0.6},               # the pace: one yes/no fact per pace; the rest unanswered
         "listen": {"due": 0, "fits": 0, "quiet": 1.0, "answer_due": 0}}
 
 
@@ -49,7 +49,7 @@ async def test_a_finished_turn_is_answered_and_the_pace_timing_is_blended():
     s, events, judge = make(TURN, {"end_of_turn": SamplePolicy(rng=lambda: 0.1)})
     await s.on_segment(Segment("How was your day?"))
     await asyncio.sleep(0.05)
-    assert "Chatty listener." in judge.asked[0][1]                      # the persona's manner is in every state
+    assert "Chatty listener." in judge.asked[0][1]["call"]              # the persona's manner is in every state
     s.silence_ms = 400
     await s.tick()
     assert any(e["type"] == "line" and e["text"] == "Hey." for e in events)
@@ -107,14 +107,42 @@ async def test_a_sound_over_the_line_with_no_words_asks_nothing():
     assert not judge.asked and not events
 
 
+QUIET_FACTS = {"turn": {"theirs": 0.1, "ours": 0.9}, "busy": {"busy": 0.0, "not_busy": 1.0},
+               "bye": {"goodbye": 0.0, "going": 1.0}, "gone": {"unanswered": 0.0, "not_yet": 1.0}}
+
+
+def quiet_facts(**changed) -> dict:
+    """A fake judge's answers to the quiet facts, asked in both option orders (decisions/quiet.py)."""
+    facts = {**QUIET_FACTS, **changed}
+    return {**facts, **{k + "__r": v for k, v in facts.items()}}
+
+
 async def test_a_quiet_line_may_be_picked_up_and_hang_up_is_never_first():
-    s, events, _ = make({"quiet": {"go_on": 0.0, "check": 0.0, "wait": 0.0, "hang_up": 1.0}}, {"quiet": ArgmaxPolicy()})
-    s.ledger.agent("That's my story.")
+    s, events, _ = make(quiet_facts(bye={"goodbye": 0.95, "going": 0.05}))
+    s.ledger.agent("Bye then.")
+    await s.ask_quiet(30.0)                                              # the call has ended, but nothing was said into
+    done = [e for e in events if e.get("what") == "quiet"]               # the quiet yet: she checks first
+    assert done[-1]["action"] == "check" and not s.hanging_up and s.spoke_into_quiet == 1
+    s.speaking = False
     await s.ask_quiet(30.0)
-    assert not any(e["type"] == "line" for e in events)                  # hang-up not allowed before anything was said into it
-    s.spoke_into_quiet = 1
+    assert [e for e in events if e.get("what") == "quiet"][-1]["action"] == "hang_up" and s.hanging_up
+
+
+async def test_what_is_done_in_a_quiet_follows_whose_move_it_is_and_how_long_it_has_been():
+    async def after(quiet_s, pace="normal", **facts):
+        s, events, _ = make(quiet_facts(**facts))
+        s.pace = pace
+        s.ledger.agent("So that was my week.")
+        await s.ask_quiet(quiet_s)
+        return next(e["action"] for e in events if e.get("what") == "quiet")
+    theirs = {"turn": {"theirs": 0.9, "ours": 0.1}}
+    assert await after(4.0) == "wait" and await after(8.0) == "go_on"            # her own move: after the pace's lead_after_s
+    assert await after(4.0, "narrate") == "go_on" and await after(8.0, "patient") == "wait"
+    assert await after(8.0, **theirs) == "wait" and await after(12.0, **theirs) == "check"    # theirs: let it be, then check
+    assert await after(12.0, busy={"busy": 0.9, "not_busy": 0.1}) == "check"     # "one moment": theirs as well
+    s, events, _ = make({})                                                      # a judge that answers nothing: nothing said
     await s.ask_quiet(30.0)
-    assert any(e["type"] == "line" for e in events) and s.hanging_up
+    assert not any(e["type"] == "line" for e in events)
 
 
 def test_a_profile_brings_its_own_policies(tmp_path):
@@ -137,7 +165,8 @@ async def test_a_pause_asks_only_what_is_read_and_the_draw_does_not_wait():
     await s.on_segment(Segment("So what do you think?"))
     await asyncio.sleep(0.05)
     asked = judge.asked[0][0]
-    assert "done" in asked and "pace" in asked and "wait" not in asked and "kind" not in asked   # nothing reads those
+    assert "done" in asked and "pace_patient" in asked and "wait" not in asked and "kind" not in asked   # nothing reads those
+    assert "pace" not in asked and "pace_normal" not in asked  # the pace a call starts in is none of the others being so
     s.silence_ms = 200                                         # one frame of quiet: the answer is drawn on at once
     await s.tick()
     assert any(e.get("what") == "end_of_turn" and e["go"] for e in events)
@@ -150,7 +179,7 @@ async def test_the_last_words_wording_asks_about_the_users_words_both_ways_round
     await s.on_segment(Segment("So what do you think?"))
     await asyncio.sleep(0.05)
     asked, state = judge.asked[0]
-    assert {"done", "done_again", "pace"} <= asked             # the other questions ride along and read the text under `call`
+    assert {"done", "done_again", "pace_patient"} <= asked             # the other questions ride along and read the text under `call`
     from jev_interaction.judge import questions as Q
     both = Q.last_words()
     assert list(both["done"]["criteria"]) == ["finished", "continuing"] and list(both["done_again"]["criteria"]) == ["continuing", "finished"]
@@ -276,9 +305,28 @@ def test_settings_write_keeps_other_lines_and_rejects_unknown_names(tmp_path, mo
         S.write({"PATH": "/tmp"})
 
 
+def test_the_voice_key_is_tts_api_key_and_the_old_names_still_work(monkeypatch):
+    from jev_interaction.adapters import registry as R
+    from jev_interaction.adapters.elevenlabs_tts import ElevenLabsTTS
+    for k in ("TTS_API_KEY", "TTS_VOICE_ID"):
+        monkeypatch.setenv(k, "x")                                     # so that teardown removes what legacy_env sets
+        monkeypatch.delenv(k)
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "sk_old")                  # a deployment's secrets from 0.2.x
+    monkeypatch.setenv("ELEVENLABS_VOICE_ID", "v_old")
+    tts = ElevenLabsTTS()
+    assert (tts.key, tts.voice) == ("sk_old", "v_old")
+    R.legacy_env()
+    monkeypatch.setenv("TTS_PROVIDER", "elevenlabs")
+    assert "TTS_API_KEY" not in R.missing_settings() and "TTS_VOICE_ID" not in R.missing_settings()
+    monkeypatch.setenv("TTS_API_KEY", "sk_new")                         # the new name wins
+    assert ElevenLabsTTS().key == "sk_new"
+    names = {s.name for p in R._PROVIDERS.values() for s in p.settings}
+    assert "TTS_API_KEY" in names and not any(n.startswith("ELEVENLABS_API") or n == "ELEVENLABS_VOICE_ID" for n in names)
+
+
 def test_provider_registry_drives_factories_health_and_settings(monkeypatch):
     from jev_interaction.adapters import registry as R
-    for k in ("JEV_API_KEY", "LLM_API_KEY", "LLM_BASE_URL", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID", "DASHSCOPE_API_KEY"):
+    for k in ("JEV_API_KEY", "LLM_API_KEY", "LLM_BASE_URL", "TTS_API_KEY", "TTS_VOICE_ID", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID", "DASHSCOPE_API_KEY"):
         monkeypatch.delenv(k, raising=False)
     for k in ("ASR_PROVIDER", "TTS_PROVIDER", "LLM_MODEL"):
         monkeypatch.delenv(k, raising=False)
@@ -286,8 +334,8 @@ def test_provider_registry_drives_factories_health_and_settings(monkeypatch):
     monkeypatch.setenv("ASR_PROVIDER", "dashscope")                    # speech is never chosen for the user
     monkeypatch.setenv("TTS_PROVIDER", "elevenlabs")
     monkeypatch.setenv("LLM_MODEL", "llama3")
-    assert R.missing_settings() == ["JEV_API_KEY", "LLM_BASE_URL", "LLM_API_KEY", "DASHSCOPE_API_KEY", "ELEVENLABS_API_KEY",
-                                    "ELEVENLABS_VOICE_ID"]
+    assert R.missing_settings() == ["JEV_API_KEY", "LLM_BASE_URL", "LLM_API_KEY", "DASHSCOPE_API_KEY", "TTS_API_KEY",
+                                    "TTS_VOICE_ID"]
     monkeypatch.setenv("LLM_BASE_URL", "http://localhost:11434/v1")      # a local model needs no key
     assert "LLM_API_KEY" not in R.missing_settings()
     R.register("asr", "toy", lambda language="en", **_: ("toy-asr", language), [R.Setting("TOY_KEY", "Toy key", secret=True, required=True)])
@@ -582,7 +630,7 @@ async def test_jev_picks_the_moment_and_the_responder_the_words_of_what_is_put_i
 
     from jev_interaction.decisions.listen import LISTEN
     from jev_interaction.utterance import Utterance
-    s, events, _ = scripted_session(policies={"listen": ThresholdPolicy(default=0.5)})
+    s, events, _ = scripted_session(policies={"listen": ThresholdPolicy(default=0.5)}, listen_gap_jitter=0)
     said = lambda: [(e["kind"], e["text"]) for e in events if e["type"] == "listen"]  # noqa: E731
     due = {"listen": {"probabilities": {"due": 0.9, "quiet": 0.1}}}
     fits = {"listen": {"probabilities": {"fits": 0.9, "quiet": 0.1}}}
@@ -653,7 +701,7 @@ async def test_a_silence_after_unfinished_words_stays_the_users_until_jev_is_sur
     s.silence_ms = s.cfg.turn_reask_ms[-1]                         # the quiet grows: Jev is asked again, the listen
     await TURN_DECISION.on_tick(s, time.monotonic())               # question with it
     await asyncio.sleep(0.05)
-    assert "listen" in judge.asked[-1][0] and "quiet for 4.0 s" in judge.asked[-1][1]
+    assert "listen" in judge.asked[-1][0] and "quiet for 4.0 s" in judge.asked[-1][1]["call"]
     s.silence_ms = s.cfg.pace("normal").max_wait_ms + s.cfg.turn_last_ms
     assert await TURN_DECISION.on_tick(s, time.monotonic())        # a long silence: she speaks, and her line is told why
     assert "silent for" in s.llm.seen[-1][-1]["content"] and s.utt is None
@@ -761,19 +809,20 @@ def test_bailian_merges_the_two_orders_and_turns_small_answers_into_the_engines_
     assert listen["due"] < 0.05                                 # "yes, it came up" alone, with no task set, is not due
 
 
-async def test_bailian_stretches_p_finished_before_the_draw():
-    from jev_interaction.judge import bailian as B
-    assert B.finished(0.35) == 0.0 and B.finished(0.95) == 1.0 and abs(B.finished(0.725) - 0.5) < 1e-9
-    half = {"finished": 0.55, "continuing": 0.45}              # this judge on a sentence cut off mid-thought
-    s, events, judge = make(both_ways({**TURN, "done": half, "done_again": half, "rule": {"task": 0.0, "no_task": 1.0}}),
-                            {"end_of_turn": SamplePolicy(rng=lambda: 0.3)})
-    s.cfg.judge_provider = "bailian"
-    await s.on_segment(Segment("My order number is"))
-    await asyncio.sleep(0.05)
-    assert s.judged["finished"] == 0.0                         # drawn against as 0.55, a roll of 0.3 would have answered
-    s.silence_ms = 200
-    await s.tick()
-    assert not any(e.get("what") == "end_of_turn" and e["go"] for e in events)
+async def test_bailian_takes_the_turn_at_its_own_line_not_by_a_draw():
+    from jev_interaction import Config
+    assert Config(judge_provider="bailian").policies["end_of_turn"].default == 0.725 == Config(judge_provider="bailian").finished_line()
+    assert Config().policies["end_of_turn"].default == 0.5
+    for p, taken in ((0.55, False), (0.8, True)):              # 0.55: this judge on a sentence cut off mid-thought
+        done = {"finished": p, "continuing": 1 - p}
+        s, events, judge = scripted_session(both_ways({**TURN, "done": done, "done_again": done,
+                                                       "rule": {"task": 0.0, "no_task": 1.0}}), judge_provider="bailian")
+        await s.on_segment(Segment("My order number is"))
+        await asyncio.sleep(0.05)
+        assert s.judged["finished"] == p and s.judged["go"] is taken     # the number as it comes, against 0.725
+        s.silence_ms = 200
+        await s.tick()
+        assert any(e.get("what") == "end_of_turn" and e["go"] for e in events) is taken
 
 
 async def test_bailian_floor_points_at_the_words_said_over_the_line():
@@ -789,17 +838,16 @@ async def test_bailian_floor_points_at_the_words_said_over_the_line():
     assert any(e.get("what") == "floor" and e["action"] == "finish_first" for e in events)
 
 
-async def test_bailian_quiet_asks_small_questions_and_hangs_up_on_a_closed_call():
+async def test_a_quiet_is_asked_as_small_facts_about_fields_of_their_own_whatever_the_judge():
     small = {"turn": {"theirs": 0.2, "ours": 0.8}, "busy": {"busy": 0.0, "not_busy": 1.0},
-             "bye": {"goodbye": 0.95, "going": 0.05}, "gone": {"unanswered": 0.1, "not_yet": 0.9}, "long": {"pause": 0.0, "long": 1.0}}
-    s, events, judge = make(both_ways(small), {"quiet": ArgmaxPolicy()})
-    s.cfg.judge_provider = "bailian"
+             "bye": {"goodbye": 0.95, "going": 0.05}, "gone": {"unanswered": 0.1, "not_yet": 0.9}}
+    s, events, judge = make(both_ways(small))
     s.ledger.user("Okay, bye then")
     s.ledger.agent("Bye, take care.")
     s.spoke_into_quiet = 1
     await s.ask_quiet(30.0)
     asked, state = judge.asked[0]
-    assert {"turn", "busy", "bye", "gone", "long", "bye__r"} <= asked and "quiet" not in asked
+    assert asked == {"turn", "busy", "bye", "gone", "turn__r", "busy__r", "bye__r", "gone__r"}    # how long: the engine's clock
     assert state["user_last_words"] == "Okay, bye then" and state["agent_last_line"] == "Bye, take care."
     assert any(e.get("what") == "quiet" and e["action"] == "hang_up" for e in events)
 

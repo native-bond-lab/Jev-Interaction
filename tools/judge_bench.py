@@ -15,11 +15,11 @@ from your network. Two measurements:
   judgement   160 made-up pauses, 80 Chinese and 80 English, half of them a finished sentence and half cut off
               mid-thought, each asked the way the engine asks when a user pauses (done + pace + listen in one request).
               "right" is p(finished) on the correct side of 0.5; "ranking" is how well p(finished) orders the pauses
-              whatever the threshold (1.0 = perfectly). "drawn against" is what the engine does with the number: one
-              roll against it, so its mean over the finished pauses is how often the agent answers at the first
-              draw, and over the cut-off ones how often it speaks into an unfinished sentence.
+              whatever the threshold (1.0 = perfectly). "at the line" is what the engine does with the number: the
+              turn is taken when p(finished) is at or over the judge's line (Config.finished_min), so it is how often
+              the agent answers a finished sentence and how often it speaks into an unfinished one.
               --held-out: 80 other pauses (tools/judge_cases_heldout.py). --bare: without closing punctuation.
-  latency     the same state with 1, 2, 5 and 9 questions, wall time on a kept-alive connection.
+  latency     the same state with 1, 3, 8, 11 and 19 questions (a turn request is 8), wall time on a kept-alive connection.
 
 The pauses are written for this test; none is a recorded call. About 180 small requests.
 """
@@ -35,12 +35,14 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from jev_interaction.config import DEFAULT_PACES  # noqa: E402
+from jev_interaction.config import DEFAULT_PACES, Config  # noqa: E402
+from jev_interaction.decisions import quiet as QUIET  # noqa: E402
 from jev_interaction.judge import JevClient  # noqa: E402
 from jev_interaction.judge import bailian as B  # noqa: E402
 from jev_interaction.judge import questions as Q  # noqa: E402
 from jev_interaction.judge import state as S  # noqa: E402
 from jev_interaction.judge.client import probs as P  # noqa: E402
+from jev_interaction.policy import ThresholdPolicy  # noqa: E402
 from jev_interaction.profile import Profile  # noqa: E402
 from jev_interaction.server import paths  # noqa: E402
 
@@ -74,8 +76,14 @@ EN_DONE = ["Have you eaten yet?", "Can you look up my order?", "The weather is l
            "Can you cancel my order?", "Today was a rough day.", "Get some rest then.", "I'd like to change rooms.", "That movie was pretty good."]
 
 PACES = {p.name: p.description for p in DEFAULT_PACES}
+LEAD_AFTER = {p.name: p.lead_after_s for p in DEFAULT_PACES}
 PROVIDER = "jev"
 QUIET_S = 0.4
+
+
+def turn_questions(p) -> dict:
+    """What every turn request asks: have they finished, and one fact for each pace but the starting one."""
+    return {"done": Q.done(p.short), **Q.pace_facts(PACES, "normal")}
 
 
 def cases(held_out: bool = False, bare: bool = False) -> list[dict]:
@@ -101,14 +109,14 @@ def engine_request(c: dict) -> tuple[dict, str]:
     state = (f"Phone call between the user and {p.short}.\n{p.judge_header()}\nCurrent pace of the call: normal.\nRecent call:\n"
              + "\n".join(c["recent"]) + f"\n{p.short} is silent.\nWhat the user has said so far, in the segments the recognizer closed "
              f'after each short pause:\n  {QUIET_S:.1f} s ago: "{c["said"]}"\nRight now the user has been quiet for {QUIET_S:.1f} s.')
-    return {**Q.turn(p.short, "normal", PACES), "listen": Q.listen(p.short)}, state
+    return {**turn_questions(p), "listen": Q.listen(p.short)}, S.with_last_words(state, c["said"], int(QUIET_S * 1000))
 
 
 def last_words_request(c: dict) -> tuple[dict, dict]:
     """What the engine sends with Config.turn_question = "last_words": the same state as an object with the user's words
     in a field of their own, and the question about that field asked with its options in both orders."""
     questions, state = engine_request(c)
-    return {**questions, **Q.last_words()}, S.with_last_words(state, c["said"], int(QUIET_S * 1000))
+    return {**questions, **Q.last_words()}, state
 
 
 def p_finished(answers: dict) -> float | None:
@@ -153,10 +161,21 @@ def header(p, pace: str, recent: list[str], other: str = "") -> str:
     return f"Phone call between the user and {p.short}.\n{p.judge_header()}\nCurrent pace of the call: {pace}.\nRecent call:\n{lines}\n"
 
 
+AT = 60.0     # every written moment is a minute into its call
+
+
 def user_turn(p, segments: list[str], quiet_ms: int) -> str:
-    now = time.monotonic()
-    timed = [(now - quiet_ms / 1000 - 1.2 * (len(segments) - 1 - i), text) for i, text in enumerate(segments)]
-    return S.user_turn(p.short, timed, now, quiet_ms, False, ())
+    """The user has paused in a turn of theirs: the call right now, written by the engine's own `now` (judge/state.py)."""
+    timed = tuple((AT - quiet_ms / 1000 - 1.2 * (len(segments) - 1 - i), text) for i, text in enumerate(segments))
+    return S.now(S.Now(p.short, AT, False, "", user_open=True, segments=timed, heard=" ".join(segments), silence_ms=quiet_ms))
+
+
+def overlap(p, line: str, said: str, seconds: float) -> str:
+    return S.now(S.Now(p.short, AT, True, line, user_open=True, heard=said, speech_ms=int(seconds * 1000)))
+
+
+def quiet(p, last: str, quiet_s: float, spoke: int) -> str:
+    return S.now(S.Now(p.short, AT, False, last, quiet_s=quiet_s, spoke_into_quiet=spoke))
 
 
 def floor_action(probs: dict) -> str:
@@ -183,48 +202,48 @@ def decision_cases(last_words: bool, held_out: bool = False, provider: str = "je
         hello = ["user: 你说吧，我听着"] if lang == "zh" else ["user: Go on, I'm listening"]
 
         def turn(questions, state, quiet_ms, said, p=p, recent=()):  # a question that rides in the turn request
-            qs = {**Q.turn(p.short, "normal", PACES), **questions}
-            if not last_words:
-                return qs, state
-            state = S.with_last_words(state, said, quiet_ms)
-            if bailian:
-                state["user_earlier_lines"] = [r.split(": ", 1)[1] for r in recent if r.startswith("user: ")]
-            return {**qs, **Q.last_words()}, state
+            qs, state = {**turn_questions(p), **questions}, S.with_last_words(state, said, quiet_ms)
+            state["user_earlier_lines"] = [r.split(": ", 1)[1] for r in recent if r.startswith("user: ")]
+            return ({**qs, **Q.last_words()} if last_words else qs), state
 
         for line, said, seconds, right in K.FLOOR[lang]:
             crit = Q.floor_criteria(p.short, finish=True, overrule=False, aside=False, jump=True)
             want = {"carry_on": {"carry_on"}, "stop": {"yield", "jump_in"}, "answer": {"finish_first", "yield", "jump_in"}}[right]
-            text = header(p, "normal", hello + [f"A: {line}"]) + S.overlap(p.short, line, said, int(seconds * 1000))
+            text = header(p, "normal", hello + [f"A: {line}"]) + overlap(p, line, said, seconds)
             q, st = (B.floor(crit), B.floor_state(text, line, said)) if bailian else ({"floor": Q.floor(p.short, crit)}, text)
             out.append({"d": "both talking", "lang": lang, "right": right, "q": q, "state": st,
                         "act": lambda a: floor_action(P(a, "floor")), "ok": lambda act, want=want: act in want})
         for recent, last, quiet_s, spoke, pace, right in K.QUIET[lang]:
-            allowed = ["go_on", "wait"] + (["check"] if quiet_s >= 10 else []) + (["hang_up"] if quiet_s >= 25 and spoke else [])
-            text = header(p, pace, recent + [f"A: {last}"]) + S.quiet(p.short, last, quiet_s, spoke, None)
+            text = header(p, pace, recent + [f"A: {last}"]) + quiet(p, last, quiet_s, spoke)
             said = [r.split(": ", 1)[1] for r in recent if r.startswith("user: ")]
-            q, st = ((B.quiet(), B.quiet_state(text, last, said[-1] if said else "", quiet_s, spoke, pace)) if bailian
-                     else ({"quiet": Q.quiet(p.short, pace)}, text))
-            probs = (lambda a: B.quiet_probs(a)) if bailian else (lambda a: P(a, "quiet"))
+            q, st = QUIET.facts(), B.quiet_state(text, last, said[-1] if said else "", quiet_s, spoke, pace)
+            allowed = QUIET.allowed(quiet_s, spoke, lead_after_s=LEAD_AFTER[pace], check_after_s=10, hangup_after_s=25)
             out.append({"d": "a silence", "lang": lang, "right": right, "q": q, "state": st,
-                        "act": lambda a, allowed=allowed, probs=probs: max(allowed, key=lambda k: probs(a).get(k, 0.0)),
+                        "act": lambda a, allowed=allowed, long=quiet_s >= 10: ThresholdPolicy(fallback="wait").choose(
+                            QUIET.probs(a, long=long, may_hang_up="hang_up" in allowed), allowed),
                         "ok": lambda act, right=right: act == right})
         for recent, said, right in K.PACE[lang]:
             q, st = turn({}, header(p, "normal", recent) + user_turn(p, [said], 400), 400, said)
             out.append({"d": "the pace", "lang": lang, "right": right, "q": q, "state": st,
-                        "act": lambda a: max(P(a, "pace"), key=P(a, "pace").get) if P(a, "pace") else "", "ok": lambda act, right=right: act == right})
+                        "act": lambda a: (lambda ps: max(ps, key=ps.get) if ps else "")(Q.pace_probs(a, PACES, "normal")), "ok": lambda act, right=right: act == right})
         for recent, segments, right in K.LISTEN[lang]:
-            q, st = turn({"listen": Q.listen(p.short), **(B.listen() if bailian else {})},
+            q, st = turn({"listen": Q.listen(p.short), **B.listen()},
                          header(p, "normal", recent) + user_turn(p, segments, 300), 300, " ".join(segments), recent=recent)
 
             def act(a):
-                lp = B.listen_probs(a) if bailian else P(a, "listen")
+                lp = B.listen_probs(a)
                 return "due" if lp.get("due", 0.0) >= 0.5 else "sound" if lp.get("due", 0.0) + lp.get("fits", 0.0) >= 0.5 else "nothing"
             want = {"due": {"due"}, "none": {"sound", "nothing"}, "answer_due": {"nothing"}}[right]
             out.append({"d": "listening", "lang": lang, "right": right, "q": q, "state": st, "act": act, "ok": lambda act, want=want: act in want})
         for recent, segments, right in K.CUT_IN[lang]:
-            out.append({"d": "cutting in", "lang": lang, "right": right, "q": {"cut": Q.cut_in(p.short)},
-                        "state": header(p, "eager", recent) + user_turn(p, segments, 0),
-                        "act": lambda a: "cut_in" if P(a, "cut").get("cut_in", 0.0) >= 0.5 else "let_finish", "ok": lambda act, right=right: act == right})
+            q = {**turn_questions(p), "listen": Q.listen(p.short), **B.both("spar", Q.sparring())}   # it rides in the turn
+            st = S.with_last_words(header(p, "eager", recent) + user_turn(p, segments, 0), " ".join(segments), 0)   # request
+            if last_words:
+                q = {**q, **Q.last_words()}
+            st["user_words_so_far"] = " ".join(segments)
+            out.append({"d": "cutting in", "lang": lang, "right": right, "q": q, "state": st,
+                        "act": lambda a: "cut_in" if P(a, "spar").get("sparring", 0.0) >= 0.5 else "let_finish",
+                        "ok": lambda act, right=right: act == right})
         for recent, said, right in K.WHO[lang]:
             q, st = turn({"who": Q.who(p.short, {other_id: (b.short, b.task)})},
                          header(p, "normal", recent, b.short) + user_turn(p, [named(said, b.short)], 400), 400, named(said, b.short))
@@ -293,7 +312,7 @@ async def main():
         return
     last_words = args.last_words or PROVIDER == "bailian"        # as decisions/turn.py: the provider decides
     request = last_words_request if last_words else engine_request
-    drawn = B.finished if PROVIDER == "bailian" else (lambda p: p)   # what the engine draws against
+    line = Config(judge_provider=PROVIDER).finished_line()       # where the engine takes the turn
     items = cases(args.held_out, args.bare)
     print(f"judge: {judge.model} at {judge.url.split('/')[2].split('.', 1)[-1]} · questions: {PROVIDER} · wording: "
           f"{'last words' if last_words else 'engine'} · pauses: {'held out' if args.held_out else 'tuning set'}"
@@ -320,21 +339,20 @@ async def main():
             fin, mid = [p for p, y in g if y], [p for p, y in g if not y]
             print(f"  {lang}: {len(g)} pauses, right {sum((p >= 0.5) == y for p, y in g) / len(g):.0%}, ranking {ranking(g):.2f}, "
                   f"mean p(finished) {statistics.mean(fin):.2f} when finished / {statistics.mean(mid):.2f} when cut off; "
-                  f"drawn against: answers a finished one at the first draw {statistics.mean(map(drawn, fin)):.0%}, "
-                  f"speaks into an unfinished one {statistics.mean(map(drawn, mid)):.0%}")
+                  f"at the line ({line}): answers a finished one {sum(p >= line for p in fin) / len(fin):.0%}, "
+                  f"speaks into an unfinished one {sum(p >= line for p in mid) / len(mid):.0%}")
         if failed:
             print(f"  {len(failed)} requests failed, e.g. {failed[0]}")
         questions, state = engine_request(items[0])
-        more = {**questions, "quiet": Q.quiet(items[0]["p"].short, "normal"), "cut": Q.cut_in(items[0]["p"].short),
-                "floor": Q.floor(items[0]["p"].short, Q.floor_criteria(items[0]["p"].short, finish=True, overrule=False, aside=False, jump=True)),
-                "quiet2": Q.quiet(items[0]["p"].short, "patient"), "who": Q.who(items[0]["p"].short, {"other": ("Kai", "another colleague")}),
-                "floor2": Q.floor(items[0]["p"].short, Q.floor_criteria(items[0]["p"].short, finish=False, overrule=True, aside=True, jump=False))}
+        more = {**questions, **B.both("spar", Q.sparring()), "who": Q.who(items[0]["p"].short, {"other": ("Kai", "another colleague")}),
+                **QUIET.facts()}                       # the turn request is the first 8; with cutting in and a cast, 11
+        state["user_words_so_far"] = items[0]["said"]
         keys, lat = list(more), {}
         for rnd in range(8):
-            for n in (1, 2, 5, 9):
+            for n in (1, 3, 8, 11, 19):
                 t = time.monotonic()
                 try:
-                    await judge.ask({k: more[k] for k in keys[:n]}, state + f"\n(round {rnd})")
+                    await judge.ask({k: more[k] for k in keys[:n]}, {**state, "call": state["call"] + f"\n(round {rnd})"})
                     lat.setdefault(n, []).append(1000 * (time.monotonic() - t))
                 except Exception:  # noqa: BLE001
                     pass
