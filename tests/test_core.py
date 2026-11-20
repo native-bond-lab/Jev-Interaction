@@ -41,7 +41,7 @@ def make(answers, policies=None):
 
 
 TURN = {"done": {"finished": 0.9, "continuing": 0.1},
-        "pace": {"normal": 0.6, "patient": 0.4, "narrate": 0, "eager": 0},
+        "pace_patient": {"yes": 0.4, "no": 0.6},               # the pace: one yes/no fact per pace; the rest unanswered
         "listen": {"due": 0, "fits": 0, "quiet": 1.0, "answer_due": 0}}
 
 
@@ -49,7 +49,7 @@ async def test_a_finished_turn_is_answered_and_the_pace_timing_is_blended():
     s, events, judge = make(TURN, {"end_of_turn": SamplePolicy(rng=lambda: 0.1)})
     await s.on_segment(Segment("How was your day?"))
     await asyncio.sleep(0.05)
-    assert "Chatty listener." in judge.asked[0][1]                      # the persona's manner is in every state
+    assert "Chatty listener." in judge.asked[0][1]["call"]              # the persona's manner is in every state
     s.silence_ms = 400
     await s.tick()
     assert any(e["type"] == "line" and e["text"] == "Hey." for e in events)
@@ -165,7 +165,8 @@ async def test_a_pause_asks_only_what_is_read_and_the_draw_does_not_wait():
     await s.on_segment(Segment("So what do you think?"))
     await asyncio.sleep(0.05)
     asked = judge.asked[0][0]
-    assert "done" in asked and "pace" in asked and "wait" not in asked and "kind" not in asked   # nothing reads those
+    assert "done" in asked and "pace_patient" in asked and "wait" not in asked and "kind" not in asked   # nothing reads those
+    assert "pace" not in asked and "pace_normal" not in asked  # the pace a call starts in is none of the others being so
     s.silence_ms = 200                                         # one frame of quiet: the answer is drawn on at once
     await s.tick()
     assert any(e.get("what") == "end_of_turn" and e["go"] for e in events)
@@ -178,7 +179,7 @@ async def test_the_last_words_wording_asks_about_the_users_words_both_ways_round
     await s.on_segment(Segment("So what do you think?"))
     await asyncio.sleep(0.05)
     asked, state = judge.asked[0]
-    assert {"done", "done_again", "pace"} <= asked             # the other questions ride along and read the text under `call`
+    assert {"done", "done_again", "pace_patient"} <= asked             # the other questions ride along and read the text under `call`
     from jev_interaction.judge import questions as Q
     both = Q.last_words()
     assert list(both["done"]["criteria"]) == ["finished", "continuing"] and list(both["done_again"]["criteria"]) == ["continuing", "finished"]
@@ -681,7 +682,7 @@ async def test_a_silence_after_unfinished_words_stays_the_users_until_jev_is_sur
     s.silence_ms = s.cfg.turn_reask_ms[-1]                         # the quiet grows: Jev is asked again, the listen
     await TURN_DECISION.on_tick(s, time.monotonic())               # question with it
     await asyncio.sleep(0.05)
-    assert "listen" in judge.asked[-1][0] and "quiet for 4.0 s" in judge.asked[-1][1]
+    assert "listen" in judge.asked[-1][0] and "quiet for 4.0 s" in judge.asked[-1][1]["call"]
     s.silence_ms = s.cfg.pace("normal").max_wait_ms + s.cfg.turn_last_ms
     assert await TURN_DECISION.on_tick(s, time.monotonic())        # a long silence: she speaks, and her line is told why
     assert "silent for" in s.llm.seen[-1][-1]["content"] and s.utt is None

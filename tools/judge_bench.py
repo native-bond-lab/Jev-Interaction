@@ -16,7 +16,7 @@ from your network. Two measurements:
               mid-thought, each asked the way the engine asks when a user pauses (done + pace + listen in one request).
               "right" is p(finished) on the correct side of 0.5; "ranking" is how well p(finished) orders the pauses
               whatever the threshold (1.0 = perfectly).
-  latency     the same state with 1, 2, 5 and 9 questions, wall time on a kept-alive connection.
+  latency     the same state with 1, 3, 8, 11 and 19 questions (a turn request is 8), wall time on a kept-alive connection.
 
 The pauses are written for this test; none is a recorded call. About 180 small requests.
 """
@@ -78,6 +78,11 @@ PROVIDER = "jev"
 QUIET_S = 0.4
 
 
+def turn_questions(p) -> dict:
+    """What every turn request asks: have they finished, and one fact for each pace but the starting one."""
+    return {"done": Q.done(p.short), **Q.pace_facts(PACES, "normal")}
+
+
 def cases() -> list[dict]:
     zh, en = Profile.load(paths.profiles()["lyra_zh"]), Profile.load(paths.profiles()["lyra"])
     out = []
@@ -94,14 +99,14 @@ def engine_request(c: dict) -> tuple[dict, str]:
     state = (f"Phone call between the user and {p.short}.\n{p.judge_header()}\nCurrent pace of the call: normal.\nRecent call:\n"
              + "\n".join(c["recent"]) + f"\n{p.short} is silent.\nWhat the user has said so far, in the segments the recognizer closed "
              f'after each short pause:\n  {QUIET_S:.1f} s ago: "{c["said"]}"\nRight now the user has been quiet for {QUIET_S:.1f} s.')
-    return {**Q.turn(p.short, "normal", PACES), "listen": Q.listen(p.short)}, state
+    return {**turn_questions(p), "listen": Q.listen(p.short)}, S.with_last_words(state, c["said"], int(QUIET_S * 1000))
 
 
 def last_words_request(c: dict) -> tuple[dict, dict]:
     """What the engine sends with Config.turn_question = "last_words": the same state as an object with the user's words
     in a field of their own, and the question about that field asked with its options in both orders."""
     questions, state = engine_request(c)
-    return {**questions, **Q.last_words()}, S.with_last_words(state, c["said"], int(QUIET_S * 1000))
+    return {**questions, **Q.last_words()}, state
 
 
 def p_finished(answers: dict) -> float | None:
@@ -187,13 +192,9 @@ def decision_cases(last_words: bool, held_out: bool = False, provider: str = "je
         hello = ["user: 你说吧，我听着"] if lang == "zh" else ["user: Go on, I'm listening"]
 
         def turn(questions, state, quiet_ms, said, p=p, recent=()):  # a question that rides in the turn request
-            qs = {**Q.turn(p.short, "normal", PACES), **questions}
-            if not last_words:
-                return qs, state
-            state = S.with_last_words(state, said, quiet_ms)
-            if bailian:
-                state["user_earlier_lines"] = [r.split(": ", 1)[1] for r in recent if r.startswith("user: ")]
-            return {**qs, **Q.last_words()}, state
+            qs, state = {**turn_questions(p), **questions}, S.with_last_words(state, said, quiet_ms)
+            state["user_earlier_lines"] = [r.split(": ", 1)[1] for r in recent if r.startswith("user: ")]
+            return ({**qs, **Q.last_words()} if last_words else qs), state
 
         for line, said, seconds, right in K.FLOOR[lang]:
             crit = Q.floor_criteria(p.short, finish=True, overrule=False, aside=False, jump=True)
@@ -214,23 +215,25 @@ def decision_cases(last_words: bool, held_out: bool = False, provider: str = "je
         for recent, said, right in K.PACE[lang]:
             q, st = turn({}, header(p, "normal", recent) + user_turn(p, [said], 400), 400, said)
             out.append({"d": "the pace", "lang": lang, "right": right, "q": q, "state": st,
-                        "act": lambda a: max(P(a, "pace"), key=P(a, "pace").get) if P(a, "pace") else "", "ok": lambda act, right=right: act == right})
+                        "act": lambda a: (lambda ps: max(ps, key=ps.get) if ps else "")(Q.pace_probs(a, PACES, "normal")), "ok": lambda act, right=right: act == right})
         for recent, segments, right in K.LISTEN[lang]:
-            q, st = turn({"listen": Q.listen(p.short), **(B.listen() if bailian else {})},
+            q, st = turn({"listen": Q.listen(p.short), **B.listen()},
                          header(p, "normal", recent) + user_turn(p, segments, 300), 300, " ".join(segments), recent=recent)
 
             def act(a):
-                lp = B.listen_probs(a) if bailian else P(a, "listen")
+                lp = B.listen_probs(a)
                 return "due" if lp.get("due", 0.0) >= 0.5 else "sound" if lp.get("due", 0.0) + lp.get("fits", 0.0) >= 0.5 else "nothing"
             want = {"due": {"due"}, "none": {"sound", "nothing"}, "answer_due": {"nothing"}}[right]
             out.append({"d": "listening", "lang": lang, "right": right, "q": q, "state": st, "act": act, "ok": lambda act, want=want: act in want})
         for recent, segments, right in K.CUT_IN[lang]:
-            q = {**Q.turn(p.short, "eager", PACES), "listen": Q.listen(p.short), "cut": Q.cut_in(p.short)}   # it rides in
-            st = header(p, "eager", recent) + user_turn(p, segments, 0)                                    # the turn request
+            q = {**turn_questions(p), "listen": Q.listen(p.short), **B.both("spar", Q.sparring())}   # it rides in the turn
+            st = S.with_last_words(header(p, "eager", recent) + user_turn(p, segments, 0), " ".join(segments), 0)   # request
             if last_words:
-                q, st = {**q, **Q.last_words()}, S.with_last_words(st, " ".join(segments), 0)
+                q = {**q, **Q.last_words()}
+            st["user_words_so_far"] = " ".join(segments)
             out.append({"d": "cutting in", "lang": lang, "right": right, "q": q, "state": st,
-                        "act": lambda a: "cut_in" if P(a, "cut").get("cut_in", 0.0) >= 0.5 else "let_finish", "ok": lambda act, right=right: act == right})
+                        "act": lambda a: "cut_in" if P(a, "spar").get("sparring", 0.0) >= 0.5 else "let_finish",
+                        "ok": lambda act, right=right: act == right})
         for recent, said, right in K.WHO[lang]:
             q, st = turn({"who": Q.who(p.short, {other_id: (b.short, b.task)})},
                          header(p, "normal", recent, b.short) + user_turn(p, [named(said, b.short)], 400), 400, named(said, b.short))
@@ -324,16 +327,15 @@ async def main():
         if failed:
             print(f"  {len(failed)} requests failed, e.g. {failed[0]}")
         questions, state = engine_request(items[0])
-        more = {**questions, "quiet": Q.quiet(items[0]["p"].short, "normal"), "cut": Q.cut_in(items[0]["p"].short),
-                "floor": Q.floor(items[0]["p"].short, Q.floor_criteria(items[0]["p"].short, finish=True, overrule=False, aside=False, jump=True)),
-                "quiet2": Q.quiet(items[0]["p"].short, "patient"), "who": Q.who(items[0]["p"].short, {"other": ("Kai", "another colleague")}),
-                "floor2": Q.floor(items[0]["p"].short, Q.floor_criteria(items[0]["p"].short, finish=False, overrule=True, aside=True, jump=False))}
+        more = {**questions, **B.both("spar", Q.sparring()), "who": Q.who(items[0]["p"].short, {"other": ("Kai", "another colleague")}),
+                **QUIET.facts()}                       # the turn request is the first 8; with cutting in and a cast, 11
+        state["user_words_so_far"] = items[0]["said"]
         keys, lat = list(more), {}
         for rnd in range(8):
-            for n in (1, 2, 5, 9):
+            for n in (1, 3, 8, 11, 19):
                 t = time.monotonic()
                 try:
-                    await judge.ask({k: more[k] for k in keys[:n]}, state + f"\n(round {rnd})")
+                    await judge.ask({k: more[k] for k in keys[:n]}, {**state, "call": state["call"] + f"\n(round {rnd})"})
                     lat.setdefault(n, []).append(1000 * (time.monotonic() - t))
                 except Exception:  # noqa: BLE001
                     pass

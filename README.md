@@ -141,10 +141,10 @@ The same question, the same kind of answer; the profile decides how it is read.
 
 | when | question | choices |
 |---|---|---|
-| the user pauses | `turn` | finished / continuing · which pace |
+| the user pauses | `turn` | finished / continuing · the pace, as one yes/no fact per pace |
 | the user talks on | `listen` | something they are waiting for is due · a spot that fits a sound · quiet · an answer is due (Jev picks the moment, the language model the words) |
 | both talk at once | `floor` | carry on · yield · finish the sentence · take the floor back · react at once · short aside |
-| the agent leads | `cut_in` | cut in · let them finish |
+| the agent leads | `cut_in` | asked as a fact: are they sparring, or telling something that has to be heard out; sparring → cut in |
 | the line is quiet | `quiet` | asked as facts (whose move is it · are they busy · were goodbyes said · has the agent called out with no answer); the facts and the clock give go on · check on them · wait · hang up |
 | the caller asks for someone else | `who` | stay · put them on (experimental; personas that list a `cast`) |
 
@@ -400,6 +400,29 @@ It stays off: the trade-off is visible, measured and reversible, which is the po
 
 Mid-table: ahead of AssemblyAI, SmartTurn, Cartesia, OpenAI Realtime and Deepgram at 5%, well behind detectors trained
 on audio of this kind of conversation. About 11,000 Jev calls, about one dollar.
+
+**Words and sound together.** Words arrive half a second after the sound, so for the first moments of a pause a text
+judge has nothing new to read; an audio model hears how the voice ended but not what was said. The benchmark publishes
+every model's score at every scoring point, so the two can be put together without running anything: here Jev's
+p(finished) and an audio model's, each turned into its rank among all points and averaged. Chinese is the benchmark's
+`zh` validation split (344 user turns, 9,441 points), with Jev run the same way as on English.
+
+| | English: false cutoffs at 600 ms | English: wait for 5% | Chinese: false cutoffs at 600 ms | Chinese: wait for 5% |
+|---|---|---|---|---|
+| Jev, text only | 12.5% | 924 ms | 11.2% | 839 ms |
+| SmartTurn v3.2, audio only | 14.8% | 1051 ms | 13.2% | 959 ms |
+| **Jev + SmartTurn v3.2** | **8.8%** | **782 ms** | **9.2%** | **765 ms** |
+| LiveKit v1-mini, audio only | 12.1% | 1070 ms | 13.2% | 919 ms |
+| **Jev + LiveKit v1-mini** | **9.1%** | **865 ms** | **8.9%** | **799 ms** |
+| LiveKit v1, audio only (closed) | 4.5% | 543 ms | 8.7% | 799 ms |
+| Jev + LiveKit v1 | 6.1% | 668 ms | 8.1% | 726 ms |
+
+With either open audio model, the pair is ahead of both of its halves in both languages, and in Chinese it waits no
+longer than the closed LiveKit v1 does alone. Averaging does not help the strongest audio model in English; reading
+its score alone until the words can have arrived (0.7 s into the pause) and averaging from there does: 3.7% and
+457 ms, ahead of it alone. That second rule was chosen after seeing this split, so read it as a direction, not a
+result. None of this is in the engine yet: these are published predictions combined offline, and an audio model
+beside Jev is the next thing to build.
 
 ### Being talked over: Full-Duplex-Bench v1.5
 

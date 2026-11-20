@@ -21,8 +21,9 @@ when it is every call.
 
 ## Paces
 
-Each turn Jev also judges which pace the call is in. A pace says who holds the floor, and its timing is **blended** by
-Jev's probabilities: a call that is 60 % normal and 40 % patient waits in between.
+Each turn Jev is also asked which pace the call is in: one yes/no fact for each pace but the starting one (is this going
+on right now, or has the user just asked for it?), worded from the pace's own description. A pace says who holds the
+floor, and its timing is **blended** by Jev's probabilities: a call that is 60 % normal and 40 % patient waits in between.
 
 | pace | when | `max_wait_ms` | `yield_p` | `leads` | `cut_in` | `lead_after_s` |
 |---|---|---|---|---|---|---|
@@ -38,7 +39,8 @@ Jev's probabilities: a call that is 60 % normal and 40 % patient waits in betwee
 - `lead_after_s`: quiet after a line of the agent's that asked the user nothing: it picks its own thread up once this
   much has passed (at the next quiet mark). Blended like the timing above.
 
-Your own paces replace these (the description is what Jev reads to tell them apart):
+Your own paces replace these. The description is the fact Jev is asked about, so write it as something that is either
+going on in the call or not:
 
 ```python
 from jev_interaction import Config, Pace

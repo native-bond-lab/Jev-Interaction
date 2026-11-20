@@ -34,14 +34,13 @@ class Turn(Decision):
 
     def questions(self, s, ctx):
         paces = {p.name: p.description for p in s.cfg.paces}
-        qs = Q.turn(s.p.short, s.pace, paces, opening=s.user_turns < s.cfg.opening_turns)
+        qs = {"done": Q.done(s.p.short), **Q.pace_facts(paces, s.cfg.start_pace)}
         if self.last_words(s):                                      # the same decision, worded about the words themselves
             qs.update(Q.last_words())
         ctx["may_listen"] = LISTEN.ready(s, ctx)
         if ctx["may_listen"]:
             qs.update(LISTEN.questions(s, ctx))
-            if s.cfg.judge_provider == "bailian":
-                qs.update(B.listen())
+            qs.update(B.listen())             # "something is due" as small facts: a task set earlier, come up just now
         ctx["may_cut"] = bool(ctx.get("words")) and CUT_IN.wanted(s, ctx)   # on new words, not on a quiet that grows
         if ctx["may_cut"]:
             qs.update(CUT_IN.questions(s, ctx))
@@ -53,12 +52,11 @@ class Turn(Decision):
         return qs
 
     def state(self, s, ctx):
-        text = super().state(s, ctx)
-        if not self.last_words(s):
-            return text
-        state = S.with_last_words(text, s.utt.text, s.silence_ms)
-        if s.cfg.judge_provider == "bailian":
-            state["user_earlier_lines"] = B.earlier_user_lines(s.ledger, s.cfg.judge_turns)
+        # the text every state has, under `call`, and the user's words of this turn in a field the facts point at
+        state = S.with_last_words(super().state(s, ctx), s.utt.text, s.silence_ms)
+        state["user_earlier_lines"] = B.earlier_user_lines(s.ledger, s.cfg.judge_turns)
+        if ctx.get("may_cut"):                                      # the cut-in fact points at a field of its own
+            state = CUT_IN.pointed(state, s)
         return state
 
     @staticmethod
@@ -73,7 +71,7 @@ class Turn(Decision):
         if s._someone_else() or (s._offer_elsewhere() and kind and max(kind, key=kind.get) == "elsewhere"):
             await s._not_for_me(s._someone_else() or "jev")
             return
-        await s._update_pace(P(answers, "pace"))
+        await s._update_pace(Q.pace_probs(answers, [p.name for p in s.cfg.paces], s.cfg.start_pace))
         # a failed judge: p(finished) 0, so the turn is answered at the pace's longest wait
         finished = Q.finished(answers)
         go = self.policy_for(s, ctx).draw(finished)                 # decided here, once, with the answer
@@ -89,8 +87,7 @@ class Turn(Decision):
             act = "cut_in"
         else:
             if ctx["may_listen"]:
-                if s.cfg.judge_provider == "bailian":
-                    answers = {**answers, "listen": {"probabilities": B.listen_probs(answers)}}
+                answers = {**answers, "listen": {"probabilities": B.listen_probs(answers)}}
                 why = LISTEN.choose(s, answers, ctx)
             act = "listen" if why else "nothing"
         s.ledger.note("decision", what="turn", action=act, finished=round(finished, 3), listen=why)

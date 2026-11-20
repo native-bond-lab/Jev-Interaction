@@ -14,7 +14,7 @@ from jev_interaction.testing import scripted_session
 from jev_interaction.utterance import Utterance
 
 TURN = {"done": {"finished": 0.9, "continuing": 0.1},
-        "pace": {"normal": 0.6, "patient": 0.4, "narrate": 0, "eager": 0},
+        "pace_patient": {"yes": 0.4, "no": 0.6},
         "listen": {"due": 0, "fits": 0, "quiet": 1.0, "answer_due": 0}}
 FRAME = b"\x00" * 6400
 
@@ -89,7 +89,7 @@ def test_how_soon_the_user_answers_is_read_off_the_record():
 
 
 async def test_every_question_asked_at_one_instant_reads_the_same_account_of_it():
-    s, _, judge = scripted_session({**TURN, "cut": {"cut_in": 0.0, "let_finish": 1.0}}, start_pace="eager")
+    s, _, judge = scripted_session({**TURN, "spar": {"sparring": 0.0, "telling": 1.0}}, start_pace="eager")
     s.utt = Utterance(1, 0.0, speech_ms=2000)
     answer = judge.ask
 
@@ -100,8 +100,8 @@ async def test_every_question_asked_at_one_instant_reads_the_same_account_of_it(
     s.utt.segments.append((0.0, "and another thing about last night"))
     await asyncio.gather(s.ask("turn", utt_id=1), s.ask_cut_in(s.gen))   # two decisions asked at the same instant
     (asked_a, state_a), (asked_b, state_b) = judge.asked
-    assert asked_a != asked_b and state_a == state_b
-    assert "What the user has said so far" in state_a
+    assert asked_a != asked_b and state_a["call"] == state_b["call"]     # the same text; each has the fields its facts point at
+    assert "What the user has said so far" in state_a["call"] and state_b["user_words_so_far"] == "and another thing about last night"
 
     s.utt = None                                                         # nobody talking: the quiet question
     s.ledger.agent("So that was my week.")
@@ -149,7 +149,7 @@ async def test_one_answer_from_jev_leads_to_one_thing_done_while_the_user_has_th
     async def after(done, listen, cut=None, pace="normal", speech_ms=2000):
         answers = {"done": {"finished": done, "continuing": 1 - done}, "listen": listen}
         if cut is not None:
-            answers["cut"] = {"cut_in": cut, "let_finish": 1 - cut}
+            answers["spar"] = {"sparring": cut, "telling": 1 - cut}
         s, events, judge = scripted_session(answers, start_pace=pace)
         s.utt = Utterance(1, 0.0, speech_ms=speech_ms)
         await s.on_segment(Segment("and then the vase went over,"))
@@ -162,7 +162,7 @@ async def test_one_answer_from_jev_leads_to_one_thing_done_while_the_user_has_th
     assert (await after(0.2, sound))[::2] == ("listen", ["listen"])
     assert (await after(0.2, silent))[::2] == ("nothing", [])
     act, asked, said = await after(0.2, sound, cut=0.9, pace="eager")
-    assert act == "cut_in" and "cut" in asked and "listen" not in said and "line" in said    # she cuts in: no "mm" beside it
+    assert act == "cut_in" and "spar" in asked and "listen" not in said and "line" in said    # she cuts in: no "mm" beside it
     assert (await after(0.9, sound, cut=0.9, pace="eager"))[0] == "answer"                   # they finished: nothing to cut into
-    assert "cut" not in (await after(0.2, sound, pace="eager", speech_ms=600))[1]            # too little said to cut into
-    assert "cut" not in (await after(0.2, sound))[1]                                         # a pace that does not cut in
+    assert "spar" not in (await after(0.2, sound, pace="eager", speech_ms=600))[1]            # too little said to cut into
+    assert "spar" not in (await after(0.2, sound))[1]                                         # a pace that does not cut in

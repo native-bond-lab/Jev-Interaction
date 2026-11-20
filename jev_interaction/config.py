@@ -11,7 +11,7 @@ from .policy import Policy, ThresholdPolicy
 class Pace:
     """Who holds the floor right now. Timing values are blended across paces by Jev's probabilities (see Session.params)."""
     name: str
-    description: str                   # shown to Jev in the pace question
+    description: str                   # what Jev is asked about this pace: is this going on, or has the user just asked for it
     max_wait_ms: int = 1200            # answered anyway after this much quiet
     yield_p: float = 0.5               # p(user takes the floor) that stops the agent's line
     leads: bool = False                # the agent may talk over the user's sounds; the floor question offers overrule / aside
@@ -24,8 +24,9 @@ DEFAULT_PACES = [
     Pace("normal", "even back-and-forth: chatting, asking and answering, light teasing between equals"),
     Pace("patient", "the user needs room: upset, venting, thinking aloud, tired; the agent says little and lets them go on",
          max_wait_ms=2500, yield_p=0.35, lead_after_s=15.0),
-    Pace("narrate", "the agent carries the call: a story, an explanation, a memory; the user mostly listens", leads=True,
-         lead_after_s=2.5),
+    Pace("narrate", "the agent carries the call for a while: the user has asked for a story, a long explanation or a whole "
+         "account to listen to, or the agent is in the middle of one; not a question that a sentence or two answers",
+         leads=True, lead_after_s=2.5),
     Pace("eager", "the agent presses and holds the floor: a quarrel, a game, heated teasing; short and fast",
          max_wait_ms=1500, yield_p=0.6, leads=True, cut_in=True, lead_after_s=2.5),
 ]

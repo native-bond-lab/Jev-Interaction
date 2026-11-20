@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **The pace, cutting in and "something is due" are asked as facts too.** The pace was one question with every pace
+  as a choice, and Jev kept the pace a call was in: it missed most calls for a story and most games (81% right on the
+  written moments, 71% on those kept apart). It is now one yes/no fact for each pace but the starting one, worded from
+  the pace's own description, so a pace you add is asked the same way (`judge.questions.pace_facts`): 100% on both
+  sets, and on 18 moments of staying in a pace and leaving it. The narrate pace's description says what it is not ("a
+  question that a sentence or two answers"). Cutting in was "does the agent cut in now?"; Jev ranked the moments right
+  but sat under one half on most of them (69%). It is now a fact about the user's words, sparring or telling
+  (`judge.questions.sparring`): 94% and 100%. "Something is due" while listening is asked as the small facts that were
+  Bailian's alone (a task set earlier, come up just now): listening 96% / 92% → 100% / 100%. The turn request's state
+  is always an object now: the text under `call`, and the user's words in fields the facts point at. It carries 8
+  questions where it carried 3; on Jev the request takes as long as before (486 ms → 482 ms from our network).
+  `judge.questions.turn` and `cut_in` stay for replaying older logs.
 - **One answer from Jev, one thing done; and nothing is drawn by default.** While the user has the turn, taking it,
   cutting in and letting a sound slip in were three decisions, each made on its own: a sound could go out and the
   reply follow it a tick later. They are one choice now (`decisions/turn.py`): judged finished, the agent takes the

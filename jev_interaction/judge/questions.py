@@ -5,10 +5,10 @@ words and re-asking recorded moments (`jev-interaction replay`). Which choices a
 agent's short name.
 
     when                                   question    choices
-    the user pauses while talking          turn        done (finished / continuing), pace
+    the user pauses while talking          turn        done (finished / continuing); one yes/no fact per pace
                                            listen      due / fits / quiet / answer_due
     both talk at once                      floor       carry_on / yield / finish_first / overrule / jump_in / aside
-    the user talks, the agent leads        cut_in      cut_in / let_finish
+    the user talks, the agent leads        spar        sparring / telling (a fact; cutting in follows from it)
     quiet since the agent's last line      quiet       small facts (decisions/quiet.py), not one question
     someone else can be put on the line    who         stay / one of the others (rides in the turn request)
 """
@@ -19,7 +19,54 @@ REAL_NO = ("they want what is happening to end: they tell the agent to stop, qui
            "want this; anger, swearing, arguing, refusing a request or venting are the user still in the conversation")
 
 
+def done(name: str) -> dict:
+    return {"type": "choice", "instructions": "Has the user finished speaking for now?", "criteria": {
+        "finished": f"the user has said their piece for now and is waiting for {name}",
+        "continuing": "the user is mid-thought: pausing to breathe or think, and will go on"}}
+
+
+PACE = "pace_"      # a pace's own question is asked under this and its name: pace_patient, pace_narrate, ...
+
+
+def pace_facts(paces: dict[str, str], base: str) -> dict:
+    """Which pace the call is in, asked as one yes/no fact for each pace but the one a call starts in (`base`): is this
+    what is going on right now, or what the user has just asked for? The fact is the pace's own description, so a pace
+    you add is asked the same way. Each goes out with its options in both orders. The state must carry
+    `user_latest_words` (judge/state.py: with_last_words).
+
+    Asked as one question with every pace as a choice (`turn` below), Jev kept the pace a call was in: it was right on
+    81% of the written moments and 71% of those kept apart, missing most calls for a story and most games. As facts,
+    100% on both, and on 18 moments of staying in a pace and leaving it (tools/judge_bench.py --decisions)."""
+    out = {}
+    for name, description in paces.items():
+        if name != base:
+            q = {"type": "choice", "instructions": (
+                "Look at `user_latest_words` and the recent call. Is this what is going on right now, or what the user has "
+                f"just asked for? {description[:1].upper() + description[1:]}."), "criteria": {
+                "yes": "yes: that is going on, or the user has just asked for it",
+                "no": "no: something else is going on, or the user has just moved on from it"}}
+            out[PACE + name] = q
+            out[PACE + name + "__r"] = {**q, "criteria": dict(reversed(list(q["criteria"].items())))}
+    return out
+
+
+def pace_probs(answers: dict, paces, base: str) -> dict[str, float]:
+    """How likely each pace is, from the facts (the two orders already merged): each pace as its own "yes", the base
+    pace as none of them being so, the whole made to sum to one (timing is blended by these). {} when none was answered."""
+    yes = {name: (answers.get(PACE + name) or {}).get("probabilities", {}).get("yes") for name in paces if name != base}
+    yes = {k: v for k, v in yes.items() if v is not None}
+    if not yes:
+        return {}
+    none = 1.0
+    for v in yes.values():
+        none *= 1 - v
+    total = none + sum(yes.values())
+    return {base: none / total, **{k: v / total for k, v in yes.items()}}
+
+
 def turn(name: str, pace: str, paces: dict[str, str], opening: bool = False) -> dict:
+    """The turn request as it was asked until 0.3, the pace as one question: kept so logs recorded with it can be
+    replayed. The engine asks `done` and `pace_facts`."""
     lead = (f"The call is in the {pace} pace now. A pace is who holds the floor and how turns go, not the topic. Which pace "
             f"fits what is happening now? Keep {pace} if the last lines still fit it; one line's mood alone does not change it.")
     if opening:
@@ -124,7 +171,23 @@ def floor(name: str, criteria: dict) -> dict:
             "criteria": criteria}
 
 
+SPARRING = "Look only at `user_words_so_far`, what the user is saying right now. What are they doing?"
+
+
+def sparring() -> dict:
+    """What the user's words are doing, asked in a pace that cuts in (decisions/cut_in.py): a fact about the words,
+    put to the field they are in (the state is sent as an object with `user_words_so_far`). Whether the agent then
+    cuts in is the pace's and the policy's, not the judge's. Asked as "does the agent cut in now?" (`cut_in` below),
+    Jev ranked the written moments right but sat under one half on most of them: 69% right. As this fact, 94% on the
+    moments it was worded on and 100% on the ones kept apart (tools/judge_bench.py --decisions)."""
+    return {"type": "choice", "instructions": SPARRING, "criteria": {
+        "sparring": ("teasing, taunting, boasting or daring the agent, or going round in circles with nothing new: "
+                     "it invites the agent to come back at them"),
+        "telling": "telling the agent something, asking something, or wanting what is happening to stop: it has to be heard out"}}
+
+
 def cut_in(name: str) -> dict:
+    """The cut-in as it was asked until 0.3: kept so logs recorded with it can be replayed. The engine asks `sparring`."""
     return {"type": "choice", "instructions": f"The user is still talking and {name} is quiet. Does {name} cut in now?", "criteria": {
         "cut_in": f"{name}, who holds the floor here, cuts in over them now: they are rambling, provoking, or it is the moment to take over",
         "let_finish": f"{name} lets them finish: they are telling something, asking something, or saying a real no ({REAL_NO})"}}

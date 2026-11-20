@@ -155,9 +155,9 @@ class Ledger:
         rows, last = [], 0.0
         for i, t in enumerate(self.turns):             # a turn nobody timed sits where it was appended
             last = t.at if t.at is not None else last
-            rows.append((last, 1, i, {"turn": t.__dict__}))
-        # in the same millisecond a note comes first: it is what was decided, the turn is what followed from it
-        rows += [(n.at, 0, i, {"note": n.kind, "at": n.at, **n.data}) for i, n in enumerate(self.notes)]
+            rows.append((last, 0 if t.role == "user" else 2, i, {"turn": t.__dict__}))
+        # in the same millisecond: the user's words, then what was judged and decided about them, then the agent's line
+        rows += [(n.at, 1, i, {"note": n.kind, "at": n.at, **n.data}) for i, n in enumerate(self.notes)]
         return [row for *_, row in sorted(rows, key=lambda r: r[:3])]
 
     def messages(self, me: str = "", max_turns: int = 24) -> list[dict]:
