@@ -45,7 +45,7 @@ needs your OK, and lies down when it sleeps. Click it (or Cmd/Ctrl+Shift+J) to p
 | Claude Code needs permission | you are told. With `JEV_VOICE_APPROVALS=1` your spoken allow or deny is passed back; without it you answer on your own screen, as always |
 | Claude Code finishes | Claude writes a sentence or two to be said (its `say` tool) and you are told at a quiet moment |
 | you typed a prompt in Claude Code yourself | if it runs longer than 30 seconds, you are told when it is done; a short one is left alone |
-| nothing happens for 20 seconds | it sleeps: no question to Jev, no audio to the recognizer. Your voice or Claude Code's news wakes it |
+| nothing happens for a while | it may ask after you once; a minute after your last exchange, or sooner when you do not answer, it sleeps: no question to Jev, no audio to the recognizer. Your voice or Claude Code's news wakes it |
 
 ## What Claude Code does not allow from outside
 

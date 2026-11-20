@@ -78,6 +78,9 @@ class Session:
         self.generating = False
         self.gen = 0
         self.idle_since = time.monotonic()
+        self.rest_since = self.idle_since        # since the two last exchanged anything: what the sleep clock counts from.
+                                                 # A line the agent says into a quiet on its own does not move it
+        self.last_kind = ""                      # the kind of the agent's latest line (speaking.EVENTS)
         self.quiet_marks: list[float] = []
         self.spoke_into_quiet = 0
         self.listen_last = 0.0
@@ -191,6 +194,8 @@ class Session:
                 self.ledger.agent_ended(but=self.replies.get(self.gen) if self.generating else None)
             if not self.speaking and not self.generating:
                 self.idle_since = time.monotonic()
+                if self.last_kind not in self.UNPROMPTED:
+                    self.rest_since = self.idle_since
                 self._reset_quiet()
                 if self.hanging_up:
                     await self.send(type="hangup")
@@ -242,6 +247,7 @@ class Session:
             self._open_utterance()
             self.utt.speech_ms = max(self.utt.speech_ms, 400)
         self.woke = ""                            # words: whatever woke the session, it is a turn now
+        self.rest_since = time.monotonic()
         self.utt.hearing = ""
         self.utt.segments.append((time.monotonic(), text))
         await self.send(type="user", text=self.utt.text, partial=True)
@@ -602,7 +608,7 @@ class Session:
         it. Asleep: nothing is asked. A task unfinished and the line quiet for Config.sleep_after_s: it goes to sleep."""
         if self.utt is not None or self.speaking or self.generating:
             return False                          # someone has the floor: the news rides with the next line, or waits
-        quiet_s = now - self.idle_since
+        quiet_s, rest_s = now - self.idle_since, now - self.rest_since
         if any(t.news for t in self.tasks) and (self.woke == "task" or quiet_s >= self.cfg.task_report_after_s):
             self.woke = ""
             self.generating = True                # taken now, so no question is asked about this quiet meanwhile
@@ -610,7 +616,7 @@ class Session:
             return True
         if self.asleep:
             return True
-        if self.cfg.sleep_after_s is not None and quiet_s >= self.cfg.sleep_after_s and (self.open_tasks() or self.cfg.sleep_when_idle):
+        if self.cfg.sleep_after_s is not None and rest_s >= self.cfg.sleep_after_s and (self.open_tasks() or self.cfg.sleep_when_idle):
             await self.sleep("task" if self.open_tasks() else "quiet")
             return True
         return False
@@ -631,7 +637,7 @@ class Session:
             return False
         self.asleep, self.woke = False, why
         if why != "task":                         # the quiet starts over from here; a task's news is told at once
-            self.idle_since = time.monotonic()
+            self.idle_since = self.rest_since = time.monotonic()
         self._reset_quiet()
         await self.send(type="wake", why=why)
         return True
@@ -700,10 +706,13 @@ class Session:
                         accent=(new.extra.get("display") or {}).get("accent"))
         await self.respond("take_over", who=old.short)
 
+    UNPROMPTED = ("lead", "check", "hangup")      # lines the agent says into a quiet on its own
+
     async def respond(self, kind: str, quiet_s: float = 0.0, who: str = ""):
         self.gen += 1
         gen = self.gen
         self.generating = True
+        self.last_kind = kind
         if self.asleep:
             await self.wake("speak")              # it never talks in its sleep
         news = [t for t in self.tasks if t.news]  # the tasks whose news this line is shown as not told yet

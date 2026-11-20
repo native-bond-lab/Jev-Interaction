@@ -25,7 +25,7 @@ async def settle():
 async def idle(s, ago: float = 0.0):
     """The client finished playing; `ago`: that long ago."""
     await s.on_client({"type": "playback", "state": "idle"})
-    s.idle_since = time.monotonic() - ago
+    s.idle_since = s.rest_since = time.monotonic() - ago
 
 
 def lines(events) -> list[str]:
@@ -192,7 +192,7 @@ async def asleep_with_a_task(**config):
     s.asr.send = send
     await s.start_task("agent", "fix the login test")
     await settle()
-    await idle(s, ago=21.0)
+    await idle(s, ago=61.0)
     await s.tick()
     return s, events, judge, ex, heard
 
@@ -223,12 +223,32 @@ async def test_it_does_not_sleep_without_a_task_or_when_told_never_to():
     assert not s.asleep
 
 
-async def test_a_companion_on_a_desk_sleeps_with_no_task_and_never_checks_on_the_user_or_hangs_up():
-    s, events, judge = scripted_session(sleep_when_idle=True)
+async def test_a_companion_on_a_desk_checks_once_then_sleeps_where_a_call_would_be_hung_up():
+    gone = {"turn": {"theirs": 0.9, "ours": 0.1}, "busy": {"busy": 0.1, "not_busy": 0.9}, "bye": {"goodbye": 0.05, "going": 0.95},
+            "gone": {"unanswered": 0.9, "answered": 0.1}}
+    s, events, judge = scripted_session({**gone, **{k + "__r": v for k, v in gone.items()}}, sleep_when_idle=True)
+    s.ledger.agent("Shall I run the tests?")
+    assert "check" in QUIET.allowed(s, {"quiet_s": 12.0})                # it may ask after them ...
     s.spoke_into_quiet = 1
-    assert QUIET.allowed(s, {"quiet_s": 60.0}) == ["wait", "go_on"]      # no "are you there?", no hang-up
-    await idle(s, ago=21.0)
+    assert "check" not in QUIET.allowed(s, {"quiet_s": 12.0})            # ... once in a quiet, not again
+    await s.ask_quiet(30.0)                                              # nobody is answering: a call would end here
+    assert s.asleep and events[-1] == {"type": "sleep", "why": "quiet"} and not s.hanging_up
+    assert not [e for e in events if e["type"] == "line"]                # no goodbye is said
+
+
+async def test_the_sleep_clock_counts_from_the_last_exchange_not_from_a_line_said_into_the_quiet():
+    s, events, judge = scripted_session(sleep_when_idle=True)
+    await s.respond("spoke")                                             # an answer to the user: the count starts over
+    await idle(s)
+    assert time.monotonic() - s.rest_since < 1
+    s.rest_since = time.monotonic() - 50.0
+    await s.respond("check")                                             # its own line into the quiet: the count goes on
+    await s.on_client({"type": "playback", "state": "idle"})
+    assert time.monotonic() - s.rest_since >= 50 and time.monotonic() - s.idle_since < 1
     s.quiet_marks = []
+    await s.tick()
+    assert not s.asleep
+    s.rest_since = time.monotonic() - 61.0
     await s.tick()
     assert s.asleep and events[-1] == {"type": "sleep", "why": "quiet"}
 

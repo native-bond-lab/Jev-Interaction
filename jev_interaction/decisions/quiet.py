@@ -17,7 +17,8 @@ that fails says nothing.
 
 While a background task is unfinished (tasks.py) the call has something to wait for: it is not hung up, and once the
 quiet has lasted Config.sleep_after_s the session goes to sleep and this question is not asked again until it wakes
-(Session.sleep). Under Config.sleep_when_idle the agent does not check on the user either: a quiet is them working.
+(Session.sleep). Under Config.sleep_when_idle the agent stays on a desk all day: it may check on the user once in a
+quiet and not again, and where a call would be hung up it goes to sleep instead.
 
 Asked as one question about the whole quiet ("would the agent, being who they are, say something now?"), Jev answered
 "let it be" to nearly every written moment (33% right on tools/judge_bench.py --decisions); asked the facts, 100%.
@@ -88,8 +89,8 @@ class Quiet(Decision):
     def allowed(self, s, ctx):
         out = allowed(ctx["quiet_s"], s.spoke_into_quiet, lead_after_s=s.params().lead_after_s,
                       check_after_s=s.cfg.check_min_quiet_s, hangup_after_s=s.cfg.hangup_min_quiet_s)
-        if s.cfg.sleep_when_idle:              # on a desk all day: a quiet is the user working, not a call gone dead
-            return [x for x in out if x not in ("check", "hang_up")]
+        if s.cfg.sleep_when_idle:              # on a desk all day: it may ask after them once in a quiet, not again; and
+            return [x for x in out if x != "check" or not s.spoke_into_quiet]   # "the call has ended" puts it to sleep
         return [x for x in out if x != "hang_up"] if s.open_tasks() else out
 
     def current(self, s, ctx):
@@ -100,6 +101,9 @@ class Quiet(Decision):
         ps = probs(B.merge(answers), long=quiet_s >= s.cfg.check_min_quiet_s, may_hang_up="hang_up" in self.allowed(s, ctx))
         choice = self.choose(s, {"quiet": {"probabilities": ps}}, "quiet", ctx)
         await s.send(type="decision", what="quiet", action=choice, quiet_s=round(quiet_s, 1), probs=ps)
+        if choice == "hang_up" and s.cfg.sleep_when_idle:      # nobody is answering: asleep until their voice
+            await s.sleep("quiet")
+            return
         if choice in LINES:
             s.spoke_into_quiet += 1
             s.hanging_up = choice == "hang_up"

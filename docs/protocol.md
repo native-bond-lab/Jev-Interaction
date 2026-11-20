@@ -32,7 +32,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `busy` | `text` | the line itself is full, or today's minutes are used up; the socket closes |
 | `hangup` | `why?` | the agent ended the call (or the time limit did) |
 | `task` | `id, kind, about, status, progress, question` | something happened to a background task (`status`: `running`, `waiting` on the caller's answer to `question`, `done`, `empty`, `failed`, `stopped`; sent again on each change, and on each `progress` it reports): for display. What the agent says about it comes as `line` |
-| `sleep` | `why` | the session went to sleep (`task`: a background task is unfinished and the line has been quiet for `Config.sleep_after_s`; `quiet`: the same with no task, under `Config.sleep_when_idle`; `client`; `no words`: a sound woke it and no words followed). Keep sending audio: the caller's voice wakes it |
+| `sleep` | `why` | the session went to sleep (`task`: a background task is unfinished and the line has been quiet for `Config.sleep_after_s`; `quiet`: the same with no task, or nobody answering, under `Config.sleep_when_idle`; `client`; `no words`: a sound woke it and no words followed). Keep sending audio: the caller's voice wakes it |
 | `wake` | `why` | it woke: `voice`, `task` (a task has news, a `line` follows), `client`, `speak` |
 | `voiceprint` | `state` | after a `voice` sample: `enrolled` (the print starts from it) or `skipped` (no voiceprint model ready; it is learned from the call) |
 

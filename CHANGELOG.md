@@ -10,7 +10,7 @@
 - **The voice of a coding agent** (`docs/harness.md`). With `JEV_HARNESS=1` the call server is a hub for the coding
   agents open on this machine (`jev_interaction/harness.py`): the agent on the line hands work to one as a background
   task, says how far it has got when asked, tells you when it is done or needs your OK, and sleeps in between
-  (`Config.sleep_when_idle`: quiet means asleep, never a hang-up). A prompt you typed in the harness yourself is told
+  (`Config.sleep_when_idle`: it may ask after you once in a quiet, and sleeps where a call would be hung up). A prompt you typed in the harness yourself is told
   to you too once it has run 30 seconds. The first connector is for Claude Code (`connectors/claude-code/`, a plugin:
   a channel for your words and Claude's `say`, hooks for what it is doing; `jev-interaction channel`). A permission
   prompt is told to you and answered on your screen; `JEV_VOICE_APPROVALS=1` passes a spoken allow or deny back.
@@ -28,7 +28,8 @@
   question to the user through the agent. New events `task`. A call without executors reads every prompt as before.
   Tested on stand-ins only so far: no recorded call with a real model yet, and whether to tell the news now is a clock,
   not a question to Jev.
-- **Sleep.** With a task unfinished and nobody making a sound for `Config.sleep_after_s` (20 s) the session sleeps:
+- **Sleep.** With a task unfinished and `Config.sleep_after_s` (60 s) since the user and the agent last exchanged
+  anything (a line the agent says into the quiet on its own does not start the count again) the session sleeps:
   no question goes to Jev and no audio to the recognizer. It wakes on the user's voice (`wake_voice_ms` in a row; the
   last `sleep_preroll_ms` of audio is then heard, so the words that woke it are not lost), on a task's news, or when the
   client says so (`{"type": "wake"}`, `{"type": "sleep"}`); a sound with no words after it puts it back to sleep with

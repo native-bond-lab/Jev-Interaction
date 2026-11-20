@@ -66,7 +66,8 @@ over it: it is in the record whether or not it has been said.
 
 ## Sleep
 
-A task unfinished and nobody making a sound for `Config.sleep_after_s`: the session sleeps. Asleep, no question goes
+A task unfinished and `Config.sleep_after_s` (60 s) since the user and the agent last exchanged anything: the session
+sleeps. A line the agent says into the quiet on its own does not start the count again. Asleep, no question goes
 to Jev and no audio goes to the recognizer. It wakes on
 
 - the user's voice: `Config.wake_voice_ms` of it in a row. The last `Config.sleep_preroll_ms` of audio is kept while
