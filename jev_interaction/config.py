@@ -57,6 +57,7 @@ class Config:
                                        # until Jev says the user needs the floor: no clock pauses it
     pause_mark_ms: int = 600           # the user's voice stops this long inside their turn and comes back: kept in the
                                        # call's record as a pause of theirs (Turn.pauses). Nothing is decided on it
+    echo_tail_s: float = 2.0           # the agent's own words heard this long after its line stopped playing are its echo
     sound_close_ms: int = 1500         # a sound with no words behind it is over after this much quiet (a cough, a breath)
     listen_gap_s: float = 3.0          # at least this long between two listening sounds that could as well be left out
     listen_gap_jitter: float = 0.3     # after each one the gap to the next moves by up to this share, so they do not come

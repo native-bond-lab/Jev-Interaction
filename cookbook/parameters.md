@@ -66,6 +66,7 @@ something else.
 | `turn_question` | "engine" | how "have they finished" is worded. `"last_words"` asks about the user's own words, sent in a field of their own, with the options in both orders; for judges that read the engine's wording poorly ([stacks](stacks.md#recommended-mainland-china)) |
 | `turn_last_ms` | 4000 | this far past the pace's longest wait the agent speaks anyway, and its line is told the user went silent (`trailed`) rather than finished |
 | `pause_mark_ms` | 600 | the user's voice stops this long inside their turn and comes back: kept in the call's record as a pause of theirs (`Turn.pauses`). Nothing is decided on it; it is there for reading a user's rhythm and for tuning |
+| `echo_tail_s` | 2.0 | the agent's own words heard this long after its line stopped playing are its echo, not the user (four characters or more; a short word is the user's) |
 | `sound_close_ms` | 1500 | a sound with no words (a cough, a breath) is over after this much quiet |
 
 ### When both talk at once
