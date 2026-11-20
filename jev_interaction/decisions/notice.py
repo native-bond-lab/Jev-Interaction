@@ -29,9 +29,9 @@ class Notice(Decision):
 
     async def on_tick(self, s, now):
         if s.cfg.jev_sees:                       # Jev looks itself: the newest picture, once the line is free
-            if s.frame_fresh and s.sight_image is not None and s.utt is None and not s.speaking and not s.generating:
-                s.frame_fresh = False
-                s._spawn(self.ask(s, now_image=s.frame_now, before_image=s.sight_image, seen=""))
+            if s.frame_fresh and s.sight_image is not None and not s.speaking and not s.generating:
+                s.frame_fresh = False                # asked while the user talks too: then only what they asked for
+                s._spawn(self.ask(s, now_image=s.frame_now, before_image=s.sight_image, seen="", talking=s.utt is not None))
             return False
         if s.sight_pending is None:
             return False
@@ -48,7 +48,7 @@ class Notice(Decision):
 
     def state(self, s, ctx):
         if "now_image" in ctx:
-            return super().state(s, ctx) + S.notice_pictures(s.p.short, BEFORE, NOW, s.remarks_on_view)
+            return super().state(s, ctx) + S.notice_pictures(s.p.short, BEFORE, NOW, s.remarks_on_view, bool(ctx.get("talking")))
         return super().state(s, ctx) + S.notice(s.p.short, ctx["seen"], s.remarks_on_view)
 
     def assets(self, s, ctx):
@@ -57,8 +57,12 @@ class Notice(Decision):
         pic = lambda b: dict(type="image", format="jpg", data_base64=base64.b64encode(b).decode())   # noqa: E731
         return {BEFORE: pic(ctx["before_image"]), NOW: pic(ctx["now_image"])}
 
+    def allowed(self, s, ctx):
+        # the user is talking: only what they asked to be told about cuts in (as a listener says what was asked for)
+        return ["due", "let_be"] if ctx.get("talking") else None
+
     def current(self, s, ctx):
-        return ctx["gen"] == s.gen and not s.speaking and not s.generating and s.utt is None
+        return ctx["gen"] == s.gen and not s.speaking and not s.generating and (ctx.get("talking") or s.utt is None)
 
     async def apply(self, s, answers, ctx):
         choice = self.choose(s, answers, "notice", ctx)

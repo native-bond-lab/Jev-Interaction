@@ -167,3 +167,15 @@ async def test_jev_sees_compares_two_pictures_and_the_responder_is_shown_the_vie
     assert isinstance(last["content"], list) and last["content"][1]["image_url"]["url"].endswith(base64.b64encode(b"mug").decode())
     assert s.sight_image == b"mug" and any(t.role == "seen" for t in s.ledger.turns)   # the record line, off the path
     assert seer.looked[-1][2] == b"scene"
+
+
+@pytest.mark.asyncio
+async def test_while_the_user_talks_only_what_they_asked_for_cuts_in():
+    s, events, judge = scripted_session({"notice": {"due": 0.1, "remark": 0.8, "let_be": 0.1}}, jev_sees=True)
+    await s.on_client({"type": "frame", "image": base64.b64encode(b"scene").decode()})
+    s._open_utterance()
+    await s.on_client({"type": "frame", "image": base64.b64encode(b"wave").decode()})
+    await s.tick()
+    await settle(s)
+    assert [st for qs, st in judge.asked if "notice" in qs]                     # asked while they talk
+    assert not any(e["type"] == "line" for e in events)                         # a remark waits; only due would cut in
