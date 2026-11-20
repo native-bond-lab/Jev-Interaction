@@ -62,6 +62,15 @@ async def test_the_responder_starts_a_task_with_a_line_that_is_never_spoken():
     assert s.ledger.last_agent().text == "On it."                        # what the user heard has no action in it
 
 
+async def test_an_action_written_twice_in_one_reply_is_done_once():
+    s, events, _, ex = make()
+    s.llm.out = ("/task agent: count the pictures", "/task agent: count the pictures", "On it.")
+    await s.on_segment(Segment("How many pictures are on my desktop?"))
+    await s.respond("spoke")
+    await settle()
+    assert len(ex.started) == 1 and len(s.tasks) == 1 and lines(events) == ["On it."]
+
+
 async def test_a_reply_that_is_only_an_action_is_not_asked_for_twice():
     s, events, _, ex = make()
     s.llm.out = ("/task agent: look it up",)

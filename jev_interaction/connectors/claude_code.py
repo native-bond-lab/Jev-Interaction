@@ -193,9 +193,17 @@ class Channel:
     async def hub_loop(self) -> None:
         """Stay on the call server's hub; it may start after Claude Code does, or be restarted."""
         import websockets
+
+        def dial(url: str):
+            # the hub is on this machine: never through a proxy. A system proxy (V2ray, Clash) whose exceptions name
+            # "localhost" but not 127.0.0.1 would otherwise take this connection and lose it
+            try:
+                return websockets.connect(url, max_size=None, proxy=None)
+            except TypeError:                     # websockets before 15 has no proxy support, and no such argument
+                return websockets.connect(url, max_size=None)
         while True:
             try:
-                async with websockets.connect(self.url or where(), max_size=None) as ws:
+                async with dial(self.url or where()) as ws:
                     self.hub = ws
                     await ws.send(json.dumps({"type": "hello", "harness": HARNESS, "cwd": self.cwd, "steer": "turn", "acks": True}))
                     async for raw in ws:

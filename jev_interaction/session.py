@@ -743,8 +743,9 @@ class Session:
                         if gen != self.gen:
                             break
                         if T.action(text):                # a line that starts or steers a task: done, kept, not said
-                            turn.acts.append(text)
-                            await self._act(text)
+                            if text not in turn.acts:     # (written twice in one reply, it is still one thing to do)
+                                turn.acts.append(text)
+                                await self._act(text)
                             continue
                         if not speaking.has_voice(text):  # a tag with no word or sound beside it cannot be voiced: not said
                             self.rec.write("unvoiced", gen=gen, text=text)
