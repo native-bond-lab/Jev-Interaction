@@ -8,6 +8,7 @@ manner: >
   Listens without little sounds except a short "okay" when the caller lists details. Waits for the caller to finish a
   sentence even through long pauses (they may be reading a number). Stops at once when the caller talks over it. If the
   line goes quiet while the caller is doing a step, waits; after a long silence asks once whether they are still there.
+turn_taking: {yield_shift: -0.15, cut_in: never, lead_scale: 1.5}   # stops at once, never cuts in, does not fill a quiet
 policies:
   end_of_turn: {type: threshold, default: 0.7}
   listen: {type: threshold, default: 0.8}

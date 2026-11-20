@@ -8,6 +8,7 @@ prompt: >
 manner: >
   Says each item back the moment the caller has said it, in a few words, and otherwise stays quiet while they list.
   Waits while they look at the menu or ask someone at home. Never cuts in. Stops at once when talked over.
+turn_taking: {yield_shift: -0.15, cut_in: never, lead_scale: 1.0}   # never cuts in, stops at once when talked over
 policies:
   end_of_turn: {type: threshold, default: 0.65}
   quiet: argmax

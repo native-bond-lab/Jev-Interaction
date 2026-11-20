@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **A persona takes turns its own way** (`turn_taking` in its YAML, `Profile.turn_taking`): how readily its line stops
+  (`yield_shift` on the pace's `yield_p`), whether it cuts in and takes the floor back (`cut_in`: always, never, or as
+  the pace says) and how soon it picks a quiet up (`lead_scale`). Applied on top of the pace in `Session.params`, so a
+  persona handed the line brings its own; the questions do not change. Every shipped persona has one, read from its
+  manner (`cookbook/role-policies.md`, "Turn-taking"). `tools/persona_bench.py` uses the same code.
+- README: install from PyPI; the policy section right after the introduction.
+
 ## 0.3.0 — 2026-11-20
 
 Highlights: a new call policy built on three principles: two parties and four moments, one timeline that every model

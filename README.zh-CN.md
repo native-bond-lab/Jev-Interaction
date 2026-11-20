@@ -9,7 +9,7 @@
 🏆 被 [TypeSafe](https://typesafe.ai) 选为 **Build of the Week** · 🤗 **在线体验**：[Hugging Face](https://huggingface.co/spaces/pupunpu/Jev-Interaction)
 
 [![Build of the Week](https://img.shields.io/badge/%F0%9F%8F%86%20Build%20of%20the%20Week-TypeSafe-f5b301)](https://typesafe.ai) [![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-live%20demo-ffcc4d)](https://huggingface.co/spaces/pupunpu/Jev-Interaction)
-[![tests](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml/badge.svg)](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml) ![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![license](https://img.shields.io/badge/license-Apache--2.0-blue) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
+[![PyPI](https://img.shields.io/pypi/v/jev-interaction)](https://pypi.org/project/jev-interaction/) [![tests](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml/badge.svg)](https://github.com/native-bond-lab/Jev-Interaction/actions/workflows/tests.yml) ![python](https://img.shields.io/badge/python-3.10%2B-3776ab) ![license](https://img.shields.io/badge/license-Apache--2.0-blue) ![status](https://img.shields.io/badge/status-alpha-f59e0b) ![judge](https://img.shields.io/badge/judge-Jev-0f766e) ![duplex](https://img.shields.io/badge/full--duplex-voice-6366f1)
 <br>
 
 *一场对话，大半发生在缝隙里：谁等，谁让，谁只轻轻"嗯"一声。<br>我们把每一道缝隙写成一个问题，交给 Jev。* 欢迎在这里进行体验：[体验入口](https://pupunpu-jev-interaction.hf.space/)（或 [Hugging Face 页面](https://huggingface.co/spaces/pupunpu/Jev-Interaction)）。
@@ -35,6 +35,40 @@
 **Jev-Interaction 保留级联的自由，再给它判断力。** 每一个这样的时刻都变成明确的决策：一道用自然语言写的选择题，Jev 给每个选项一个概率，再由策略把概率变成动作。题目、策略和角色的交互习惯都是看得懂的文字，可以直接改，也可以拿真实通话重放验证。
 
 **演示视频：制作中。**
+
+## 通话策略（policy）
+
+![通话策略：耳朵只给信号，所有东西记在一条时间线上，谁在出声分出四个时刻，Jev 回答小事实，阈值选出一个动作，语言模型写台词](docs/policy.zh-CN.svg)
+
+Jev-Interaction 是一个交互引擎，不是人声检测（VAD）。Jev 不听音频，也不判断有没有人在说话；那是耳朵的事（人声检测、语音识别、声音模型、声纹），耳朵只给信号。引擎决定的是这一刻怎么做：接话、等、垫一声"嗯"、插话、被打断时接着说、冷场时接上、挂断。它按三条原则搭起来：
+
+1. **两方对偶。** 模型和用户各自出声或不出声，组合成四个时刻：用户在说、两边都安静、两人同时说、模型在说。每个时刻有自己的一组动作，别的没有。
+2. **一条线性的上下文。** 整通电话是一份只追加、不分叉的记录：说的话、信号、Jev 的每个回答、做过的每个动作，都在同一个时钟上（`Ledger`）。每个判断和写台词的模型读的是同一个"此刻"（`judge/state.py` 的 `Now`）；没有哪个决策自己另记一套。
+3. **互斥穷尽。** 任何时刻只有一组互不重叠的选项，任何情况都恰好归其中一个管。Jev 回答一次，只做一件事。
+
+由此而来的几条做法：
+
+- **问的是关于用户和通话的小事实，一题一件事：**"说完了吗？""他说了'等一下'吗？""是在斗嘴还是在讲事？"。从不问"模型这时会怎么做"。事实不随角色变。
+- **用阈值，不抽签。** 同一个时刻永远同样处理，录下来的通话可以原样重走。阈值集中在一处（`Config`），之后用数据调。
+- **人设决定阈值和时机，不改题目：**它的话多容易被打断、插不插话、冷场多久接上。
+- **Jev 定时机，语言模型定内容。** 规则不替 Jev 做决定，Jev 也不写台词。
+
+| 时刻 | 问 Jev | 一个动作 |
+|---|---|---|
+| 用户在说 | 说完了吗 · 哪种节奏（每种节奏一道是非题） · 他要的东西该给了吗 · 斗嘴还是讲事 | 接话（字和声音都说说完了） · 插话（节奏允许时） · 垫一声 · 不出声 |
+| 安静 | 模型上一句留给他接吗 · 他说了要等一下吗 · 道过别了吗 · 喊过了没人应吗 | 让它安静 · 接着自己的话头 · 问一声还在吗 · 挂断（事实加时钟决定） |
+| 两人同时说 | 他压着说的是什么：附和、喊停，还是自己的话 | 接着说 · 停下来听 · 说完这半句 · 把话头拿回来 · 立刻回应 |
+| 模型在说 | 不问 | 没有要决定的 |
+
+来电者要找别人，是第一个时刻里多出来的一个事实（`who`：不换，或换人接；实验性，角色配置里列了 `cast` 才有）。
+
+**节奏**（normal、patient、narrate、eager）表示谁掌握话头。各节奏的等待时间按 Jev 给的概率加权混合：Jev 判断"六成普通、四成耐心"时，等待时间就落在两者之间。
+
+**同一个引擎，换两个人设。** 我们产品里的两个角色，一个支配型（Dom）、一个顺从型（Sub），各带自己的阈值和时机（角色配置里的 `turn_taking`：话多容易被打断、插不插话、冷场多久接上；内置角色都配了，见 [cookbook](cookbook/role-policies.md#turn-taking)），用同一批写好的时刻测（`tools/persona_bench.py`，628 次 Jev 请求）：
+
+- 日常时刻（132 个）：没理由不同的地方表现一样：冷场 28/28 相同，两人同时说 30/32 相同。插话只在该不同的地方不同：6 个斗嘴的时刻里，Dom 插话，Sub 让对方说完。
+- 一场主导的戏（16 个时刻）：6 个时刻表现不同，方向都符合预期。命令说到一半用户来一句"Make me."：Dom 把话头拿回来，Sub 接着说；用户挑衅地一直说：一个插话，一个让他说完。该一样的地方一样：真的"停，我不舒服"两个都停，用户难过时两个都让他说完，下完命令后的安静两个都等着。
+- 两边 Jev 给出的用户事实几乎没变（平均差 0.002 到 0.048）：题目一样，只有阈值不同。
 
 ## 你能得到什么
 
@@ -82,40 +116,6 @@
 | 长通话 | 没有会话上限 | 会话有上限（OpenAI Realtime 60 分钟），或音频把上下文占满（Gemini Live 约 15 分钟音频后要压缩，丢掉或概括早先的话） | 没有会话上限：每次决策、每次回答都是对文字记录的一次新请求，一分钟说话约 200 个 token |
 | 速度 | 取决于大模型 | 最快：Full-Duplex-Bench v1.0 上被插话后 0.3–1.5 秒回话 | 被插话后 1.7 秒，主要是大模型写第一句的时间 |
 
-## 通话策略（policy）
-
-![通话策略：耳朵只给信号，所有东西记在一条时间线上，谁在出声分出四个时刻，Jev 回答小事实，阈值选出一个动作，语言模型写台词](docs/policy.zh-CN.svg)
-
-Jev-Interaction 是一个交互引擎，不是人声检测（VAD）。Jev 不听音频，也不判断有没有人在说话；那是耳朵的事（人声检测、语音识别、声音模型、声纹），耳朵只给信号。引擎决定的是这一刻怎么做：接话、等、垫一声"嗯"、插话、被打断时接着说、冷场时接上、挂断。它按三条原则搭起来：
-
-1. **两方对偶。** 模型和用户各自出声或不出声，组合成四个时刻：用户在说、两边都安静、两人同时说、模型在说。每个时刻有自己的一组动作，别的没有。
-2. **一条线性的上下文。** 整通电话是一份只追加、不分叉的记录：说的话、信号、Jev 的每个回答、做过的每个动作，都在同一个时钟上（`Ledger`）。每个判断和写台词的模型读的是同一个"此刻"（`judge/state.py` 的 `Now`）；没有哪个决策自己另记一套。
-3. **互斥穷尽。** 任何时刻只有一组互不重叠的选项，任何情况都恰好归其中一个管。Jev 回答一次，只做一件事。
-
-由此而来的几条做法：
-
-- **问的是关于用户和通话的小事实，一题一件事：**"说完了吗？""他说了'等一下'吗？""是在斗嘴还是在讲事？"。从不问"模型这时会怎么做"。事实不随角色变。
-- **用阈值，不抽签。** 同一个时刻永远同样处理，录下来的通话可以原样重走。阈值集中在一处（`Config`），之后用数据调。
-- **人设决定阈值和时机，不改题目：**它的话多容易被打断、插不插话、冷场多久接上。
-- **Jev 定时机，语言模型定内容。** 规则不替 Jev 做决定，Jev 也不写台词。
-
-| 时刻 | 问 Jev | 一个动作 |
-|---|---|---|
-| 用户在说 | 说完了吗 · 哪种节奏（每种节奏一道是非题） · 他要的东西该给了吗 · 斗嘴还是讲事 | 接话（字和声音都说说完了） · 插话（节奏允许时） · 垫一声 · 不出声 |
-| 安静 | 模型上一句留给他接吗 · 他说了要等一下吗 · 道过别了吗 · 喊过了没人应吗 | 让它安静 · 接着自己的话头 · 问一声还在吗 · 挂断（事实加时钟决定） |
-| 两人同时说 | 他压着说的是什么：附和、喊停，还是自己的话 | 接着说 · 停下来听 · 说完这半句 · 把话头拿回来 · 立刻回应 |
-| 模型在说 | 不问 | 没有要决定的 |
-
-来电者要找别人，是第一个时刻里多出来的一个事实（`who`：不换，或换人接；实验性，角色配置里列了 `cast` 才有）。
-
-**节奏**（normal、patient、narrate、eager）表示谁掌握话头。各节奏的等待时间按 Jev 给的概率加权混合：Jev 判断"六成普通、四成耐心"时，等待时间就落在两者之间。
-
-**同一个引擎，换两个人设。** 我们产品里的两个角色，一个支配型（Dom）、一个顺从型（Sub），各带自己的阈值和时机（`turn_taking`：话多容易被打断、插不插话、冷场多久接上；在引擎里就是节奏的 `yield_p`、`cut_in`、`lead_after_s`），用同一批写好的时刻测（`tools/persona_bench.py`，628 次 Jev 请求）：
-
-- 日常时刻（132 个）：没理由不同的地方表现一样：冷场 28/28 相同，两人同时说 30/32 相同。插话只在该不同的地方不同：6 个斗嘴的时刻里，Dom 插话，Sub 让对方说完。
-- 一场主导的戏（16 个时刻）：6 个时刻表现不同，方向都符合预期。命令说到一半用户来一句"Make me."：Dom 把话头拿回来，Sub 接着说；用户挑衅地一直说：一个插话，一个让他说完。该一样的地方一样：真的"停，我不舒服"两个都停，用户难过时两个都让他说完，下完命令后的安静两个都等着。
-- 两边 Jev 给出的用户事实几乎没变（平均差 0.002 到 0.048）：题目一样，只有阈值不同。
-
 ## 任务配置
 
 一套框架，多种产品。配置写明角色是干什么的、电话里是什么习惯、每类决策怎么读。
@@ -145,18 +145,18 @@ policies:
 
 ## 快速开始
 
-一条命令装好依赖、启动服务并打开页面，页面会一步一步带你选服务商、填密钥：
+从 PyPI 装，在任意目录；页面会一步一步带你选服务商、填密钥：
+
+```bash
+pip install "jev-interaction[server]"     # 要声音模型加 ,sound，要来电者声纹加 ,voiceprint
+jev-interaction serve                     # 打开 http://localhost:8080
+```
+
+或者从源码，一条命令装好依赖、启动服务并打开页面：
 
 ```bash
 git clone https://github.com/native-bond-lab/Jev-Interaction && cd Jev-Interaction
 ./scripts/setup.sh            # 加 --china 走国内 PyPI 镜像
-```
-
-或者当作 Python 包装，在任意目录：
-
-```bash
-pip install "jev-interaction[server] @ git+https://github.com/native-bond-lab/Jev-Interaction"
-jev-interaction serve         # 打开 http://localhost:8080
 ```
 
 或者用 Docker（任何系统）：
@@ -518,7 +518,6 @@ docs/                 策略图、架构图、基准图表、协议
 - 在我们产品的引擎里打开测过的旋钮（本仓库里已是 `Config` 选项），10 dB 规则要和声纹一起用（说话轻的真实来电者不能被当成别人）。
 - v1.5 用固定的干净版本回答重新评（两次用同一个回答）。
 - 在真实通话录音和留出集上调声音模型的线，再细看 300 毫秒这一档。
-- 引擎直接读人设自己的阈值和时机（`turn_taking`），不只是 `tools/persona_bench.py` 读。
 - TurnBench 跑完整 dev 集（38 段）定阈值，再提交隐藏测试集；更大规模的任务配置评测。
 - 把测试脚本放进本仓库，用本仓库的代码跑。
 

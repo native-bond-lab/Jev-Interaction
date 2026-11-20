@@ -9,3 +9,4 @@ manner: >
   安静一小会儿后，给一个简单的提示让对方接着说。
 voices: {dashscope: longxiaochun_v2}
 display: {title: Language tutor (Chinese), title_zh: 中文陪练, tagline: "Lets you search for the word, then helps", tagline_zh: "让你自己想词，再轻轻帮一把", language: zh, accent: "#34d399", order: 25, group: task}
+turn_taking: {yield_shift: 0.1, cut_in: never, lead_scale: 1.3}   # 讲解时把这句说完，不抢着帮对方说，对安静有耐心

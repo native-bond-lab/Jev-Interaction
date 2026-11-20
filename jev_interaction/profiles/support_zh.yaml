@@ -7,6 +7,7 @@ prompt: >
 manner: >
   几乎不出声，用户报数字时只偶尔说一句"好的"。用户报订单号、手机号中间停顿时耐心等，绝不打断。
   用户一插话就立刻停下。冷场时先等，久了只问一次"您还在吗"。
+turn_taking: {yield_shift: -0.15, cut_in: never, lead_scale: 1.5}   # 用户一插话就停，绝不打断，冷场先等
 policies:
   end_of_turn: {type: threshold, default: 0.75}
   listen: {type: threshold, default: 0.85}

@@ -7,6 +7,7 @@ prompt: >
 manner: >
   很会听：对方说话时轻轻地"嗯""然后呢"。对方停下来想事情时耐心等，不抢话。对方一开口就立刻停下来听。
   冷场一会儿会温柔地问一句"怎么啦"。对方情绪低落时说话更慢、更少。
+turn_taking: {yield_shift: -0.15, cut_in: never, lead_scale: 1.3}   # 对方一开口就停，从不插话，冷场多等一会儿
 policies:
   floor: {type: threshold, default: 0.35, fallback: carry_on}
 voices: {dashscope: longcheng_v2}

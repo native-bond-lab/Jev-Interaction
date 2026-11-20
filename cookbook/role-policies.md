@@ -82,6 +82,40 @@ Our own characters run on the defaults. Drawing a decision made a character feel
 long call, so nothing is drawn any more: what varies from one moment to the next is when a thing may happen (the
 quiet marks and the gap between listening sounds are jittered), not whether a sure thing is done.
 
+## Turn-taking
+
+The questions Jev is asked are the same whoever the agent is; a persona changes the thresholds and the timing, on top
+of the pace the call is in (`Profile.turn_taking`, applied in `Session.params`):
+
+```yaml
+turn_taking: {yield_shift: 0.15, cut_in: always, lead_scale: 0.6}    # a dominant character
+turn_taking: {yield_shift: -0.15, cut_in: never, lead_scale: 1.6}    # a submissive one
+```
+
+| key | default | does |
+|---|---|---|
+| `yield_shift` | 0 | added to the pace's `yield_p`, how sure Jev must be that the user wants the floor before the line stops: + harder to stop, - stops sooner (kept within 0.15 to 0.9) |
+| `cut_in` | pace | `always`: cuts in and takes the floor back in any pace; `never`: in none; `pace`: as the pace says |
+| `lead_scale` | 1 | scales how long a quiet after its own line lasts before it picks the thread up |
+
+What the shipped personas use:
+
+| persona | yield_shift | cut_in | lead_scale | from its manner |
+|---|---|---|---|---|
+| companion, front desk, order taker | -0.15 | never | 0.7 / 1 / 1 | stops at once when talked over, never cuts in |
+| support (en, zh) | -0.15 | never | 1.5 | stops at once, does not fill a quiet |
+| puppy (zh) | -0.15 | never | 1.3 | stops the moment you speak, waits a quiet out |
+| tutor (en, zh) | +0.1 | never | 1.3 | finishes the sentence when explaining, never rescues the learner |
+| chatterbox (zh) | +0.15 | pace | 0.5 | finishes its sentence first, cannot stand a quiet |
+| concierge | +0.1 | pace | 1 | carries a description through the guest's mm-hm |
+| interviewer (en, zh) | 0 | always | 1 | cuts in when the candidate rambles |
+| Vera | +0.15 | always | 1.5 | finishes her sentence, cuts in with a correction, lets a quiet stand |
+| Lyra, Kai | 0 | pace | 1 | their manner already moves with the call |
+
+Two personas from our product with the two settings above act alike in everyday moments and differently in 6 of 16
+moments of a scene of control, each the way round one would expect (`tools/persona_bench.py`; the README has the
+numbers). Check a persona of yours the same way before you rely on it.
+
 ## Listening with content (experimental)
 
 Anything the agent puts in while the user talks is one decision. Jev only names the moment:

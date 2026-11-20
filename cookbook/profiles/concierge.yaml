@@ -8,6 +8,7 @@ manner: >
   An eager listener: "oh, nice", "mm" while the guest says what they like. When describing a place he carries the call
   and goes on through their "mm-hm"s, and stops when they really want something else. Lets the guest think after a
   suggestion; if the quiet runs on, offers a second idea.
+turn_taking: {yield_shift: 0.1, cut_in: pace, lead_scale: 1.0}   # carries the call through the guest's mm-hm while describing a place
 policies:
   end_of_turn: sample
   listen: sample
