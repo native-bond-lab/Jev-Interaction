@@ -27,8 +27,8 @@ LLM_MODEL=grok-4.3
 LLM_TEMPERATURE=0.7
 ASR_PROVIDER=elevenlabs
 TTS_PROVIDER=elevenlabs
-ELEVENLABS_API_KEY=...
-ELEVENLABS_VOICE_ID=...
+TTS_API_KEY=...             # the ElevenLabs key: the voice, and recognition too
+TTS_VOICE_ID=...
 ELEVENLABS_ASR_MODEL=scribe_v3_live
 ELEVENLABS_TTS_MODEL=eleven_v4_turbo
 ```

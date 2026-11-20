@@ -256,7 +256,20 @@ def _eleven_style() -> str:
     return "audio_tags" if os.getenv("ELEVENLABS_TTS_MODEL", "eleven_v4_turbo").startswith(("eleven_v3", "eleven_v4")) else "plain"
 
 
-ELEVEN_KEY = Setting("ELEVENLABS_API_KEY", "ElevenLabs API key", "ElevenLabs 密钥", secret=True, required=True)
+# The voice's key and voice id go by provider-neutral names. The names they had until 0.2.x still work: read once
+# here into the new ones when those are not set (a deployment's existing secrets keep working), never written back.
+LEGACY_ENV = {"TTS_API_KEY": "ELEVENLABS_API_KEY", "TTS_VOICE_ID": "ELEVENLABS_VOICE_ID"}
+
+
+def legacy_env() -> None:
+    for new, old in LEGACY_ENV.items():
+        if not os.getenv(new) and os.getenv(old):
+            os.environ[new] = os.environ[old]
+
+
+legacy_env()
+
+ELEVEN_KEY = Setting("TTS_API_KEY", "TTS API key", "TTS 密钥", secret=True, required=True)
 DASHSCOPE_KEY = Setting("DASHSCOPE_API_KEY", "DashScope API key", "百炼（DashScope）密钥", secret=True, required=True)
 ELEVEN = {"docs": "elevenlabs.io/app/settings/api-keys", "key_pattern": r"^sk_[0-9a-f]{20,}$"}
 DASHSCOPE = {"docs": "bailian.console.aliyun.com", "key_pattern": r"^sk-[0-9a-f]{20,}$"}
@@ -281,7 +294,7 @@ register("asr", "dashscope", _paraformer, [
     DASHSCOPE_KEY, Setting("DASHSCOPE_ASR_MODEL", "Model", "模型", default="paraformer-realtime-v2")],
     label="Paraformer (Alibaba Cloud Bailian)", **DASHSCOPE)
 register("tts", "elevenlabs", _eleven_tts, [
-    ELEVEN_KEY, Setting("ELEVENLABS_VOICE_ID", "Voice ID", "音色 ID", required=True, hint="elevenlabs.io/app/voice-library"),
+    ELEVEN_KEY, Setting("TTS_VOICE_ID", "Voice ID", "音色 ID", required=True, hint="elevenlabs.io/app/voice-library"),
     Setting("ELEVENLABS_TTS_MODEL", "Model", "模型", default="eleven_v4_turbo")], label="ElevenLabs", speech=_eleven_style, **ELEVEN)
 register("tts", "dashscope", _cosyvoice, [
     DASHSCOPE_KEY, Setting("DASHSCOPE_TTS_VOICE", "Voice", "音色", default="longxiaochun_v2"),

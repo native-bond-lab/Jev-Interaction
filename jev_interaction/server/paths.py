@@ -46,3 +46,5 @@ def load_env() -> None:
         if "=" in line and not line.lstrip().startswith("#"):
             k, v = line.split("=", 1)
             os.environ.setdefault(k.strip(), v.strip())
+    from jev_interaction.adapters.registry import legacy_env
+    legacy_env()                                  # a .env from 0.2.x: ELEVENLABS_API_KEY reads as TTS_API_KEY

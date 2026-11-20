@@ -9,9 +9,9 @@ class ElevenLabsTTS:
     media_type = "audio/mpeg"
 
     def __init__(self, voice_id: str | None = None, model: str | None = None, api_key: str | None = None):
-        self.voice = voice_id or os.getenv("ELEVENLABS_VOICE_ID", "")
+        self.voice = voice_id or os.getenv("TTS_VOICE_ID") or os.getenv("ELEVENLABS_VOICE_ID", "")
         self.model = model or os.getenv("ELEVENLABS_TTS_MODEL", "eleven_v4_turbo")
-        self.key = api_key or os.getenv("ELEVENLABS_API_KEY", "")
+        self.key = api_key or os.getenv("TTS_API_KEY") or os.getenv("ELEVENLABS_API_KEY", "")
 
     async def audio(self, text: str):
         async with httpx.AsyncClient(timeout=30) as http:

@@ -24,7 +24,7 @@ Calls need keys: add these as Space secrets (`push_hf_space.sh` sets the limits 
 | `JEV_API_KEY` | your Jev key |
 | `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` | any OpenAI-compatible endpoint |
 | `ASR_PROVIDER`, `TTS_PROVIDER` | `elevenlabs` or `dashscope` (no default) |
-| `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` / `DASHSCOPE_API_KEY` | the keys for the providers you picked |
+| `TTS_API_KEY`, `TTS_VOICE_ID` / `DASHSCOPE_API_KEY` | the keys for the providers you picked |
 | `TTS_VOICES` | optional, a voice per persona: `companion=<voice id>,vera=<voice id>` |
 | `MAX_CONCURRENT_CALLS` | e.g. `4`: every call is billed to the keys above |
 | `MAX_CALL_SECONDS` | e.g. `300` |

@@ -305,9 +305,28 @@ def test_settings_write_keeps_other_lines_and_rejects_unknown_names(tmp_path, mo
         S.write({"PATH": "/tmp"})
 
 
+def test_the_voice_key_is_tts_api_key_and_the_old_names_still_work(monkeypatch):
+    from jev_interaction.adapters import registry as R
+    from jev_interaction.adapters.elevenlabs_tts import ElevenLabsTTS
+    for k in ("TTS_API_KEY", "TTS_VOICE_ID"):
+        monkeypatch.setenv(k, "x")                                     # so that teardown removes what legacy_env sets
+        monkeypatch.delenv(k)
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "sk_old")                  # a deployment's secrets from 0.2.x
+    monkeypatch.setenv("ELEVENLABS_VOICE_ID", "v_old")
+    tts = ElevenLabsTTS()
+    assert (tts.key, tts.voice) == ("sk_old", "v_old")
+    R.legacy_env()
+    monkeypatch.setenv("TTS_PROVIDER", "elevenlabs")
+    assert "TTS_API_KEY" not in R.missing_settings() and "TTS_VOICE_ID" not in R.missing_settings()
+    monkeypatch.setenv("TTS_API_KEY", "sk_new")                         # the new name wins
+    assert ElevenLabsTTS().key == "sk_new"
+    names = {s.name for p in R._PROVIDERS.values() for s in p.settings}
+    assert "TTS_API_KEY" in names and not any(n.startswith("ELEVENLABS_API") or n == "ELEVENLABS_VOICE_ID" for n in names)
+
+
 def test_provider_registry_drives_factories_health_and_settings(monkeypatch):
     from jev_interaction.adapters import registry as R
-    for k in ("JEV_API_KEY", "LLM_API_KEY", "LLM_BASE_URL", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID", "DASHSCOPE_API_KEY"):
+    for k in ("JEV_API_KEY", "LLM_API_KEY", "LLM_BASE_URL", "TTS_API_KEY", "TTS_VOICE_ID", "ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID", "DASHSCOPE_API_KEY"):
         monkeypatch.delenv(k, raising=False)
     for k in ("ASR_PROVIDER", "TTS_PROVIDER", "LLM_MODEL"):
         monkeypatch.delenv(k, raising=False)
@@ -315,8 +334,8 @@ def test_provider_registry_drives_factories_health_and_settings(monkeypatch):
     monkeypatch.setenv("ASR_PROVIDER", "dashscope")                    # speech is never chosen for the user
     monkeypatch.setenv("TTS_PROVIDER", "elevenlabs")
     monkeypatch.setenv("LLM_MODEL", "llama3")
-    assert R.missing_settings() == ["JEV_API_KEY", "LLM_BASE_URL", "LLM_API_KEY", "DASHSCOPE_API_KEY", "ELEVENLABS_API_KEY",
-                                    "ELEVENLABS_VOICE_ID"]
+    assert R.missing_settings() == ["JEV_API_KEY", "LLM_BASE_URL", "LLM_API_KEY", "DASHSCOPE_API_KEY", "TTS_API_KEY",
+                                    "TTS_VOICE_ID"]
     monkeypatch.setenv("LLM_BASE_URL", "http://localhost:11434/v1")      # a local model needs no key
     assert "LLM_API_KEY" not in R.missing_settings()
     R.register("asr", "toy", lambda language="en", **_: ("toy-asr", language), [R.Setting("TOY_KEY", "Toy key", secret=True, required=True)])

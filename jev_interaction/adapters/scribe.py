@@ -17,7 +17,7 @@ class ScribeRealtime:
         model = model or os.getenv("ELEVENLABS_ASR_MODEL", "scribe_v3_live")
         self.url = (f"wss://api.elevenlabs.io/v1/speech-to-text/realtime?model_id={model}&audio_format=pcm_{sample_rate}"
                     f"&commit_strategy=vad&vad_silence_threshold_secs={silence_s}" + (f"&language_code={language}" if language else ""))
-        self.key = api_key or os.getenv("ELEVENLABS_API_KEY", "")
+        self.key = api_key or os.getenv("TTS_API_KEY") or os.getenv("ELEVENLABS_API_KEY", "")
         self.sr = sample_rate
         self.ws = None
         self.queue: asyncio.Queue[Segment | None] = asyncio.Queue()
