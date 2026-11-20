@@ -57,6 +57,7 @@ something else.
 |---|---|---|
 | `turn_reask_ms` | (1000, 2000, 4000) | words Jev did not judge finished: the turn question is asked again at these marks of quiet, with the listen question beside it |
 | `turn_last_ms` | 4000 | this far past the pace's longest wait the agent speaks anyway, and its line is told the user went silent (`trailed`) rather than finished |
+| `echo_tail_s` | 2.0 | the agent's own words heard this long after its line stopped playing are its echo, not the user (four characters or more; a short word is the user's) |
 | `sound_close_ms` | 1500 | a sound with no words (a cough, a breath) is over after this much quiet |
 
 ### When both talk at once

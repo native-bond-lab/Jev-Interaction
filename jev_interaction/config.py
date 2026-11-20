@@ -49,6 +49,7 @@ class Config:
     overlap_ask_ms: int = 400          # the user talks over the agent this long: the words so far, closed or not, go to the
                                        # floor question (and again each time as much voice has passed). The line plays on
                                        # until Jev says the user needs the floor: no clock pauses it
+    echo_tail_s: float = 2.0           # the agent's own words heard this long after its line stopped playing are its echo
     sound_close_ms: int = 1500         # a sound with no words behind it is over after this much quiet (a cough, a breath)
     listen_gap_s: float = 3.0          # at least this long between two listening sounds that could as well be left out
     listen_min_gap_s: float = 1.0      # and no two things put in closer than this, whatever they are: they would run together

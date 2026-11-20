@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import difflib
 import random
 import re
 import time
@@ -68,6 +69,7 @@ class Session:
         self.silence_ms = 0
         self.judged: dict | None = None          # the latest turn answer for the open utterance
         self.speaking = False                    # the client is playing a line of the agent's
+        self.played_until = 0.0                  # when the client last stopped playing one (the echo tail, _own_words)
         self.generating = False
         self.gen = 0
         self.idle_since = time.monotonic()
@@ -156,6 +158,8 @@ class Session:
 
     async def on_client(self, msg: dict):
         if msg.get("type") == "playback":
+            if self.speaking and msg.get("state") != "playing":
+                self.played_until = time.monotonic()  # the echo of the last line can still come back for a moment
             self.speaking = msg.get("state") == "playing"
             if not self.speaking and not self.generating:
                 self.idle_since = time.monotonic()
@@ -272,7 +276,7 @@ class Session:
         if seg.final and any(re.search(rf"\b{re.escape(w)}\b", text, re.I) for w in self.cfg.safe_words):
             await self.safe_word(text)
             return
-        if self.speaking and self._own_words(text):
+        if self._own_words(text):
             if seg.final:
                 self.rec.write("echo", text=text)   # the agent's own line, back through the microphone: nobody said it
             return
@@ -302,10 +306,25 @@ class Session:
         self._spawn(self.ask("floor", gen=self.gen, early=True, closed=len(u.segments)))
 
     def _own_words(self, text: str) -> bool:
-        """The recognizer heard words of the agent's own recent lines (a speaker next to the microphone)."""
-        norm = lambda s: re.sub(r"[\W_]+", "", s).lower()  # noqa: E731
+        """The recognizer heard words of the agent's own recent lines (a speaker next to the microphone): while a line
+        plays, and for Config.echo_tail_s after (the recognizer closes a segment a moment after the sound), then only
+        a longer piece, so a short "ok" of the user's own is not taken for an echo. Recognizers mishear an echo too: it
+        is the agent's when most of what was heard runs in order through one of its lines."""
+        since = time.monotonic() - self.played_until
+        if not self.speaking and since >= self.cfg.echo_tail_s:
+            return False
+        norm = lambda s: re.sub(r"\[[^\]]*\]|[\W_]+", "", s).lower()  # noqa: E731 - audio tags are never heard
         heard = norm(text)
-        return len(heard) >= 2 and any(heard in norm(line) for line in list(self.lines.values())[-6:])
+        if len(heard) < (2 if self.speaking else 4):
+            return False
+        for line in list(self.lines.values())[-6:]:
+            said = norm(line)
+            if heard in said:
+                return True
+            blocks = difflib.SequenceMatcher(None, heard, said, autojunk=False).get_matching_blocks()
+            if sum(b.size for b in blocks) >= 0.8 * len(heard):
+                return True
+        return False
 
     def _open_utterance(self):
         now = time.monotonic()
