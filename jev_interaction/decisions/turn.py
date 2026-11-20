@@ -76,8 +76,8 @@ class Turn(Decision):
         finished = Q.finished(answers)
         if s.sound_ready() and s.cfg.sound_rule == "and":           # the words' own line; the sound must agree too (on_tick)
             go = finished >= s.cfg.words_min
-        else:
-            go = self.policy_for(s, ctx).draw(finished)             # decided here, once, with the answer
+        else:                                                       # the judge's line (Config.finished_min), unless a
+            go = self.policy_for(s, ctx).draw(finished)             # policy of your own: decided here, once
         s.judged = {"finished": finished, "go": go, "drawn": False,
                     "who": HANDOVER.chosen(s, answers, ctx) if HANDOVER.ready(s, ctx) else None}
         # one answer, one thing done. The turn is theirs to end: once it is judged finished the agent takes it when

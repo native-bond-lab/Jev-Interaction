@@ -83,7 +83,8 @@ probability per choice back); `JEV_URL`, `JEV_MODEL` and `JEV_HEADERS` point the
   at its field, asks it twice with the options in both orders (this model leans to whichever option is listed first),
   and splits a question that needs the whole call read into small ones. It covers the end of a turn
   (`JEV_TURN_QUESTION=last_words` alone does only that much), both talking, a silence and "something is due" while
-  listening; the other decisions go out as the engine words them. Leave Jev on the engine's questions.
+  listening; the other decisions go out as the engine words them. It also takes the turn at a higher line on this
+  model's p(finished) (below). Leave Jev on the engine's questions.
 - **Volcengine Ark System One (beta)** reads the engine's wording as it is and judges close to Jev, but answers
   several times slower:
 
@@ -105,6 +106,27 @@ p(finished) orders the pauses whatever the threshold.
 | Bailian `decision-model-preview` | `last_words` | 88% | 0.97 | about 100 → 180 ms |
 | Bailian `decision-model-preview` | engine | 63% | 0.72 | |
 | Volcengine `doubao-seed-2-1-lite-260915` | engine | 95% | 0.99 | about 330 → 450 ms |
+
+Which side of 0.5 is not the whole of it. A judge whose numbers sit nearer the middle answers into unfinished
+sentences even when it ranks them well: on a sentence cut off mid-thought the Bailian model says about 0.35 where Jev
+says about 0.1. With `JEV_PROVIDER=bailian` the turn is therefore taken at p(finished) 0.725 instead of 0.5
+(`Config.finished_min`). Nothing is drawn: the line is a threshold, kept with every other line in `Config`, and the
+same pause goes the same way. (0.2.x drew against p(finished), and a stretch of Bailian's number before the draw was
+tried first, 0.6 → 0 and 0.85 → 1; 0.725 is where the stretched number crossed one half.) What that stretch measured
+before the draw, on 80 pauses kept apart from the fitting (`python tools/judge_bench.py --held-out`):
+
+| judge | answers a finished sentence at the first draw | speaks into an unfinished one at the first draw |
+|---|---|---|
+| Jev | 80% | 10% |
+| Bailian, p(finished) as it comes | 87% | 35% |
+| Bailian, stretched | 89% | 13% |
+
+The same run on 0.3.0 prints "at the line" instead: how often the agent answers a finished sentence and speaks into an
+unfinished one with the line where it is now.
+
+Without the closing punctuation a recognizer may or may not send (`--bare`) the same pauses give 76% / 10% on Jev and
+83% / 13% on Bailian. What the line does not mend is a wording matter: a number given in pieces ("my code is four
+eight") or "hold on, let me check" is a whole sentence, so this wording calls it finished, at about 0.8.
 
 The other decisions, with `python tools/judge_bench.py --decisions`: written moments, Chinese and English alike, each
 sent as the engine sends it and scored on the action the engine would take. The Bailian set was worded on 148 moments
@@ -137,9 +159,10 @@ Read with these in mind:
 - **Which pace** and **cutting in** are not reworded yet: on the engine's questions the Bailian model rarely picks
   the eager pace and rarely cuts in. A question on the user's words alone did better in a first trial and is the next
   step.
-- These are written moments, not calls, and the presets' thresholds were set on Jev's probabilities. Run the benchmark
-  against your own judge before you rely on it, and again after any change to the wording: on the Bailian model a few
-  changed words in the options moved a result by twenty points.
+- These are written moments, not calls, and the presets' thresholds were set on Jev's probabilities; only
+  p(finished) has been fitted to the Bailian model's own numbers so far. Run the benchmark against your own judge
+  before you rely on it, and again after any change to the wording: on the Bailian model a few changed words in the
+  options moved a result by twenty points.
 
 ## The caller's voiceprint
 

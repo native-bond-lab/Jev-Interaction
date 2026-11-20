@@ -790,6 +790,22 @@ def test_bailian_merges_the_two_orders_and_turns_small_answers_into_the_engines_
     assert listen["due"] < 0.05                                 # "yes, it came up" alone, with no task set, is not due
 
 
+async def test_bailian_takes_the_turn_at_its_own_line_not_by_a_draw():
+    from jev_interaction import Config
+    assert Config(judge_provider="bailian").policies["end_of_turn"].default == 0.725 == Config(judge_provider="bailian").finished_line()
+    assert Config().policies["end_of_turn"].default == 0.5
+    for p, taken in ((0.55, False), (0.8, True)):              # 0.55: this judge on a sentence cut off mid-thought
+        done = {"finished": p, "continuing": 1 - p}
+        s, events, judge = scripted_session(both_ways({**TURN, "done": done, "done_again": done,
+                                                       "rule": {"task": 0.0, "no_task": 1.0}}), judge_provider="bailian")
+        await s.on_segment(Segment("My order number is"))
+        await asyncio.sleep(0.05)
+        assert s.judged["finished"] == p and s.judged["go"] is taken     # the number as it comes, against 0.725
+        s.silence_ms = 200
+        await s.tick()
+        assert any(e.get("what") == "end_of_turn" and e["go"] for e in events) is taken
+
+
 async def test_bailian_floor_points_at_the_words_said_over_the_line():
     s, events, judge = make(both_ways({"floor": {"carry_on": 0.2, "yield": 0.1, "finish_first": 0.7}}))
     s.cfg.judge_provider = "bailian"

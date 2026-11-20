@@ -12,7 +12,8 @@ follows what made "have they finished" work on it (questions.last_words):
   (did they ask for this earlier, and has it come up now?) is split into small ones whose answers are combined here.
 
 Only the decisions this judge got wrong are reworded: both talking (floor), quiet since the agent's line (quiet) and
-"something is due" while listening. The others go out as the engine words them. The wordings are measured, not tidied:
+"something is due" while listening. The others go out as the engine words them. Its p(finished) sits closer to the
+middle than Jev's, so the turn is taken at a higher line (Config.finished_min, 0.725). The wordings are measured, not tidied:
 a few changed words moved results by twenty points. `python tools/judge_bench.py --decisions --held-out` before and
 after any edit.
 """

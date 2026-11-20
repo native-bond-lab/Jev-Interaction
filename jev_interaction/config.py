@@ -72,6 +72,10 @@ class Config:
                                        # "bailian" for Alibaba Cloud Bailian's decision model (judge/bailian.py): the
                                        # last_words turn question, and both talking, quiet and "something is due" put as
                                        # small questions about fields of their own. Leave "jev" for Jev
+    finished_min: dict = field(default_factory=lambda: {"jev": 0.5, "bailian": 0.725})   # "have they finished": the turn is
+                                       # taken at or over this p(finished), by judge_provider (the end_of_turn policy's
+                                       # line unless you give a policy of your own). Bailian's numbers sit nearer the
+                                       # middle (about 0.35 on a sentence cut off mid-thought, where Jev says 0.1)
     turn_last_ms: int = 4000           # ... and this far past the pace's longest wait the agent speaks anyway
     listen_finished_max: float = 0.65  # no listening sound once Jev is this sure the user has finished
     quiet_marks_s: tuple = (1.5, 4.0, 10.0, 25.0, 60.0, 120.0)   # when the quiet question is asked (jittered)
@@ -122,6 +126,11 @@ class Config:
         if self.hold_release_ms is not None:
             warnings.warn("Config(hold_release_ms=...) is gone: the line is no longer paused", DeprecationWarning, stacklevel=3)
             self.hold_release_ms = None
+        if self.policies.get("end_of_turn") == ThresholdPolicy():   # the default policy: at the judge's own line
+            self.policies["end_of_turn"] = ThresholdPolicy(default=self.finished_line())
+
+    def finished_line(self) -> float:
+        return self.finished_min.get(self.judge_provider, self.finished_min.get("jev", 0.5))
 
     def sound_line(self) -> float:
         return self.sound_min.get(self.language, self.sound_min.get("", 0.5))

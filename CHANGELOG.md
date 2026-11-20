@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Bailian takes the turn at a line of its own, not by a draw.** On a sentence cut off mid-thought Bailian's
+  `decision-model-preview` says about 0.35 where Jev says about 0.1, so a draw against it spoke into one unfinished
+  sentence in three. A stretch before the draw was tried (0.6 → 0, 0.85 → 1); with nothing drawn by default, all that
+  matters is where the line is, so the stretch is gone and Bailian's line is a threshold in `Config.finished_min`
+  (0.725: where the stretched number crossed one half). One place for every line, the same pause goes the same way,
+  and a judge with numbers nearer the middle is handled by moving its line, not by reshaping its numbers.
+  `tools/judge_bench.py` prints "at the line" and takes `--held-out` (80 other pauses in
+  `tools/judge_cases_heldout.py`) and `--bare` (no closing punctuation).
 - **The pace, cutting in and "something is due" are asked as facts too.** The pace was one question with every pace
   as a choice, and Jev kept the pace a call was in: it missed most calls for a story and most games (81% right on the
   written moments, 71% on those kept apart). It is now one yes/no fact for each pace but the starting one, worded from
