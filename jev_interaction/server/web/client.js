@@ -230,6 +230,13 @@
         note({ tone: 'pace', kind: 'pace', label: `${t('d_pace')} → ${t('p_' + m.pace)}`, probs: m.probs, chosen: m.pace, value: m.probs && m.probs[m.pace] });
         break;
       case 'hangup': endCall(); break;
+      // background tasks and sleep (docs/tasks.md): a row in the log; what the agent says about a task comes as a line
+      case 'task':
+        note({ tone: { running: 'info', waiting: 'hold', failed: 'yield', stopped: 'info' }[m.status] || 'go', kind: 'task',
+               label: `#${m.id} ${m.kind} · ${m.status}`, detail: m.question || m.progress || m.about });
+        break;
+      case 'sleep': note({ tone: 'info', kind: 'sleep', label: 'zzz', detail: m.why }); break;
+      case 'wake': note({ tone: 'go', kind: 'sleep', label: 'awake', detail: m.why }); break;
       case 'voiceprint': note({ tone: 'info', kind: 'voice', label: t(m.state === 'enrolled' ? 'voice_ready' : 'voice_skipped') }); break;
       case 'busy': showNotice(m.text, true); break;
       case 'queue': waiting = { ahead: m.ahead, wait_s: m.wait_s }; break;       // every line is taken: the server holds this caller in line

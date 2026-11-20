@@ -3,6 +3,8 @@
     jev-interaction serve [--host 127.0.0.1] [--port 8080] [--preset recommended] [--home .]
     jev-interaction init [--reference global|china]   write .env (empty, or a reference setup's values) and profiles/
     jev-interaction replay runs/*.jsonl --purpose floor [--edit my_questions.py]
+    jev-interaction channel [--hub ws://127.0.0.1:8080/harness/ws] [--cwd .]   Claude Code's side of the hub: started by
+                                                                               the plugin, not by hand (docs/harness.md)
 """
 from __future__ import annotations
 
@@ -68,6 +70,10 @@ def main(argv: list[str] | None = None) -> int:
     from jev_interaction import replay as R
     R.add_arguments(r)
     r.set_defaults(run=lambda a: __import__("asyncio").run(R.run(a)))
+    c = sub.add_parser("channel", help="Claude Code's connector: an MCP channel on stdio, started by the plugin")
+    c.add_argument("--hub", help="the call server's hub (default ws://127.0.0.1:8080/harness/ws, or JEV_INTERACTION_HUB)")
+    c.add_argument("--cwd", help="the project folder of the Claude Code session")
+    c.set_defaults(run=lambda a: __import__("jev_interaction.connectors.claude_code", fromlist=["main"]).main(a.hub, a.cwd))
     a = ap.parse_args(argv)
     return a.run(a)
 

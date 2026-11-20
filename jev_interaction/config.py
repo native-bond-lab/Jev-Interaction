@@ -88,6 +88,8 @@ class Config:
     sleep_after_s: float | None = 20.0   # a background task is unfinished and nobody has made a sound for this long: the
                                        # session sleeps (Session.sleep). Nothing is asked of Jev and no audio goes to the
                                        # recognizer until the user's voice or the task wakes it. None: it never sleeps
+    sleep_when_idle: bool = False      # sleep after sleep_after_s of quiet with no task either, and never hang up: a
+                                       # companion that stays on a desk all day, not a phone call
     wake_voice_ms: int = 400           # asleep, this much voice in a row wakes it
     sleep_preroll_ms: int = 1200       # asleep, the last of the audio is kept this far back and heard on waking, so the
                                        # words that woke it are not lost

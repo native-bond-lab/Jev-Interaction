@@ -16,7 +16,7 @@ no change to it lands by accident.
 | profiles | the YAML keys `name`, `task`, `prompt`, `manner`, `policies`, `turn_taking` (`yield_shift`, `cut_in`, `lead_scale`), `cast`, `voices`, `display`; the policy names `sample`, `threshold`, `argmax`; the decision names `end_of_turn`, `listen`, `floor`, `cut_in`, `quiet`, `who` |
 | call protocol | the client messages and server events in [protocol.md](protocol.md), with their fields |
 | settings | the environment variables in `.env.example`, `JEV_PRESET`, `JEV_RECORD_CALLS`, `JEV_VOICEPRINT`, the `MAX_*` limits |
-| command line | `jev-interaction serve`, `init`, `replay` and their options |
+| command line | `jev-interaction serve`, `init`, `replay`, `channel` and their options |
 
 ## Not public
 

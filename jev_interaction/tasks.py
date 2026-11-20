@@ -23,7 +23,7 @@ import asyncio
 import pathlib
 import re
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -47,6 +47,7 @@ class Task:
     question: str = ""   # what it is waiting on the user for
     result: str = ""     # what came back, or why it failed
     news: bool = False   # it came back or asked something, and no line of the agent's has carried that yet
+    given: dict = field(default_factory=dict)   # anything else its starter passed for the executor (Session.start_task)
 
     @property
     def open(self) -> bool:
@@ -72,12 +73,14 @@ class Tell:
     async def ask(self, question: str) -> str:
         """Something only the user can answer (may I run this, which of the two). The agent asks them at a moment of
         its choosing and passes the answer on; this returns it."""
-        self._answer = asyncio.get_running_loop().create_future()
+        mine = self._answer = asyncio.get_running_loop().create_future()     # a new question replaces one still open
         await self._s._task_asks(self._t, question)
         try:
-            return await self._answer
+            return await mine
         finally:
-            self._answer = None
+            if self._answer is mine:
+                self._answer = None
+                self._s._task_resumed(self._t)     # answered, or the question fell away (answered somewhere else)
 
     def answer(self, text: str) -> bool:
         if self._answer is None or self._answer.done():

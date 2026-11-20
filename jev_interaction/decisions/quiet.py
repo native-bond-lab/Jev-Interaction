@@ -88,7 +88,7 @@ class Quiet(Decision):
     def allowed(self, s, ctx):
         out = allowed(ctx["quiet_s"], s.spoke_into_quiet, lead_after_s=s.params().lead_after_s,
                       check_after_s=s.cfg.check_min_quiet_s, hangup_after_s=s.cfg.hangup_min_quiet_s)
-        return [x for x in out if x != "hang_up"] if s.open_tasks() else out
+        return [x for x in out if x != "hang_up"] if s.open_tasks() or s.cfg.sleep_when_idle else out
 
     def current(self, s, ctx):
         return ctx["gen"] == s.gen and not s.speaking and not s.generating and s.utt is None and not s.asleep

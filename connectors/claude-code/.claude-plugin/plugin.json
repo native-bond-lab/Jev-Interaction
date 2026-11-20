@@ -1,0 +1,16 @@
+{
+  "name": "jev-voice",
+  "version": "0.1.0",
+  "description": "Talk to Claude Code out loud. Your voice companion (Jev-Interaction) hears you, passes your words on as prompts, and tells you when the work is done or needs your OK.",
+  "author": { "name": "Native Bond Lab" },
+  "homepage": "https://github.com/native-bond-lab/Jev-Interaction",
+  "repository": "https://github.com/native-bond-lab/Jev-Interaction",
+  "keywords": ["voice", "channel", "full-duplex"],
+  "mcpServers": {
+    "jev": {
+      "command": "jev-interaction",
+      "args": ["channel", "--cwd", "${CLAUDE_PROJECT_DIR}"]
+    }
+  },
+  "channels": [{ "server": "jev", "displayName": "Jev voice" }]
+}

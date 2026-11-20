@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **The voice of a coding agent** (`docs/harness.md`). With `JEV_HARNESS=1` the call server is a hub for the coding
+  agents open on this machine (`jev_interaction/harness.py`): the agent on the line hands work to one as a background
+  task, says how far it has got when asked, tells you when it is done or needs your OK, and sleeps in between
+  (`Config.sleep_when_idle`: quiet means asleep, never a hang-up). A prompt you typed in the harness yourself is told
+  to you too once it has run 30 seconds. The first connector is for Claude Code (`connectors/claude-code/`, a plugin:
+  a channel for your words and Claude's `say`, hooks for what it is doing; `jev-interaction channel`). A permission
+  prompt is told to you and answered on your screen; `JEV_VOICE_APPROVALS=1` passes a spoken allow or deny back.
+  Claude Code cannot be interrupted from outside, and its channels are a research preview that needs a launch flag.
+  Checked against Claude Code 2.1.280 up to the model's turn; no signed-in round trip yet.
 - **Background tasks: the agent hands work off and keeps talking** (`jev_interaction/tasks.py`, `docs/tasks.md`).
   `Session(executors={"agent": ..., "memory": ...})` gives the call kinds of work that take longer than a breath: a
   memory service, a model that thinks longer, a search, a coding agent in another window. The responder starts one with

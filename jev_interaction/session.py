@@ -508,16 +508,16 @@ class Session:
         self.rec.write("task", **task.public(), result=task.result)
         await self.send(type="task", **task.public())
 
-    async def start_task(self, kind: str, about: str) -> T.Task | None:
+    async def start_task(self, kind: str, about: str, **given) -> T.Task | None:
         """Set a task going with the executor of that kind; the call carries on. None when there is no such kind (the
-        record says so, and the responder reads it)."""
+        record says so, and the responder reads it). `given` is for the executor (Task.given)."""
         executor = self.executors.get(kind)
         if executor is None or not about:
             kinds = ", ".join(self.executors) or "none"
             self.ledger.event(f"(no task was started: {kind or '?'} is not a kind of task on this call; the kinds: {kinds})"
                               if executor is None else "(no task was started: the /task line did not say what to do)")
             return None
-        task = T.Task(len(self.tasks) + 1, kind, about, started=self.ledger.clock())
+        task = T.Task(len(self.tasks) + 1, kind, about, started=self.ledger.clock(), given=given)
         self.tasks.append(task)
         tell = T.Tell(self, task)
         self._work[task.id] = (self._spawn(self._run_task(task, executor, tell)), tell)
@@ -547,6 +547,14 @@ class Session:
         await self._task_event(task)
         await self.wake("task")
 
+    def _task_resumed(self, task: T.Task) -> None:
+        """What a task asked the user is over: they answered, or it was answered elsewhere (on their own screen)."""
+        if task.status != T.WAITING:
+            return
+        task.status, task.question, task.news = T.RUNNING, "", False
+        if not self.closed:
+            self._spawn(self._task_event(task, entry=False))
+
     async def tell_task(self, task_id: int, text: str) -> bool:
         """Words for a task that is going: the user's answer to what it asked, or more for it to work with (an executor
         that can take that has `steer`). False when it could not be passed on; the record says why."""
@@ -556,8 +564,7 @@ class Session:
             self.ledger.event(f"(nothing was passed on: no background task {task_id} is going)")
             return False
         if task.status == T.WAITING and work[1].answer(text):
-            task.status, task.question, task.news = T.RUNNING, "", False
-            await self._task_event(task, entry=False)
+            self._task_resumed(task)
             return True
         steer = getattr(self.executors.get(task.kind), "steer", None)
         if steer is None:
@@ -603,8 +610,8 @@ class Session:
             return True
         if self.asleep:
             return True
-        if self.cfg.sleep_after_s is not None and quiet_s >= self.cfg.sleep_after_s and self.open_tasks():
-            await self.sleep("task")
+        if self.cfg.sleep_after_s is not None and quiet_s >= self.cfg.sleep_after_s and (self.open_tasks() or self.cfg.sleep_when_idle):
+            await self.sleep("task" if self.open_tasks() else "quiet")
             return True
         return False
 
