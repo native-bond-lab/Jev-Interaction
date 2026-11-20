@@ -16,6 +16,11 @@ def has_voice(text: str) -> bool:
     shapes the words beside it, and the synthesizers refuse a text that is nothing else."""
     return bool(re.search(r"\w", _TAG.sub(" ", text or "")))
 
+def plain(text: str) -> str:
+    """The words of a line as they are heard and shown, audio tags taken out ("[softly] I'm here." -> "I'm here."); one
+    line of the reply per line."""
+    return "\n".join(re.sub(r"[ \t]+", " ", _TAG.sub(" ", x)).strip() for x in (text or "").split("\n")).strip()
+
 _UNIT = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]|[^\W_]+(?:['’-][^\W_]+)*")
 
 

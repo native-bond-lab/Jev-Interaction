@@ -164,12 +164,21 @@ class Session:
             heard = (msg.get("text") or "").strip()
             turn = self.replies.get(msg.get("gen"))
             if turn is not None:                  # the client names the reply: all of it that was played, "" for none
-                if heard != turn.text:
-                    turn.text, turn.cut = heard, True
+                self._cut(turn, heard)
             else:                                 # a client that sends no gen: the last reply, and only what it heard
                 last = self.ledger.last_agent()
-                if last and heard and heard != last.text:
-                    last.text, last.cut = heard, True
+                if last and heard:
+                    self._cut(last, heard)
+
+    @staticmethod
+    def _cut(turn, heard: str) -> None:
+        """A reply the user heard only part of: the record keeps what they heard as its words and the rest as unheard.
+        The client shows and measures the words without audio tags, so that is what is compared."""
+        whole = speaking.plain(turn.text)
+        if heard in (turn.text, whole):
+            return
+        turn.unheard = whole[len(heard):].strip() if whole.startswith(heard) else ""
+        turn.text, turn.cut = heard, True
 
     async def _segments_loop(self):
         async for seg in self.asr.segments():

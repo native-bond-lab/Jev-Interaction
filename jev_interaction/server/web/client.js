@@ -170,10 +170,16 @@
     showNotice(t('err_audio'), true);
     current = null; playNext();
   }
+  const untag = (s) => (s || '').replace(/\[[^\]]*\]/g, ' ').replace(/[ \t]+/g, ' ').trim();   // speaking.plain, one line
+  // How much of a line the voice has reached: the smaller of two readings, so the words never run ahead of the voice and
+  // what the page sends back as heard is what was shown. The player's duration of a streamed line is first only the part
+  // loaded so far (a line looked whole the moment it started: Lyra, 11-19, "last weekend I was going to" cut off at
+  // "going to" with the whole sentence on screen); the speaking rate alone runs ahead of a slow voice.
   function heardSoFar(line) {
-    const d = line.el.duration;
-    const total = Number.isFinite(d) && d > 0 ? d : Math.max(1, line.text.length * (/[一-鿿]/.test(line.text) ? .2 : .065));  // streamed audio has no duration yet
-    return line.text.slice(0, Math.floor(line.text.length * Math.min(1, line.el.currentTime / total)));
+    const at = line.el.currentTime, d = line.el.duration;
+    const byRate = at / Math.max(1, line.text.length * (/[一-鿿]/.test(line.text) ? .2 : .065));
+    const byDuration = Number.isFinite(d) && d > 0 ? at / d : 1;  // too large while the duration is only the part loaded
+    return line.text.slice(0, Math.floor(line.text.length * Math.min(1, byRate, byDuration)));
   }
   // The lines of one reply (gen) that played to their end: with the part of the current line, what the user heard of it.
   function playedOf(gen) { if (played.gen !== gen) played = { gen, texts: [] }; return played.texts; }
@@ -186,11 +192,12 @@
 
   function onEvent(m) {
     switch (m.type) {
-      case 'line': lineGen = m.gen; queue.push({ el: makeAudio(m), text: m.text || '', gen: m.gen }); playNext(); break;
+      // the words as heard: audio tags shape the voice and are not shown; what was heard of a line is measured on these
+      case 'line': lineGen = m.gen; queue.push({ el: makeAudio(m), text: untag(m.text), gen: m.gen }); playNext(); break;
       case 'listen':
         if (listening) listening.pause();
         if (m.audio) { listening = makeAudio(m); Promise.resolve(listening.play()).catch(() => {}); }
-        note({ tone: 'info', kind: 'listen', label: m.text ? `“${m.text}”` : t('d_listen'), detail: m.kind && has('l_' + m.kind) ? t('l_' + m.kind) : m.kind });
+        note({ tone: 'info', kind: 'listen', label: untag(m.text) ? `“${untag(m.text)}”` : t('d_listen'), detail: m.kind && has('l_' + m.kind) ? t('l_' + m.kind) : m.kind });
         break;
       case 'user':
         setCaption('capUser', m.text, m.partial);

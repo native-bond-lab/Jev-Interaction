@@ -18,7 +18,8 @@ listening sound and the reply that follows all know the same things about it.
 More than one agent may have been on the line (`Turn.who`, Session.hand_over). The responder only speaks as the one on
 it now: what another said before is shown to it as part of what it hears, "(Lyra: ...)", never as its own turn.
 
-A line of the agent's that was cut off ends in "—" (the user heard only that much); words the user said over the agent
+A line of the agent's that was cut off ends in "—" (the user heard only that much), and a note after it, in the user's
+message, says what it was going to say and they never heard (`Turn.unheard`); words the user said over the agent
 go in at once as their own entry, "(over you: …)": the line went on, but both readers know what was said.
 """
 from __future__ import annotations
@@ -35,6 +36,8 @@ class Turn:
     text: str
     data_line: str = ""  # the bracketed line the responder was given with this user turn
     cut: bool = False
+    unheard: str = ""            # a line cut off: the rest of what it was to say, which the user never heard (`text` is
+                                 # what they did hear)
     over: bool = False   # said over a line of the agent's that carried on
     who: str = ""        # the agent on the line for this turn: who said it (agent), or who heard it (user); "" = the only one
     # a user turn the agent put something into while listening: (the user's words up to there, what the agent said, the
@@ -176,6 +179,8 @@ class Ledger:
                 said = t.text + ("—" if t.cut else "")
                 if mine:
                     out.append({"role": "assistant", "content": said})
+                    if t.cut and t.unheard:                 # what it was going to say: never said, so not its own words
+                        heard(f'(you were cut off there; they did not hear: "{t.unheard}")')
                 elif said:
                     heard(f"({t.who}: {said})")             # another's line: heard, not said
             elif t.exchanges and mine:
