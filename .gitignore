@@ -9,3 +9,4 @@ uv.lock
 /profiles/
 build/
 dist/
+pet/node_modules/

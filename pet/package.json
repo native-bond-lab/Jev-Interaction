@@ -1,0 +1,9 @@
+{
+  "name": "jev-pet",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A small floating window for the Jev-Interaction pet (docs/harness.md).",
+  "main": "main.js",
+  "scripts": { "start": "electron ." },
+  "devDependencies": { "electron": "^45.4.1" }
+}

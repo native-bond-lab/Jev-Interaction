@@ -25,6 +25,16 @@ Today there is one connector, for Claude Code. Codex and DeepSeek Harness speak 
 
 `GET /api/health` lists the harness sessions on the hub under `harness`.
 
+## The pet
+
+The call does not need the big page. `http://localhost:8080/pet` is the same call drawn as a pixel dog that stands on
+two legs (`server/web/pet.js`, the personas `pet` and `pet_zh`), and `pet/` is a small floating window for it:
+
+    cd pet && npm install && npm start
+
+Click the dog to start. It perks its ears when it hears you, struts while a task runs, waves when the coding agent
+needs your OK, and lies down when it sleeps. Click it (or Cmd/Ctrl+Shift+J) to put it to sleep or wake it.
+
 ## What happens
 
 | you | what it does |

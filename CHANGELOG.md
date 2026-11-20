@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **The pet.** The call as a pixel dog that stands on two legs, for the corner of the screen: `/pet`
+  (`server/web/pet.js`; personas `pet` and `pet_zh`, a work buddy that leaves a quiet alone) and a small floating
+  window for it (`pet/`, Electron: frameless, see-through, always on top, Cmd/Ctrl+Shift+J to sleep or wake). The dog
+  shows what the call is doing: ears up while it hears you, strutting while a task runs, waving when the coding agent
+  needs your OK, lying down asleep. It stays on: a dropped line is picked up again.
 - **The voice of a coding agent** (`docs/harness.md`). With `JEV_HARNESS=1` the call server is a hub for the coding
   agents open on this machine (`jev_interaction/harness.py`): the agent on the line hands work to one as a background
   task, says how far it has got when asked, tells you when it is done or needs your OK, and sleeps in between

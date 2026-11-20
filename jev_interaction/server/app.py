@@ -490,6 +490,12 @@ def index():
     return FileResponse(WEB / "index.html", headers=NO_STALE)
 
 
+@app.get("/pet")
+def pet():
+    """The pet: the same call as the page's, drawn as a pixel dog for a small floating window (docs/harness.md)."""
+    return FileResponse(WEB / "pet.html", headers=NO_STALE)
+
+
 @app.get("/{name:path}")
 def web_file(name: str):
     """Everything else the page asks for comes from web/ (scripts, styles, images), never from outside it."""

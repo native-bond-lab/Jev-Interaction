@@ -45,6 +45,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `GET /tts/{id}` | streamed audio for a `line` or `listen` id |
 | `GET /api/profiles` | persona cards: id, path, name, title(_zh), tagline(_zh), language, accent, `own` (the file is in your profiles/) |
 | `GET /api/personas/{id}`, `POST /api/personas`, `POST /api/personas/{id}/delete` | the persona editor: one persona's editable fields (name, card, `prompt`, `manner`, `turn_taking`, voice for the synthesizer in use); save to the working folder's profiles/ (no `id`: a new one); delete your copy. Writes only from this server's own page on this machine, as the settings |
+| `GET /pet` | the pet: the same call drawn as a pixel dog, for a small floating window ([harness.md](harness.md)); `?profile=` picks the persona, `?demo=<state>` draws one state with no call |
 | `GET /api/health` | `ready`, `missing` settings, providers, `vad`, `voiceprint` (`off` \| `loading` \| `ready` \| `failed`), `sound` (the same, and the rule) |
 | `GET /api/settings`, `POST /api/settings`, `POST /api/settings/test` | the settings page; writes only from this server's own page on this machine |
 
