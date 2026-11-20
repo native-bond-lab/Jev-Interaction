@@ -228,7 +228,9 @@ docker compose up             # http://localhost:8080
 
 Open <http://localhost:8080>. Setup goes one node at a time: the judge (Jev), a language model, speech recognition, a
 voice. Paste a key and the page recognises whose it is; pick the language model from the endpoint's own model list; test
-each step before moving on. Settings are saved to `.env` in the folder you started from. Then pick a persona and click
+each step before moving on. Settings are saved to `.env` in the folder you started from. Make a persona of your own or change one with **New
+persona** / **Edit** under the cards (on your own machine or your own Docker; a public deployment does not offer it):
+who it is for the language model, its habits on a call for Jev, its turn-taking and its voice, saved to `profiles/`. Then pick a persona and click
 the orb to call (click it again to hang up). The voice detector is TEN VAD, the one our product runs on; headphones still give the cleanest call.
 
 **Every node is your choice.** The language model is any OpenAI-compatible endpoint (xAI, OpenAI, DeepSeek, Qwen,

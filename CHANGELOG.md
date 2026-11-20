@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Make and change personas on the page.** On your own machine (or your own Docker), **New persona** and **Edit** under
+  the cards: the name and card, `prompt` (for the language model), `manner` (for Jev), turn-taking and the voice, saved
+  to `profiles/` in the working folder with every other key kept (`server/personas.py`, `/api/personas`). Writes are
+  accepted only from this server's own page on this machine, as the settings are, so a public deployment never offers it.
 - **A persona takes turns its own way** (`turn_taking` in its YAML, `Profile.turn_taking`): how readily its line stops
   (`yield_shift` on the pace's `yield_p`), whether it cuts in and takes the floor back (`cut_in`: always, never, or as
   the pace says) and how soon it picks a quiet up (`lead_scale`). Applied on top of the pace in `Session.params`, so a
