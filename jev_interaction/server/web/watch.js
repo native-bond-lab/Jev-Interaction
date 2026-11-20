@@ -15,7 +15,8 @@
     still: 0.02,        // ... and it has settled: frame to frame, less than this share moving
     settle_ms: 400,     // for this long
     moving_ms: 2500,    // or it has been changing this long without settling: taken anyway
-    cooldown_ms: 8000,  // never two pictures closer than this (a look costs a vision call; a call needs few)
+    cooldown_ms: 2000,  // never two pictures closer than this; after each look that found nothing new it doubles,
+    cooldown_max_ms: 8000,   // up to this, and a look that found something brings it back down (seen())
     first_ms: 1200,     // the first look, after the camera warms up
     width: 640, quality: 0.7,
   };
@@ -49,7 +50,9 @@
     const small = document.createElement('canvas'); small.width = W; small.height = H;
     const sctx = small.getContext('2d', { willReadFrequently: true });
     const big = document.createElement('canvas');
-    let ref = null, prev = null, changingSince = 0, stillSince = 0, lastAt = 0;
+    let ref = null, prev = null, changingSince = 0, stillSince = 0, lastAt = 0, cooldown = RULES.cooldown_ms;
+    // the server's verdict on each look: something new keeps the eyes quick, nothing new slows them down
+    api.seen = (isNew) => { cooldown = isNew ? RULES.cooldown_ms : Math.min(cooldown * 2, RULES.cooldown_max_ms); };
     const began = performance.now();
     function take(g, change, first, movingMs) {
       const w = Math.min(RULES.width, video.videoWidth), h = Math.round(w * video.videoHeight / video.videoWidth);
@@ -68,13 +71,13 @@
       if (change < RULES.change) { changingSince = stillSince = 0; return; }
       if (!changingSince) changingSince = now;
       stillSince = motion < RULES.still ? (stillSince || now) : 0;
-      if (now - lastAt < RULES.cooldown_ms) return;
+      if (now - lastAt < cooldown) return;
       if (stillSince && now - stillSince >= RULES.settle_ms) take(g, change, false, 0);
       else if (now - changingSince >= RULES.moving_ms) take(g, change, false, now - changingSince);   // still moving: one still from it
     }, STEP_MS);
     return () => clearInterval(timer);
   }
 
-  const api = { start, RULES, last: null };
+  const api = { start, RULES, last: null, seen: () => {} };
   window.JevWatch = api;
 })();

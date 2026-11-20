@@ -209,7 +209,8 @@
         yieldedUntil = performance.now() + 900; thinkingUntil = 0;
         break;
       }
-      case 'look': if (!m.new) note({ tone: 'info', kind: 'seen', label: m.error ? '👁 ×' : '👁 —', detail: m.error || `${m.seconds}s` }); break;
+      case 'look': if (!m.first && window.JevWatch) window.JevWatch.seen(m.new);
+        if (!m.new) note({ tone: 'info', kind: 'seen', label: m.error ? '👁 ×' : '👁 —', detail: m.error || `${m.seconds}s` }); break;
       case 'seen': note({ tone: 'info', kind: 'seen', label: `👁 ${m.text}`, value: m.change }); break;
       case 'persona': incoming = m; note({ tone: 'pace', kind: 'pace', label: `→ ${m.name}` }); break;
       case 'finish_line': queue.forEach((l) => l.el.pause()); queue = []; break;
