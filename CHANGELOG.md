@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Background tasks: the agent hands work off and keeps talking** (`jev_interaction/tasks.py`, `docs/tasks.md`).
+  `Session(executors={"agent": ..., "memory": ...})` gives the call kinds of work that take longer than a breath: a
+  memory service, a model that thinks longer, a search, a coding agent in another window. The responder starts one with
+  a line of its own (`/task <kind>: <what to do>`, also `/tell <n>: ...` and `/stop <n>`) that is acted on and never
+  spoken. What happens to a task is an entry on the call's one record where it happened (started, come back, failed,
+  waiting on the user), read by the responder and by Jev alike; the bracketed line of every reply lists the tasks still
+  running and the ones with news not told yet, so the agent has the state in front of it each time it speaks. News is
+  told in a quiet (`Config.task_report_after_s`) or rides with the reply to what the user is saying. An executor is
+  anything with `run(task, tell) -> str`; `tell.progress(...)` reports how far it has got and `tell.ask(...)` puts a
+  question to the user through the agent. New events `task`. A call without executors reads every prompt as before.
+  Tested on stand-ins only so far: no recorded call with a real model yet, and whether to tell the news now is a clock,
+  not a question to Jev.
+- **Sleep.** With a task unfinished and nobody making a sound for `Config.sleep_after_s` (20 s) the session sleeps:
+  no question goes to Jev and no audio to the recognizer. It wakes on the user's voice (`wake_voice_ms` in a row; the
+  last `sleep_preroll_ms` of audio is then heard, so the words that woke it are not lost), on a task's news, or when the
+  client says so (`{"type": "wake"}`, `{"type": "sleep"}`); a sound with no words after it puts it back to sleep with
+  nothing asked. A call with a task unfinished is not hung up. New events `sleep`, `wake`. The numbers are starting
+  values, not tuned; the voiceprint is not consulted on waking yet.
 - **Bailian reads the pace and cutting in better.** With `JEV_PROVIDER=bailian` each pace is asked as a choice between it
   and the plain pace (`judge/bailian.py`, `pace_facts`; what a pace says it is not goes with the plain option), and
   cutting in has a line of its own, 0.2 (`Config.sparring_min`): this judge ranks sparring right with lower numbers.

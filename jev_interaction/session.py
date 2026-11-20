@@ -11,8 +11,14 @@ question is in judge/questions.py and whose answer goes through the policy confi
     the agent leads        cut_in   -> talk over the user now?
     quiet on the line      quiet    -> go on / check on them / wait / hang up
 
+Work that takes longer than a breath runs in the background as a task (tasks.py) while the call carries on: the
+responder starts it with a line of its own, what happens to it goes on the record, and its news is told in a quiet.
+While a task is unfinished and nobody makes a sound the session sleeps: nothing is asked of Jev and nothing goes to the
+recognizer until the user's voice, the task, or the client wakes it (`sleep`, `wake`).
+
 Events to the client: line {id, text, audio}, listen {id, text, audio}, stop, finish_line, hangup,
-user {text}, pace {pace, probs}, persona {id, name, gen}, decision {...}. Client messages: playback {state: playing | idle}, heard {gen, text}.
+user {text}, pace {pace, probs}, persona {id, name, gen}, decision {...}, task {id, kind, about, status, ...},
+sleep {why}, wake {why}. Client messages: playback {state: playing | idle}, heard {gen, text}, sleep, wake.
 """
 from __future__ import annotations
 
@@ -25,6 +31,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 
 from . import speaking
+from . import tasks as T
 from .adapters.base import VAD, Recognizer, Responder, Segment
 from .config import Config, Pace
 from .decisions import DECISIONS, Decision
@@ -44,7 +51,7 @@ class Session:
     def __init__(self, profile: Profile, *, send: Callable[[dict], Awaitable[None]], judge: JevClient, recognizer: Recognizer,
                  responder: Responder, vad: VAD, config: Config | None = None, recorder: Recorder | None = None,
                  system_template: str = SYSTEM_TEMPLATE, speech: str | None = None, cast: dict[str, Profile] | None = None,
-                 embedder=None, sound=None):
+                 embedder=None, sound=None, executors: dict[str, T.Executor] | None = None):
         self.p, self.cfg, self.send_event = profile, config or Config(), send
         self.judge, self.asr, self.llm, self.vad = judge, recognizer, responder, vad
         self.ledger = Ledger()                   # the call's one record, on one clock (ledger.py)
@@ -52,7 +59,9 @@ class Session:
         if speech is None:                       # how to write for the voice in use: the synthesizer's speaking style
             from .adapters import registry
             speech = registry.speech_prompt()
-        self._system = lambda p: system_template.format(name=p.name, profile=p.prompt or p.task, speech=speech)
+        self.executors = dict(executors or {})   # kind -> who does that kind of background task (tasks.py)
+        work = "\n\n" + T.prompt(self.executors) if self.executors else ""     # a call with no tasks reads the prompt as before
+        self._system = lambda p: system_template.format(name=p.name, profile=p.prompt or p.task, speech=speech) + work
         self.system = self._system(profile)
         self.policies = {**Config().policies, **self.cfg.policies, **profile.policies}   # a task type may bring its own;
         # a Config(policies=...) written before a decision existed keeps that decision's default
@@ -81,6 +90,12 @@ class Session:
         self.heard_sound: tuple[int, int, float] | None = None   # (utterance id, ms of quiet it was scored at, p(finished))
         self._sound_busy = False
         self.hanging_up = False
+        self.tasks: list[T.Task] = []            # every background task of the call, in the order they were started
+        self._work: dict[int, tuple[asyncio.Task, T.Tell]] = {}   # the ones still going: what runs them, their line back
+        self.asleep = False                      # a task is unfinished and the line has gone quiet: see `sleep`
+        self.preroll = bytearray()               # asleep: the last of the audio, heard on waking
+        self.wake_ms = 0                         # asleep: voice in a row so far
+        self.woke = ""                           # what last woke it ("voice", "task", "client", "speak"); "" once words came
         self.busy: set[str] = set()              # decisions with a question out to Jev right now
         self._tasks: set[asyncio.Task] = set()
         self.closed = False
@@ -121,7 +136,7 @@ class Session:
             exc = t.exception()
             self.rec.write("task_error", error=f"{type(exc).__name__}: {str(exc)[:200]}")
 
-    NOTED = ("decision", "pace", "persona", "stop", "finish_line", "hangup", "listen")   # what the engine did, as it is
+    NOTED = ("decision", "pace", "persona", "stop", "finish_line", "hangup", "listen", "task", "sleep", "wake")   # what the engine did, as it is
                                                                                         # told to the client: kept in the record
     async def send(self, **event):
         self.rec.write("send", **event)
@@ -130,18 +145,23 @@ class Session:
         await self.send_event(event)
 
     # ------------------------------------------------------------------ inputs
+    def _voice(self, pcm: bytes) -> tuple[bool, int]:
+        """Is there voice in this frame, and how many ms of it."""
+        if hasattr(self.vad, "voiced_ms"):       # how much of the frame is voice, the bar raised while the agent's line plays
+            heard = self.vad.voiced_ms(pcm, self.speaking)
+            return heard >= self.cfg.voice_min_ms, heard
+        return self.vad.is_voice(pcm), self.cfg.frame_ms
+
     async def on_audio(self, pcm: bytes):
+        if self.asleep:
+            await self._doze(pcm)
+            return
         await self.asr.send(pcm)
         step = self.cfg.frame_ms
         if self.sound is not None:
             self.audio_tail += pcm
             del self.audio_tail[:-self.SOUND_WINDOW]
-        if hasattr(self.vad, "voiced_ms"):       # how much of the frame is voice, the bar raised while the agent's line plays
-            heard = self.vad.voiced_ms(pcm, self.speaking)
-            voiced = heard >= self.cfg.voice_min_ms
-        else:
-            voiced = self.vad.is_voice(pcm)
-            heard = step
+        voiced, heard = self._voice(pcm)
         if voiced:
             if self.utt is None:
                 self._open_utterance()
@@ -161,6 +181,8 @@ class Session:
             self._hear_pause()
             if not self.utt.heard and self.silence_ms >= self.cfg.sound_close_ms:
                 self.utt = None                   # a sound and nothing after it: nobody's turn
+                if self.woke == "voice" and not any(t.news for t in self.tasks):   # ... and it was what woke the
+                    await self.sleep("no words")                                   # session: back to sleep, nothing asked
 
     async def on_client(self, msg: dict):
         if msg.get("type") == "playback":
@@ -172,6 +194,10 @@ class Session:
                 self._reset_quiet()
                 if self.hanging_up:
                     await self.send(type="hangup")
+        elif msg.get("type") == "sleep":          # the client puts it to sleep (a key, a click on the pet) ...
+            await self.sleep("client")
+        elif msg.get("type") == "wake":           # ... or wakes it
+            await self.wake("client")
         elif msg.get("type") == "heard":
             heard = (msg.get("text") or "").strip()
             turn = self.replies.get(msg.get("gen"))
@@ -215,6 +241,7 @@ class Session:
         if self.utt is None:
             self._open_utterance()
             self.utt.speech_ms = max(self.utt.speech_ms, 400)
+        self.woke = ""                            # words: whatever woke the session, it is a turn now
         self.utt.hearing = ""
         self.utt.segments.append((time.monotonic(), text))
         await self.send(type="user", text=self.utt.text, partial=True)
@@ -456,6 +483,8 @@ class Session:
 
     async def tick(self):
         now = time.monotonic()
+        if await self._tasks_tick(now):           # a task's news is being told, or the session is asleep
+            return
         for d in list(self.decisions.values()):
             if await d.on_tick(self, now):        # it answered or dropped the words: the rest look again next tick
                 break
@@ -463,6 +492,157 @@ class Session:
     def _reset_quiet(self):
         j = self.cfg.quiet_jitter
         self.quiet_marks = [m * random.uniform(1 - j, 1 + j) for m in self.cfg.quiet_marks_s]
+
+    # ------------------------------------------------------------------ background tasks (tasks.py)
+    def open_tasks(self) -> list[T.Task]:
+        """The tasks not finished yet: running, or waiting on the user."""
+        return [t for t in self.tasks if t.open]
+
+    def tasks_line(self) -> str:
+        return T.line(self.tasks, self.ledger.clock())
+
+    async def _task_event(self, task: T.Task, entry: bool = True) -> None:
+        """Something happened to a task: on the record where it happened, in the log, and told to the client."""
+        if entry:
+            self.ledger.event(T.entry(task, self.cfg.task_result_chars))
+        self.rec.write("task", **task.public(), result=task.result)
+        await self.send(type="task", **task.public())
+
+    async def start_task(self, kind: str, about: str) -> T.Task | None:
+        """Set a task going with the executor of that kind; the call carries on. None when there is no such kind (the
+        record says so, and the responder reads it)."""
+        executor = self.executors.get(kind)
+        if executor is None or not about:
+            kinds = ", ".join(self.executors) or "none"
+            self.ledger.event(f"(no task was started: {kind or '?'} is not a kind of task on this call; the kinds: {kinds})"
+                              if executor is None else "(no task was started: the /task line did not say what to do)")
+            return None
+        task = T.Task(len(self.tasks) + 1, kind, about, started=self.ledger.clock())
+        self.tasks.append(task)
+        tell = T.Tell(self, task)
+        self._work[task.id] = (self._spawn(self._run_task(task, executor, tell)), tell)
+        await self._task_event(task)
+        return task
+
+    async def _run_task(self, task: T.Task, executor: T.Executor, tell: T.Tell) -> None:
+        try:
+            result = (await executor.run(task, tell) or "").strip()
+            status = T.DONE if result else T.EMPTY
+        except asyncio.CancelledError:
+            raise                                 # stopped (stop_task), or the call ended
+        except Exception as exc:  # noqa: BLE001 - whatever it was, the call is told the task failed
+            result, status = f"{type(exc).__name__}: {str(exc)[:200]}", T.FAILED
+        finally:
+            self._work.pop(task.id, None)
+        task.status, task.result, task.ended, task.question, task.news = status, result, self.ledger.clock(), "", True
+        await self._task_event(task)
+        await self.wake("task")
+
+    async def _task_progress(self, task: T.Task, text: str) -> None:
+        task.progress = " ".join((text or "").split())
+        await self._task_event(task, entry=False)     # shown with the agent's next line; not an entry, nothing is said
+
+    async def _task_asks(self, task: T.Task, question: str) -> None:
+        task.status, task.question, task.news = T.WAITING, " ".join((question or "").split()), True
+        await self._task_event(task)
+        await self.wake("task")
+
+    async def tell_task(self, task_id: int, text: str) -> bool:
+        """Words for a task that is going: the user's answer to what it asked, or more for it to work with (an executor
+        that can take that has `steer`). False when it could not be passed on; the record says why."""
+        task = next((t for t in self.tasks if t.id == task_id and t.open), None)
+        work = self._work.get(task_id)
+        if task is None or work is None:
+            self.ledger.event(f"(nothing was passed on: no background task {task_id} is going)")
+            return False
+        if task.status == T.WAITING and work[1].answer(text):
+            task.status, task.question, task.news = T.RUNNING, "", False
+            await self._task_event(task, entry=False)
+            return True
+        steer = getattr(self.executors.get(task.kind), "steer", None)
+        if steer is None:
+            self.ledger.event(f"(nothing was passed on: background task {task_id} takes no more words while it runs)")
+            return False
+        await steer(task, text)
+        return True
+
+    async def stop_task(self, task_id: int) -> bool:
+        task = next((t for t in self.tasks if t.id == task_id and t.open), None)
+        work = self._work.pop(task_id, None)
+        if task is None or work is None:
+            self.ledger.event(f"(nothing was stopped: no background task {task_id} is going)")
+            return False
+        work[0].cancel()
+        task.status, task.ended, task.question, task.news = T.STOPPED, self.ledger.clock(), "", False
+        await self._task_event(task)
+        return True
+
+    async def _act(self, text: str) -> None:
+        """A line the responder wrote to start, steer or stop a task (tasks.action)."""
+        verb, head, tail = T.action(text)
+        self.rec.write("act", text=text)
+        if verb == "task":
+            await self.start_task(head, tail)
+        elif not head.isdigit():
+            self.ledger.event(f"(nothing was done: /{verb} needs the task's number)")
+        elif verb == "tell":
+            await self.tell_task(int(head), tail)
+        else:
+            await self.stop_task(int(head))
+
+    async def _tasks_tick(self, now: float) -> bool:
+        """Each tick, before any question is put to Jev. A task with news and nobody making a sound: the agent tells
+        it. Asleep: nothing is asked. A task unfinished and the line quiet for Config.sleep_after_s: it goes to sleep."""
+        if self.utt is not None or self.speaking or self.generating:
+            return False                          # someone has the floor: the news rides with the next line, or waits
+        quiet_s = now - self.idle_since
+        if any(t.news for t in self.tasks) and (self.woke == "task" or quiet_s >= self.cfg.task_report_after_s):
+            self.woke = ""
+            self.generating = True                # taken now, so no question is asked about this quiet meanwhile
+            self._spawn(self.respond("task_back"))
+            return True
+        if self.asleep:
+            return True
+        if self.cfg.sleep_after_s is not None and quiet_s >= self.cfg.sleep_after_s and self.open_tasks():
+            await self.sleep("task")
+            return True
+        return False
+
+    # ------------------------------------------------------------------ sleep
+    async def sleep(self, why: str = "task") -> bool:
+        """Nothing to do but wait: no question goes to Jev and no audio to the recognizer until the user's voice
+        (Config.wake_voice_ms of it), a task's news, or the client wakes the session. Not while anyone has the floor."""
+        if self.asleep or self.closed or self.utt is not None or self.speaking or self.generating:
+            return False
+        self.asleep, self.wake_ms, self.woke = True, 0, ""
+        self.preroll.clear()
+        await self.send(type="sleep", why=why)
+        return True
+
+    async def wake(self, why: str) -> bool:
+        if not self.asleep:
+            return False
+        self.asleep, self.woke = False, why
+        if why != "task":                         # the quiet starts over from here; a task's news is told at once
+            self.idle_since = time.monotonic()
+        self._reset_quiet()
+        await self.send(type="wake", why=why)
+        return True
+
+    async def _doze(self, pcm: bytes) -> None:
+        """A frame while asleep: kept for a moment, and listened to only for a voice. Enough of it in a row wakes the
+        session, which then hears the kept audio as if it had been awake, so the first words are not lost."""
+        self.preroll += pcm
+        del self.preroll[:-(self.cfg.sample_rate * 2 * self.cfg.sleep_preroll_ms // 1000)]
+        voiced, heard = self._voice(pcm)
+        self.wake_ms = self.wake_ms + heard if voiced else 0
+        if self.wake_ms < self.cfg.wake_voice_ms:
+            return
+        held, frame = bytes(self.preroll), self.cfg.sample_rate * 2 * self.cfg.frame_ms // 1000
+        self.preroll.clear()
+        await self.wake("voice")
+        for i in range(0, len(held), frame):
+            await self.on_audio(held[i:i + frame])
 
     # ------------------------------------------------------------------ speaking
     def data_line(self, kind: str, quiet_s: float = 0.0, listen: str = "", who: str = "") -> str:
@@ -472,7 +652,7 @@ class Session:
             self.transition = None
         last = self.ledger.last_agent()
         event = speaking.event_text(kind, last=last.text if last else "", quiet_s=quiet_s, listen=listen, who=who)
-        return speaking.data_line(pace, event, self.cfg.language)
+        return speaking.data_line(pace, event, self.cfg.language, self.tasks_line())
 
     @property
     def rec(self) -> Recorder:
@@ -517,6 +697,9 @@ class Session:
         self.gen += 1
         gen = self.gen
         self.generating = True
+        if self.asleep:
+            await self.wake("speak")              # it never talks in its sleep
+        news = [t for t in self.tasks if t.news]  # the tasks whose news this line is shown as not told yet
         line = self.data_line(kind, quiet_s, who=who)
         event = speaking.EVENTS.get(kind, speaking.UNKNOWN)
         if self.utt is not None and event.answers_user:
@@ -543,6 +726,10 @@ class Session:
                     async for text in self.llm.lines(messages, max_tokens=event.max_tokens):
                         if gen != self.gen:
                             break
+                        if T.action(text):                # a line that starts or steers a task: done, kept, not said
+                            turn.acts.append(text)
+                            await self._act(text)
+                            continue
                         if not speaking.has_voice(text):  # a tag with no word or sound beside it cannot be voiced: not said
                             self.rec.write("unvoiced", gen=gen, text=text)
                             continue
@@ -555,12 +742,15 @@ class Session:
                     raise
                 except Exception as exc:  # noqa: BLE001 - the provider refused, timed out or dropped the stream
                     error = f"{type(exc).__name__}: {str(exc)[:160]}"
-                if turn.text or gen != self.gen:
+                if turn.text or turn.acts or gen != self.gen:
                     break
                 self.rec.write("no_reply", gen=gen, kind=kind, attempt=attempt, error=error)
                 if attempt == 2:                      # twice nothing: the page is told, the quiet question takes it from here
                     await self.send(type="error", what="responder", text=error or "the model wrote nothing")
         finally:
+            if turn.text:                             # a line went out with their news in front of it: told (a line
+                for t in news:                        # cut off keeps what was not heard, as any line does)
+                    t.news = False
             if gen == self.gen:
                 self.generating = False
                 if not turn.text:
@@ -586,7 +776,7 @@ class Session:
         async for said in self.llm.lines(messages, max_tokens=14):
             text = said
             break
-        if (not speaking.has_voice(text) or speaking.units(text) > self.cfg.listen_max_words or self.speaking
+        if (T.action(text) or not speaking.has_voice(text) or speaking.units(text) > self.cfg.listen_max_words or self.speaking
                 or self.generating or self.utt is not utt):
             return
         line_id = uuid.uuid4().hex

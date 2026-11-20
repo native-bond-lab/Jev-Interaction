@@ -49,10 +49,12 @@ def now(m: Now) -> str:
     return quiet(m.name, m.agent_line, m.quiet_s, m.spoke_into_quiet, m.usual_reply_s)
 
 
-def header(profile: Profile, pace: str, ledger: Ledger, turns: int, chars: int) -> str:
+def header(profile: Profile, pace: str, ledger: Ledger, turns: int, chars: int, tasks: str = "") -> str:
+    """`tasks`: what the agent has going in the background right now (tasks.line); a line of its own when there is any."""
     recent = ledger.recent_text(profile.short, turns, chars) or "(the call just started)"
+    work = f"Work {profile.short} has going in the background: {tasks}.\n" if tasks else ""
     return (f"Phone call between the user and {profile.short}.\n{profile.judge_header()}\n"
-            f"Current pace of the call: {pace}.\nRecent call:\n{recent}\n")
+            f"Current pace of the call: {pace}.\n{work}Recent call:\n{recent}\n")
 
 
 def user_turn(name: str, segments: list[tuple[float, str]], now: float, silence_ms: int, agent_speaking: bool,

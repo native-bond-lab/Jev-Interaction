@@ -85,6 +85,15 @@ class Config:
     quiet_jitter: float = 0.3
     check_min_quiet_s: float = 10.0    # "are you there?" only after this much quiet
     hangup_min_quiet_s: float = 25.0   # a hang-up only after this much quiet, and never as the first thing said into it
+    sleep_after_s: float | None = 20.0   # a background task is unfinished and nobody has made a sound for this long: the
+                                       # session sleeps (Session.sleep). Nothing is asked of Jev and no audio goes to the
+                                       # recognizer until the user's voice or the task wakes it. None: it never sleeps
+    wake_voice_ms: int = 400           # asleep, this much voice in a row wakes it
+    sleep_preroll_ms: int = 1200       # asleep, the last of the audio is kept this far back and heard on waking, so the
+                                       # words that woke it are not lost
+    task_report_after_s: float = 1.0   # a task's news is said into a quiet once it has lasted this long (the user may be
+                                       # about to answer the line just said)
+    task_result_chars: int = 1200      # what came back from a task is kept on the record up to this length
     judge_timeout_s: float = 3.0       # a judge answer slower than this is dropped and the decision takes its fallback
     judge_turns: int = 8               # recent turns in every Jev state
     judge_turn_chars: int = 300

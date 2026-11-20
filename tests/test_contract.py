@@ -12,24 +12,25 @@ from jev_interaction.adapters import base
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 EXPORTS = {"Session", "Profile", "Config", "Pace", "preset", "PRESETS", "JevClient", "Recorder", "Decision", "DECISIONS",
-           "register", "Policy", "SamplePolicy", "ThresholdPolicy", "ArgmaxPolicy"}
+           "register", "Policy", "SamplePolicy", "ThresholdPolicy", "ArgmaxPolicy", "Task", "Executor", "FunctionExecutor"}
 SESSION_ARGS = ["profile", "send", "judge", "recognizer", "responder", "vad", "config", "recorder", "system_template",
-                "speech", "cast", "embedder", "sound"]
+                "speech", "cast", "embedder", "sound", "executors"]
 CONFIG_FIELDS = {"language", "frame_ms", "sample_rate", "paces", "start_pace", "opening_turns", "policies", "voice_min_ms",
                  "overlap_ask_ms", "pause_mark_ms", "sound_close_ms", "listen_gap_s", "listen_gap_jitter", "listen_min_gap_s", "listen_due_min", "turn_reask_ms",
                  "turn_last_ms", "listen_finished_max", "quiet_marks_s", "quiet_jitter", "check_min_quiet_s",
                  "hangup_min_quiet_s", "judge_timeout_s", "judge_turns", "judge_turn_chars", "safe_words",
                  "listen_max_words", "voice_same", "voice_other", "voice_verdict_ms", "voice_enroll_ms", "not_for_me",
                  "far_db", "hold_after_ms", "hold_release_ms", "turn_question", "judge_provider", "finished_min", "sparring_min",
-                 "sound_rule", "sound_min", "words_min", "sound_wait_ms"}
+                 "sound_rule", "sound_min", "words_min", "sound_wait_ms", "sleep_after_s", "wake_voice_ms", "sleep_preroll_ms",
+                 "task_report_after_s", "task_result_chars"}
 PACE_FIELDS = {"name", "description", "max_wait_ms", "yield_p", "leads", "cut_in", "lead_after_s"}
 PROTOCOLS = {"VAD": {"is_voice"}, "Recognizer": {"connect", "send", "segments", "close"}, "Responder": {"lines"},
              "Synthesizer": {"audio"}, "Embedder": {"ready", "warm", "embed"},
              "SoundModel": {"ready", "warm", "score"}}
 POLICIES = {"end_of_turn", "listen", "floor", "cut_in", "quiet", "who"}
-CLIENT_MESSAGES = {"start", "playback", "heard"}
+CLIENT_MESSAGES = {"start", "playback", "heard", "sleep", "wake"}
 SERVER_EVENTS = {"line", "listen", "user", "stop", "finish_line", "decision", "persona", "pace", "error", "queue", "ready",
-                 "busy", "hangup", "voiceprint"}
+                 "busy", "hangup", "voiceprint", "task", "sleep", "wake"}
 
 
 def test_python_surface():

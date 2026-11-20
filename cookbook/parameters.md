@@ -105,6 +105,21 @@ The move is the agent's own (its last line asked nothing): it goes on after the 
 user's: it lets the quiet be, and checks on them after `check_min_quiet_s`. The call has ended: it hangs up once that
 is open. The `quiet` policy is a threshold by default; `sample` draws among the same actions if you want that back.
 
+### Background tasks and sleep
+
+Used when the session has executors (`Session(executors=...)`, `jev_interaction/tasks.py`). These are starting values:
+none of them has been tuned on recorded calls yet.
+
+| field | default | what it does |
+|---|---|---|
+| `task_report_after_s` | 1.0 | a task's news is said into a quiet once it has lasted this long; while anyone is talking it rides with the next line instead |
+| `task_result_chars` | 1200 | what came back from a task is kept on the record up to this length; an executor should hand back what is worth saying, not a file |
+| `sleep_after_s` | 20 | a task is unfinished and nobody has made a sound for this long: the session sleeps. Nothing is asked of Jev and no audio goes to the recognizer until the user's voice, the task's news or the client wakes it. `None`: never |
+| `wake_voice_ms` | 400 | asleep, this much voice in a row wakes it. A sound with no words after it puts it back to sleep, with nothing asked |
+| `sleep_preroll_ms` | 1200 | asleep, the last of the audio is kept this far back and heard on waking, so the words that woke it are not lost |
+
+While a task is unfinished the call is not hung up.
+
 ### The judge
 
 | field | recommended | what it does |

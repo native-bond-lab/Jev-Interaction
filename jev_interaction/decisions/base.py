@@ -50,7 +50,7 @@ class Decision:
         questions, never its own account of the call. A subclass only reshapes it for a judge that wants the state as
         an object (judge/bailian.py), from the same `ctx["now"]`."""
         m = ctx["now"] = s.now(quiet_s=ctx.get("quiet_s"))
-        return S.header(s.p, s.pace, s.ledger, s.cfg.judge_turns, s.cfg.judge_turn_chars) + S.now(m)
+        return S.header(s.p, s.pace, s.ledger, s.cfg.judge_turns, s.cfg.judge_turn_chars, s.tasks_line()) + S.now(m)
 
     def allowed(self, s: Session, ctx: dict) -> Iterable[str] | None:
         """The choices that apply right now; None for all of them."""

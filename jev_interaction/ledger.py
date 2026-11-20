@@ -21,6 +21,11 @@ it now: what another said before is shown to it as part of what it hears, "(Lyra
 A line of the agent's that was cut off ends in "—" (the user heard only that much), and a note after it, in the user's
 message, says what it was going to say and they never heard (`Turn.unheard`); words the user said over the agent
 go in at once as their own entry, "(over you: …)": the line went on, but both readers know what was said.
+
+Work the agent set going in the background is on the record too (tasks.py): each thing that happens to a task (started,
+come back, failed, waiting on the user) is an entry of its own where it happened (`event`, role "task"), in parentheses,
+heard by the responder and read by Jev like any other line. The lines the agent wrote to start or steer one are kept
+with its turn (`Turn.acts`): its own, and never spoken.
 """
 from __future__ import annotations
 
@@ -32,7 +37,7 @@ from .utterance import Utterance
 
 @dataclass
 class Turn:
-    role: str            # "user" | "agent"
+    role: str            # "user" | "agent" | "task" (something that happened to a background task: tasks.py)
     text: str
     data_line: str = ""  # the bracketed line the responder was given with this user turn
     cut: bool = False
@@ -48,6 +53,8 @@ class Turn:
     end: float | None = None     # ... and when it ended: the user's last sound, the last of the agent's line played or its
                                  # being cut off. None: still going, or nobody timed it
     pauses: list[tuple[int, float]] = field(default_factory=list)   # the user's pauses inside it (Utterance.pauses)
+    acts: list[str] = field(default_factory=list)   # the agent's action lines written with this turn ("/task ..."): its
+                                                    # own words to the responder, never said aloud
 
 
 @dataclass
@@ -120,6 +127,12 @@ class Ledger:
         self.turns.append(t)
         return t
 
+    def event(self, text: str) -> Turn:
+        """Something that happened on the call that nobody said: a background task started, came back, asked."""
+        t = Turn("task", text, at=self.clock())
+        self.turns.append(t)
+        return t
+
     def agent_ended(self, but: Turn | None = None) -> None:
         """Nothing of the agent's is playing any more: every line of its that had not ended has, now (`but`: the one
         still being written)."""
@@ -134,14 +147,15 @@ class Ledger:
         return next((t for t in reversed(self.turns) if t.role == "agent"), None)
 
     def last_is_agent(self) -> bool:
-        last = next((t for t in reversed(self.turns) if not t.over), None)     # words over a line are not a turn
+        last = next((t for t in reversed(self.turns) if not t.over and t.role != "task"), None)   # words over a line
+        # are not a turn, and neither is what happened to a task
         return last is not None and last.role == "agent"
 
     def reply_gaps(self, n: int = 20) -> list[float]:
         """How long the user took to start answering each line of the agent's, read off the record: from the end of the
         line to their first sound (the turn in progress counts). Words begun over a line are not an answer to it."""
         gaps, ended = [], None
-        heard = [(t.role, t.over, bool(t.text), t.at, t.end) for t in self.turns]
+        heard = [(t.role, t.over, bool(t.text), t.at, t.end) for t in self.turns if t.role != "task"]
         if self.open is not None:
             heard.append(("user", self.open.over, True, self.clock(self.open.started), None))
         for role, over, said, at, end in heard:
@@ -175,10 +189,12 @@ class Ledger:
 
         for t in self.turns[-max_turns:]:
             mine = not me or t.who in ("", me)
-            if t.role == "agent":
+            if t.role == "task":
+                heard(t.text)                               # what happened to a task: known to whoever is on the line
+            elif t.role == "agent":
                 said = t.text + ("—" if t.cut else "")
                 if mine:
-                    out.append({"role": "assistant", "content": said})
+                    out.append({"role": "assistant", "content": "\n".join([said, *t.acts]).strip()})
                     if t.cut and t.unheard:                 # what it was going to say: never said, so not its own words
                         heard(f'(you were cut off there; they did not hear: "{t.unheard}")')
                 elif said:
@@ -198,7 +214,9 @@ class Ledger:
         rows = []
         for t in self.turns[-n:]:
             text = (t.text + ("—" if t.cut else "")).strip()
-            if text:
+            if text and t.role == "task":
+                rows.append(text[:width])
+            elif text:
                 on = t.who or name
                 who = on if t.role == "agent" else f"User (over {on}, who went on)" if t.over else "User"
                 rows.append(f"{who}: {text[:width]}")

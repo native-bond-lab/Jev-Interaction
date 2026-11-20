@@ -67,6 +67,7 @@ EVENTS: dict[str, Event] = {
     "take_over": Event("you have just been put on this call: the user was talking with {who} and asked for you, so {who} "
                        "is off the line and the user is the one you are talking to now; the call so far is above. Come "
                        "on the line in your own way, a line or two"),
+    "task_back": Event("a background task of yours has news, in parentheses above; tell them now"),
     "safe_word": Event("the safe word: everything stops; step out in one or two calm lines and ask if they are all right"),
 }
 UNKNOWN = Event("")             # a kind nobody registered: its name is the event text, and it is an ordinary line
@@ -85,5 +86,7 @@ def event_text(kind: str, *, last: str = "", quiet_s: float = 0.0, listen: str =
     return EVENTS[kind].text.format(last=last, quiet_s=quiet_s, who=who)
 
 
-def data_line(pace: str, event: str, language: str) -> str:
-    return f"[pace: {pace} · event: {event} · speak: {LANGUAGES.get(language, language)}]"
+def data_line(pace: str, event: str, language: str, tasks: str = "") -> str:
+    """`tasks`: the background tasks still going and the ones with news not told yet (tasks.line); left out when none."""
+    work = f" · tasks: {tasks}" if tasks else ""
+    return f"[pace: {pace} · event: {event}{work} · speak: {LANGUAGES.get(language, language)}]"
