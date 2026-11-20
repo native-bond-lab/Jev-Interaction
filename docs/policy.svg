@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1010" width="1240" height="1010" role="img" aria-label="The Jev-Interaction call policy, top to bottom. The ears (voice activity, the recognizer, a sound model, a voiceprint) give signals only; Jev never hears audio. Everything goes on one append-only timeline that both Jev and the language model read. A tree: is the agent making sound, is the user making sound, gives four moments. The user has the turn: Jev is asked whether they have finished, which pace, whether something they asked for is due, sparring or telling; one action: take the turn when words and sound agree, cut in, slip in a sound, stay silent. Quiet: whose move, did they say one moment, goodbyes, called out with no answer; one action: let it be, pick the thread up, check on them, hang up. Both talking: what their words over the line are; one action: carry on, stop and listen, finish the sentence, take the floor back, react at once. The agent talking: nothing to decide. The language model writes the words. Two parties, four moments; one timeline; one action per moment, no case left out.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1120"/><stop offset="1" stop-color="#111a2d"/></linearGradient>
+    <marker id="ma" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+    <marker id="mt" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#fbbf24"/></marker>
+    <marker id="mv" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/></marker>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif; fill: #e5e7eb; }
+    .title { font-size: 26px; font-weight: 750; letter-spacing: -0.01em; }
+    .sub { font-size: 14.5px; fill: #94a3b8; }
+    .stage { font-size: 11.5px; font-weight: 700; letter-spacing: 0.16em; }
+    .n { font-size: 14px; font-weight: 650; }
+    .d { font-size: 12.5px; fill: #8796ad; font-weight: 500; }
+    .q { font-size: 15px; font-weight: 650; }
+    .yn { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; fill: #8796ad; }
+    .h { font-size: 16.5px; font-weight: 720; }
+    .k { font-size: 10.5px; font-weight: 750; letter-spacing: 0.16em; }
+    .li { font-size: 13px; fill: #cbd5e1; }
+    .act { font-size: 13px; font-weight: 600; fill: #fde68a; }
+    .w { font-size: 14.5px; font-weight: 620; fill: #ddd6fe; }
+    .pt { font-size: 14px; font-weight: 680; fill: #e2e8f0; }
+    .panel { fill: #fbbf24; fill-opacity: 0.035; stroke: #3a3420; stroke-width: 1.2; }
+    .ear { fill: #0e1a2e; stroke: #24395a; stroke-width: 1.1; }
+    .node { fill: #13203a; stroke: #3b5b8a; stroke-width: 1.4; }
+    .leaf { fill: #0f172a; stroke: #26344f; stroke-width: 1.2; }
+    .idle { fill: #0c1322; stroke: #1f2a42; stroke-width: 1.2; stroke-dasharray: 5 5; }
+    .edge { stroke: #3b4a66; stroke-width: 1.6; fill: none; }
+    .tl { stroke: #fbbf24; stroke-opacity: 0.55; stroke-width: 1.6; fill: none; stroke-dasharray: 4 5; }
+    .lm { stroke: #a78bfa; stroke-opacity: 0.7; stroke-width: 1.6; fill: none; }
+    .radio { fill: none; stroke: #fbbf24; stroke-width: 1.4; }
+    .words { fill: #a78bfa; fill-opacity: 0.06; stroke: #4c3f7a; stroke-width: 1.2; }
+    .pill { fill: #101a2e; stroke: #2a3958; stroke-width: 1.1; }
+    .stage, .k { letter-spacing: 0.06em; } .stage { font-size: 13px; } .k { font-size: 12px; } .yn { font-size: 13px; letter-spacing: 0; }
+  </style>
+  <rect width="1240" height="1010" fill="url(#bg)"/>
+  <text class="title" x="40" y="56">An interaction engine: who is making sound, a few facts, one action</text>
+  <text class="sub" x="40" y="86">Jev is not a VAD and never hears audio. It answers small facts about the call;</text>
+  <text class="sub" x="40" y="108">thresholds, set by the persona, pick one action; the language model writes the words.</text>
+  <text class="stage" x="40" y="150" style="fill:#60a5fa">EARS · SIGNALS ONLY</text>
+  <rect class="ear" x="40" y="162" width="275" height="46" rx="12"/>
+  <text class="n" x="58" y="190">Voice activity <tspan class="d">· voice or not</tspan></text>
+  <rect class="ear" x="335" y="162" width="275" height="46" rx="12"/>
+  <text class="n" x="353" y="190">Recognizer <tspan class="d">· the words</tspan></text>
+  <rect class="ear" x="630" y="162" width="275" height="46" rx="12"/>
+  <text class="n" x="648" y="190">Sound model <tspan class="d">· sounds finished?</tspan></text>
+  <rect class="ear" x="925" y="162" width="275" height="46" rx="12"/>
+  <text class="n" x="943" y="190">Voiceprint <tspan class="d">· the caller?</tspan></text>
+  <path class="edge" d="M620 210 L620 230" marker-end="url(#ma)"/>
+  <rect class="panel" x="40" y="238" width="1160" height="54" rx="14"/>
+  <text class="stage" x="60" y="270" style="fill:#fbbf24">ONE TIMELINE</text>
+  <line x1="230" y1="265" x2="1172" y2="265" stroke="#fbbf24" stroke-opacity="0.45" stroke-width="2"/>
+  <path d="M1166 259 L1178 265 L1166 271" fill="none" stroke="#fbbf24" stroke-opacity="0.6" stroke-width="2"/>
+  <circle cx="310" cy="265" r="4" fill="#fbbf24"/><text class="d" x="322" y="283">words</text>
+  <circle cx="530" cy="265" r="4" fill="#fbbf24"/><text class="d" x="542" y="283">signals</text>
+  <circle cx="750" cy="265" r="4" fill="#fbbf24"/><text class="d" x="762" y="283">Jev&#x27;s answers</text>
+  <circle cx="970" cy="265" r="4" fill="#fbbf24"/><text class="d" x="982" y="283">actions</text>
+  <path class="tl" d="M620 292 L620 318" marker-end="url(#mt)"/>
+  <path class="tl" d="M1200 265 L1222 265 L1222 893 L1204 893" marker-end="url(#mt)"/>
+  <rect class="node" x="460" y="326" width="320" height="48" rx="24"/>
+  <text class="q" x="620" y="356" text-anchor="middle">Is the agent making sound?</text>
+  <path class="edge" d="M620 374 L620 392 L330 392 L330 420" marker-end="url(#ma)"/>
+  <path class="edge" d="M620 392 L920 392 L920 420" marker-end="url(#ma)"/>
+  <text class="yn" x="476" y="386" text-anchor="middle">NO</text>
+  <text class="yn" x="770" y="386" text-anchor="middle">YES</text>
+  <rect class="node" x="195" y="428" width="270" height="44" rx="22"/>
+  <text class="q" x="330" y="456" text-anchor="middle">Is the user making sound?</text>
+  <rect class="node" x="785" y="428" width="270" height="44" rx="22"/>
+  <text class="q" x="920" y="456" text-anchor="middle">Is the user making sound?</text>
+  <path class="edge" d="M330 472 L330 490 L180 490 L180 518" marker-end="url(#ma)"/>
+  <path class="edge" d="M330 490 L480 490 L480 518" marker-end="url(#ma)"/>
+  <text class="yn" x="255.0" y="484" text-anchor="middle">YES</text>
+  <text class="yn" x="405.0" y="484" text-anchor="middle">NO</text>
+  <path class="edge" d="M920 472 L920 490 L780 490 L780 518" marker-end="url(#ma)"/>
+  <path class="edge" d="M920 490 L1070 490 L1070 518" marker-end="url(#ma)"/>
+  <text class="yn" x="850.0" y="484" text-anchor="middle">YES</text>
+  <text class="yn" x="995.0" y="484" text-anchor="middle">NO</text>
+  <rect class="leaf" x="40" y="526" width="280" height="300" rx="14"/>
+  <text class="h" x="60" y="559">The user has the turn</text>
+  <text class="k" x="60" y="590" style="fill:#2dd4bf">ASK JEV</text>
+  <text class="li" x="60" y="612">finished their thought?</text>
+  <text class="li" x="60" y="632">which pace?</text>
+  <text class="li" x="60" y="652">something due they asked for?</text>
+  <text class="li" x="60" y="672">sparring, or telling?</text>
+  <text class="k" x="60" y="704" style="fill:#fbbf24">ONE ACTION</text>
+  <circle class="radio" cx="66" cy="722" r="5"/><text class="act" x="80" y="726.5">take the turn (words + sound)</text>
+  <circle class="radio" cx="66" cy="744" r="5"/><text class="act" x="80" y="748.5">cut in</text>
+  <circle class="radio" cx="66" cy="766" r="5"/><text class="act" x="80" y="770.5">slip in a sound</text>
+  <circle class="radio" cx="66" cy="788" r="5"/><text class="act" x="80" y="792.5">stay silent</text>
+  <path class="lm" d="M180 826 L180 866" marker-end="url(#mv)"/>
+  <rect class="leaf" x="340" y="526" width="280" height="300" rx="14"/>
+  <text class="h" x="360" y="559">Quiet</text>
+  <text class="k" x="360" y="590" style="fill:#2dd4bf">ASK JEV</text>
+  <text class="li" x="360" y="612">does the last line leave them a move?</text>
+  <text class="li" x="360" y="632">did they say &quot;one moment&quot;?</text>
+  <text class="li" x="360" y="652">were goodbyes said?</text>
+  <text class="li" x="360" y="672">called out already, no answer?</text>
+  <text class="k" x="360" y="704" style="fill:#fbbf24">ONE ACTION</text>
+  <circle class="radio" cx="366" cy="722" r="5"/><text class="act" x="380" y="726.5">let it be</text>
+  <circle class="radio" cx="366" cy="744" r="5"/><text class="act" x="380" y="748.5">pick the thread up</text>
+  <circle class="radio" cx="366" cy="766" r="5"/><text class="act" x="380" y="770.5">check on them</text>
+  <circle class="radio" cx="366" cy="788" r="5"/><text class="act" x="380" y="792.5">hang up</text>
+  <path class="lm" d="M480 826 L480 866" marker-end="url(#mv)"/>
+  <rect class="leaf" x="640" y="526" width="280" height="300" rx="14"/>
+  <text class="h" x="660" y="559">Both talking</text>
+  <text class="k" x="660" y="590" style="fill:#2dd4bf">ASK JEV</text>
+  <text class="li" x="660" y="612">their words over the line:</text>
+  <text class="li" x="660" y="632">a reaction, a &quot;stop&quot;, or their own?</text>
+  <text class="k" x="660" y="704" style="fill:#fbbf24">ONE ACTION</text>
+  <circle class="radio" cx="666" cy="722" r="5"/><text class="act" x="680" y="726.5">carry on</text>
+  <circle class="radio" cx="666" cy="744" r="5"/><text class="act" x="680" y="748.5">stop and listen</text>
+  <circle class="radio" cx="666" cy="766" r="5"/><text class="act" x="680" y="770.5">finish the sentence</text>
+  <circle class="radio" cx="666" cy="788" r="5"/><text class="act" x="680" y="792.5">take the floor back</text>
+  <circle class="radio" cx="666" cy="810" r="5"/><text class="act" x="680" y="814.5">react at once</text>
+  <path class="lm" d="M780 826 L780 866" marker-end="url(#mv)"/>
+  <rect class="idle" x="940" y="526" width="260" height="300" rx="14"/>
+  <text class="h" x="960" y="559">The agent is talking</text>
+  <text class="li" x="960" y="590">Nothing to decide.</text>
+  <rect class="words" x="40" y="872" width="1160" height="44" rx="14"/>
+  <text class="stage" x="60" y="899" style="fill:#a78bfa">WORDS</text>
+  <text class="w" x="150" y="899">The language model writes what is said, reading the same timeline</text>
+  <text class="d" x="1180" y="899" text-anchor="end">→ voice</text>
+  <rect class="pill" x="40" y="944" width="373" height="42" rx="21"/>
+  <text class="pt" x="227" y="970" text-anchor="middle">Two parties, four moments</text>
+  <rect class="pill" x="433" y="944" width="373" height="42" rx="21"/>
+  <text class="pt" x="620" y="970" text-anchor="middle">One timeline: every model reads the same now</text>
+  <rect class="pill" x="827" y="944" width="373" height="42" rx="21"/>
+  <text class="pt" x="1013" y="970" text-anchor="middle">One action per moment, no case left out</text>
+</svg>

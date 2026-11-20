@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1010" width="1240" height="1010" role="img" aria-label="Jev-Interaction 的通话策略，自上而下。耳朵（语音活动、识别、声音模型、声纹）只给信号，Jev 不听音频。所有东西记在一条只追加的时间线上，Jev 和语言模型读同一份。一棵树：模型在出声吗、用户在出声吗，分出四个时刻。用户在说：问 Jev 说完没、哪种节奏、他要的东西该给了吗、斗嘴还是讲事；一个动作：字和声音都说完了才接话、插话、垫一声、不出声。安静：上一句留给谁、说了等一下吗、道过别了吗、喊过没人应；一个动作：让它安静、接着话头、问一声、挂断。两人同时说：他压着说的是什么；一个动作：接着说、停下来听、说完这半句、拿回话头、立刻回应。模型在说：没有要决定的。语言模型写台词。两方对偶四个时刻；一条时间线；每刻一个动作，没有漏的。">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1120"/><stop offset="1" stop-color="#111a2d"/></linearGradient>
+    <marker id="ma" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+    <marker id="mt" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#fbbf24"/></marker>
+    <marker id="mv" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/></marker>
+  </defs>
+  <style>
+    text { font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", -apple-system, sans-serif; fill: #e5e7eb; }
+    .title { font-size: 26px; font-weight: 750; letter-spacing: -0.01em; }
+    .sub { font-size: 14.5px; fill: #94a3b8; }
+    .stage { font-size: 11.5px; font-weight: 700; letter-spacing: 0.16em; }
+    .n { font-size: 14px; font-weight: 650; }
+    .d { font-size: 12.5px; fill: #8796ad; font-weight: 500; }
+    .q { font-size: 15px; font-weight: 650; }
+    .yn { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; fill: #8796ad; }
+    .h { font-size: 16.5px; font-weight: 720; }
+    .k { font-size: 10.5px; font-weight: 750; letter-spacing: 0.16em; }
+    .li { font-size: 13px; fill: #cbd5e1; }
+    .act { font-size: 13px; font-weight: 600; fill: #fde68a; }
+    .w { font-size: 14.5px; font-weight: 620; fill: #ddd6fe; }
+    .pt { font-size: 14px; font-weight: 680; fill: #e2e8f0; }
+    .panel { fill: #fbbf24; fill-opacity: 0.035; stroke: #3a3420; stroke-width: 1.2; }
+    .ear { fill: #0e1a2e; stroke: #24395a; stroke-width: 1.1; }
+    .node { fill: #13203a; stroke: #3b5b8a; stroke-width: 1.4; }
+    .leaf { fill: #0f172a; stroke: #26344f; stroke-width: 1.2; }
+    .idle { fill: #0c1322; stroke: #1f2a42; stroke-width: 1.2; stroke-dasharray: 5 5; }
+    .edge { stroke: #3b4a66; stroke-width: 1.6; fill: none; }
+    .tl { stroke: #fbbf24; stroke-opacity: 0.55; stroke-width: 1.6; fill: none; stroke-dasharray: 4 5; }
+    .lm { stroke: #a78bfa; stroke-opacity: 0.7; stroke-width: 1.6; fill: none; }
+    .radio { fill: none; stroke: #fbbf24; stroke-width: 1.4; }
+    .words { fill: #a78bfa; fill-opacity: 0.06; stroke: #4c3f7a; stroke-width: 1.2; }
+    .pill { fill: #101a2e; stroke: #2a3958; stroke-width: 1.1; }
+    .stage, .k { letter-spacing: 0.06em; } .stage { font-size: 13px; } .k { font-size: 12px; } .yn { font-size: 13px; letter-spacing: 0; }
+  </style>
+  <rect width="1240" height="1010" fill="url(#bg)"/>
+  <text class="title" x="40" y="56">交互引擎：谁在出声，几个小事实，一个动作</text>
+  <text class="sub" x="40" y="86">Jev 不是 VAD，从不听音频，只回答关于这通电话的小事实；</text>
+  <text class="sub" x="40" y="108">阈值由人设决定，选出一个动作；说什么由语言模型来写。</text>
+  <text class="stage" x="40" y="150" style="fill:#60a5fa">耳朵 · 只给信号</text>
+  <rect class="ear" x="40" y="162" width="275" height="46" rx="12"/>
+  <text class="n" x="58" y="190">语音活动 <tspan class="d">· 有没有声音</tspan></text>
+  <rect class="ear" x="335" y="162" width="275" height="46" rx="12"/>
+  <text class="n" x="353" y="190">语音识别 <tspan class="d">· 说了什么</tspan></text>
+  <rect class="ear" x="630" y="162" width="275" height="46" rx="12"/>
+  <text class="n" x="648" y="190">声音模型 <tspan class="d">· 听着说完了？</tspan></text>
+  <rect class="ear" x="925" y="162" width="275" height="46" rx="12"/>
+  <text class="n" x="943" y="190">声纹 <tspan class="d">· 是本人吗？</tspan></text>
+  <path class="edge" d="M620 210 L620 230" marker-end="url(#ma)"/>
+  <rect class="panel" x="40" y="238" width="1160" height="54" rx="14"/>
+  <text class="stage" x="60" y="270" style="fill:#fbbf24">一条时间线</text>
+  <line x1="230" y1="265" x2="1172" y2="265" stroke="#fbbf24" stroke-opacity="0.45" stroke-width="2"/>
+  <path d="M1166 259 L1178 265 L1166 271" fill="none" stroke="#fbbf24" stroke-opacity="0.6" stroke-width="2"/>
+  <circle cx="310" cy="265" r="4" fill="#fbbf24"/><text class="d" x="322" y="283">说的话</text>
+  <circle cx="530" cy="265" r="4" fill="#fbbf24"/><text class="d" x="542" y="283">信号</text>
+  <circle cx="750" cy="265" r="4" fill="#fbbf24"/><text class="d" x="762" y="283">Jev 的回答</text>
+  <circle cx="970" cy="265" r="4" fill="#fbbf24"/><text class="d" x="982" y="283">动作</text>
+  <path class="tl" d="M620 292 L620 318" marker-end="url(#mt)"/>
+  <path class="tl" d="M1200 265 L1222 265 L1222 893 L1204 893" marker-end="url(#mt)"/>
+  <rect class="node" x="460" y="326" width="320" height="48" rx="24"/>
+  <text class="q" x="620" y="356" text-anchor="middle">模型在出声吗？</text>
+  <path class="edge" d="M620 374 L620 392 L330 392 L330 420" marker-end="url(#ma)"/>
+  <path class="edge" d="M620 392 L920 392 L920 420" marker-end="url(#ma)"/>
+  <text class="yn" x="476" y="386" text-anchor="middle">否</text>
+  <text class="yn" x="770" y="386" text-anchor="middle">是</text>
+  <rect class="node" x="195" y="428" width="270" height="44" rx="22"/>
+  <text class="q" x="330" y="456" text-anchor="middle">用户在出声吗？</text>
+  <rect class="node" x="785" y="428" width="270" height="44" rx="22"/>
+  <text class="q" x="920" y="456" text-anchor="middle">用户在出声吗？</text>
+  <path class="edge" d="M330 472 L330 490 L180 490 L180 518" marker-end="url(#ma)"/>
+  <path class="edge" d="M330 490 L480 490 L480 518" marker-end="url(#ma)"/>
+  <text class="yn" x="255.0" y="484" text-anchor="middle">是</text>
+  <text class="yn" x="405.0" y="484" text-anchor="middle">否</text>
+  <path class="edge" d="M920 472 L920 490 L780 490 L780 518" marker-end="url(#ma)"/>
+  <path class="edge" d="M920 490 L1070 490 L1070 518" marker-end="url(#ma)"/>
+  <text class="yn" x="850.0" y="484" text-anchor="middle">是</text>
+  <text class="yn" x="995.0" y="484" text-anchor="middle">否</text>
+  <rect class="leaf" x="40" y="526" width="280" height="300" rx="14"/>
+  <text class="h" x="60" y="559">用户在说</text>
+  <text class="k" x="60" y="590" style="fill:#2dd4bf">问 JEV</text>
+  <text class="li" x="60" y="612">这个意思说完了吗？</text>
+  <text class="li" x="60" y="632">哪种节奏？</text>
+  <text class="li" x="60" y="652">他要的东西该给了吗？</text>
+  <text class="li" x="60" y="672">在斗嘴，还是在讲事？</text>
+  <text class="k" x="60" y="704" style="fill:#fbbf24">一个动作</text>
+  <circle class="radio" cx="66" cy="722" r="5"/><text class="act" x="80" y="726.5">接话（字和声音都说完了）</text>
+  <circle class="radio" cx="66" cy="744" r="5"/><text class="act" x="80" y="748.5">插话</text>
+  <circle class="radio" cx="66" cy="766" r="5"/><text class="act" x="80" y="770.5">垫一声</text>
+  <circle class="radio" cx="66" cy="788" r="5"/><text class="act" x="80" y="792.5">不出声</text>
+  <path class="lm" d="M180 826 L180 866" marker-end="url(#mv)"/>
+  <rect class="leaf" x="340" y="526" width="280" height="300" rx="14"/>
+  <text class="h" x="360" y="559">安静</text>
+  <text class="k" x="360" y="590" style="fill:#2dd4bf">问 JEV</text>
+  <text class="li" x="360" y="612">上一句留给他接吗？</text>
+  <text class="li" x="360" y="632">他说了「等一下」吗？</text>
+  <text class="li" x="360" y="652">道过别了吗？</text>
+  <text class="li" x="360" y="672">喊过了，没人应？</text>
+  <text class="k" x="360" y="704" style="fill:#fbbf24">一个动作</text>
+  <circle class="radio" cx="366" cy="722" r="5"/><text class="act" x="380" y="726.5">让它安静</text>
+  <circle class="radio" cx="366" cy="744" r="5"/><text class="act" x="380" y="748.5">接着自己的话头</text>
+  <circle class="radio" cx="366" cy="766" r="5"/><text class="act" x="380" y="770.5">问一声还在吗</text>
+  <circle class="radio" cx="366" cy="788" r="5"/><text class="act" x="380" y="792.5">挂断</text>
+  <path class="lm" d="M480 826 L480 866" marker-end="url(#mv)"/>
+  <rect class="leaf" x="640" y="526" width="280" height="300" rx="14"/>
+  <text class="h" x="660" y="559">两人同时说</text>
+  <text class="k" x="660" y="590" style="fill:#2dd4bf">问 JEV</text>
+  <text class="li" x="660" y="612">他压着说的是什么：</text>
+  <text class="li" x="660" y="632">附和、喊停，还是自己的话？</text>
+  <text class="k" x="660" y="704" style="fill:#fbbf24">一个动作</text>
+  <circle class="radio" cx="666" cy="722" r="5"/><text class="act" x="680" y="726.5">接着说</text>
+  <circle class="radio" cx="666" cy="744" r="5"/><text class="act" x="680" y="748.5">停下来听</text>
+  <circle class="radio" cx="666" cy="766" r="5"/><text class="act" x="680" y="770.5">说完这半句</text>
+  <circle class="radio" cx="666" cy="788" r="5"/><text class="act" x="680" y="792.5">把话头拿回来</text>
+  <circle class="radio" cx="666" cy="810" r="5"/><text class="act" x="680" y="814.5">立刻回应</text>
+  <path class="lm" d="M780 826 L780 866" marker-end="url(#mv)"/>
+  <rect class="idle" x="940" y="526" width="260" height="300" rx="14"/>
+  <text class="h" x="960" y="559">模型在说</text>
+  <text class="li" x="960" y="590">没有要决定的。</text>
+  <rect class="words" x="40" y="872" width="1160" height="44" rx="14"/>
+  <text class="stage" x="60" y="899" style="fill:#a78bfa">台词</text>
+  <text class="w" x="130" y="899">语言模型写说什么，读的是同一条时间线</text>
+  <text class="d" x="1180" y="899" text-anchor="end">→ 语音合成</text>
+  <rect class="pill" x="40" y="944" width="373" height="42" rx="21"/>
+  <text class="pt" x="227" y="970" text-anchor="middle">两方对偶：四个时刻</text>
+  <rect class="pill" x="433" y="944" width="373" height="42" rx="21"/>
+  <text class="pt" x="620" y="970" text-anchor="middle">一条时间线：所有模型读同一个此刻</text>
+  <rect class="pill" x="827" y="944" width="373" height="42" rx="21"/>
+  <text class="pt" x="1013" y="970" text-anchor="middle">互斥穷尽：每刻一个动作，没有漏的</text>
+</svg>
