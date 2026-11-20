@@ -89,6 +89,8 @@ class Session:
         self.frame_waiting: dict | None = None   # the latest picture that came while the seer was busy
         self.frame_now: bytes | None = None      # the latest picture from the page (Config.jev_sees: Jev and the responder
         self.frame_fresh = False                 # see it themselves); fresh until the notice question has seen it
+        self.frame_moving_s = 0.0                # how long the user had kept moving when it was taken (two stills
+                                                 # cannot show a wave; the page's motion count can)
         self.remarks_on_view = 0
         self.hanging_up = False
         self.busy: set[str] = set()              # decisions with a question out to Jev right now
@@ -195,6 +197,7 @@ class Session:
             return
         if self.cfg.jev_sees:
             self.frame_now, self.frame_fresh = image, True
+            self.frame_moving_s = float(msg.get("moving_s") or 0.0)   # the page's measure: kept moving this long
             if self.sight_image is None:          # the first picture is the scene: what later ones are compared with
                 self.sight_image, self.frame_fresh = image, False
                 if self.seer is not None and not self.seeing:
@@ -535,7 +538,9 @@ class Session:
         plain = messages
         if image is not None and messages[-1]["role"] == "user":     # on a video call the responder sees the view too
             url = "data:image/jpeg;base64," + base64.b64encode(image).decode()
-            parts = [dict(type="text", text=messages[-1]["content"]), dict(type="image_url", image_url={"url": url})]
+            parts = [dict(type="text", text=messages[-1]["content"]),
+                     dict(type="text", text="(the live view from the user's camera on this call, right now)"),
+                     dict(type="image_url", image_url={"url": url})]
             messages = [*messages[:-1], {"role": "user", "content": parts}]
         turn = self.ledger.agent("", who=self.p.short)
         self.replies[gen] = turn

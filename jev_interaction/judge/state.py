@@ -50,9 +50,13 @@ def notice(name: str, seen: str, remarks: int) -> str:
     return s
 
 
-def notice_pictures(name: str, before: str, now: str, remarks: int, talking: bool = False) -> str:
+def notice_pictures(name: str, before: str, now: str, remarks: int, talking: bool = False, moving_s: float = 0.0) -> str:
+    """`moving_s`: how long the camera has seen the user keep moving (waving, walking about), which two stills cannot show."""
     s = (f"What {name} saw when something last changed: {before}\nWhat {name} sees now: {now}\n"
          + ("The user is talking right now.\n" if talking else "Nobody is talking right now.\n"))
+    if moving_s >= 1:
+        s += (f"Between the two pictures the camera has seen the user moving without a stop for {moving_s:.0f} s: a wave, "
+              "a gesture or something being shown is going on, which two still pictures cannot show.\n")
     if remarks:
         s += f"{name} has remarked on the view {remarks} time(s) on this call, unasked.\n"
     return s

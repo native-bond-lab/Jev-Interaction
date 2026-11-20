@@ -164,7 +164,7 @@ async def test_jev_sees_compares_two_pictures_and_the_responder_is_shown_the_vie
     assert BEFORE in state and NOW in state
     assert base64.b64decode(judge.assets[NOW]["data_base64"]) == b"mug"
     last = s.llm.seen[-1][-1]
-    assert isinstance(last["content"], list) and last["content"][1]["image_url"]["url"].endswith(base64.b64encode(b"mug").decode())
+    assert isinstance(last["content"], list) and last["content"][-1]["image_url"]["url"].endswith(base64.b64encode(b"mug").decode())
     assert s.sight_image == b"mug" and any(t.role == "seen" for t in s.ledger.turns)   # the record line, off the path
     assert seer.looked[-1][2] == b"scene"
 

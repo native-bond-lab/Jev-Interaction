@@ -31,7 +31,8 @@ class Notice(Decision):
         if s.cfg.jev_sees:                       # Jev looks itself: the newest picture, once the line is free
             if s.frame_fresh and s.sight_image is not None and not s.speaking and not s.generating:
                 s.frame_fresh = False                # asked while the user talks too: then only what they asked for
-                s._spawn(self.ask(s, now_image=s.frame_now, before_image=s.sight_image, seen="", talking=s.utt is not None))
+                s._spawn(self.ask(s, now_image=s.frame_now, before_image=s.sight_image, seen="", talking=s.utt is not None,
+                                  moving_s=s.frame_moving_s))
             return False
         if s.sight_pending is None:
             return False
@@ -48,7 +49,8 @@ class Notice(Decision):
 
     def state(self, s, ctx):
         if "now_image" in ctx:
-            return super().state(s, ctx) + S.notice_pictures(s.p.short, BEFORE, NOW, s.remarks_on_view, bool(ctx.get("talking")))
+            return super().state(s, ctx) + S.notice_pictures(s.p.short, BEFORE, NOW, s.remarks_on_view, bool(ctx.get("talking")),
+                                                                 ctx.get("moving_s", 0.0))
         return super().state(s, ctx) + S.notice(s.p.short, ctx["seen"], s.remarks_on_view)
 
     def assets(self, s, ctx):

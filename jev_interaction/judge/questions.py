@@ -132,6 +132,7 @@ def notice(name: str) -> dict:
         "being who they are, say something about this now?"), "criteria": {
         "due": (f"earlier in the call the user asked {name} to watch for this or to say when it happens, it has just "
                 f"shown up, and {name} has not said so yet for this time"),
-        "remark": f"{name} says something about it now: it is new, and {name} has not remarked on it yet",
+        "remark": (f"{name} says something about it now: it is new, or the user is doing something at the camera (waving, "
+                   f"showing, pointing, moving about), and {name} has not remarked on it yet"),
         "let_be": (f"{name} lets it pass: it is not really new (the same as before, a small shift in the picture), "
                    f"{name} has just remarked on it, or the user is plainly absorbed in something on their own")}}

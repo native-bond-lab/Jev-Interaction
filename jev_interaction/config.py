@@ -43,7 +43,9 @@ class Config:
         "floor": ThresholdPolicy(fallback="carry_on"),   # yield's threshold comes from the (blended) pace
         "cut_in": SamplePolicy(), "quiet": SamplePolicy(),
         "who": ThresholdPolicy(fallback="stay"),         # someone else is put on the line only when Jev is sure
-        "notice": ThresholdPolicy(fallback="let_be")})   # a judge that gives nothing: no remark on the view
+        # a remark on the view once Jev gives it a third: still pictures look alike, so a wave reads 0.4 where an
+        # unchanged view reads under 0.1 (let_be is the fallback, never chosen over a remark that clears its bar)
+        "notice": ThresholdPolicy(thresholds={"due": 0.35, "remark": 0.35, "let_be": 1.01}, fallback="let_be")})
 
     voice_min_ms: int = 60             # a frame with this much voice in it is the user making sound
     overlap_ask_ms: int = 400          # the user talks over the agent this long: the words so far, closed or not, go to the
