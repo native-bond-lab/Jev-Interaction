@@ -36,6 +36,10 @@
       err_mic: 'Could not open the microphone.',
       err_server: 'Could not reach the call server. Check that it is still running, then call again.',
       err_dropped: 'The connection dropped. Call again.',
+      enroll_title: 'First, let me learn your voice', enroll_go: 'Start reading', enroll_done: 'Done', enroll_skip: 'Skip',
+      enroll_ready: 'Press Start, then read the lines below aloud three times, slowly. Press Done when you have finished.',
+      enroll_rec: 'Reading. Three times, slowly; press Done when you have finished.', enroll_note: 'Your voice sample is used only for this call and deleted when you hang up.',
+      voice_deleted: 'Call ended. Your voice sample has been deleted.', voice_ready: 'knows your voice', voice_skipped: 'voiceprint not ready: learns your voice as you talk',
     },
     zh: {
       tagline: '端到端的交互直觉，来自一条读得懂的级联。',
@@ -64,6 +68,10 @@
       err_mic: '无法打开麦克风。',
       err_server: '连不上通话服务。请确认服务仍在运行，然后再拨一次。',
       err_dropped: '连接断了，请再拨一次。',
+      enroll_title: '先认识一下你的声音', enroll_go: '开始朗读', enroll_done: '念完了', enroll_skip: '跳过',
+      enroll_ready: '点「开始朗读」，慢慢把下面这两句念三遍，念完点「念完了」。',
+      enroll_rec: '正在录音：慢慢念三遍，念完点「念完了」。', enroll_note: '这段声音只用于这通电话，挂断后即删除。',
+      voice_deleted: '通话已结束，你的声音样本已删除。', voice_ready: '已认得你的声音', voice_skipped: '声纹模型还没就绪：边聊边认你的声音',
     },
   };
   let lang = params.get('lang') || store.get('jev.lang') || 'en';      // English unless the visitor picked 中文 (or ?lang=zh)
@@ -222,6 +230,7 @@
         note({ tone: 'pace', kind: 'pace', label: `${t('d_pace')} → ${t('p_' + m.pace)}`, probs: m.probs, chosen: m.pace, value: m.probs && m.probs[m.pace] });
         break;
       case 'hangup': endCall(); break;
+      case 'voiceprint': note({ tone: 'info', kind: 'voice', label: t(m.state === 'enrolled' ? 'voice_ready' : 'voice_skipped') }); break;
       case 'busy': showNotice(m.text, true); break;
       case 'queue': waiting = { ahead: m.ahead, wait_s: m.wait_s }; break;       // every line is taken: the server holds this caller in line
       case 'ready': waiting = null; callStart = performance.now(); break;      // a line is free: the call starts now
@@ -370,10 +379,24 @@
   }
   function resetCall() {
     queue = []; current = null; listening = null; incoming = null; pace = null; logN = 0; capGen = null; capSaid = ''; waiting = null; lineGen = null; played = { gen: null, texts: [] };
-    micLevel = 0; lastPartialAt = 0; thinkingUntil = 0; yieldedUntil = 0;
+    micLevel = 0; lastPartialAt = 0; thinkingUntil = 0; yieldedUntil = 0; voiceSent = false;
     $('log').textContent = ''; $('logEmpty').hidden = false; $('logCount').hidden = true; $('chips').textContent = '';
     setCaption('capAgent', ''); setCaption('capUser', ''); $('capAgent').classList.remove('dim');
     showNotice(null);
+  }
+
+  // A few seconds of the caller's voice before the call, for the voiceprint, when the server has one: it is sent with
+  // the start message, used in memory for this call only and forgotten when the call ends (the page says so, twice)
+  const ENROLL_MIN_MS = 15000, ENROLL_MAX_MS = 30000;           // "Done" opens after 15 s (a solid print needs that much voice);
+                                                               // at 30 s it is done anyway
+  const SCRIPT = 'Good good study, study day day up.\nLucky lucky me, happy happy us.';   // the same lines in every language (adam)
+  let voiceSent = false;
+  const voiceprintOn = () => !!health && (health.voiceprint === 'ready' || health.voiceprint === 'loading');
+  function base64Of(frames) {
+    const bytes = new Uint8Array(frames.reduce((n, f) => n + f.byteLength, 0)); let at = 0;
+    frames.forEach((f) => { bytes.set(new Uint8Array(f.buffer), at); at += f.byteLength; });
+    let bin = ''; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
   }
 
   async function startCall() {
@@ -401,8 +424,7 @@
     wake();
     const src = ctx.createMediaStreamSource(stream);
     proc = ctx.createScriptProcessor(4096, 1, 1);
-    const ratio = ctx.sampleRate / 16000; let buf = [], frames = 0;
-    const sock = ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+    const ratio = ctx.sampleRate / 16000; let buf = [], frames = 0, sock = null, enroll = null;
     proc.onaudioprocess = (e) => {
       const x = e.inputBuffer.getChannelData(0);
       let sum = 0; for (let i = 0; i < x.length; i++) sum += x[i] * x[i];
@@ -410,28 +432,70 @@
       for (let i = 0; i < x.length; i += ratio) buf.push(Math.max(-1, Math.min(1, x[Math.floor(i)])));
       while (buf.length >= 3200) {                              // 200 ms at 16 kHz
         const frame = new Int16Array(buf.splice(0, 3200).map((v) => v * 32767));
-        if (sock.readyState === 1 && !waiting) { sock.send(frame.buffer); frames++; }   // nobody is listening while in line
+        if (enroll) enroll.push(frame);                       // the voice sample, before the call
+        else if (sock && sock.readyState === 1 && !waiting) { sock.send(frame.buffer); frames++; }   // nobody is listening while in line
       }
     };
     src.connect(proc); proc.connect(ctx.destination);
-    let opened = false;
-    const ears = () => {                                       // is the microphone reaching the server? for the server's log
-      const tr = stream && stream.getAudioTracks()[0];
-      return { ctx: ctx ? ctx.state : 'none', frames, rate: ctx ? ctx.sampleRate : 0, muted: !!(tr && tr.muted) };
-    };
-    sock.onopen = () => {
-      opened = true; connecting = false; callStart = performance.now();
-      setTimeout(() => { if (ws === sock) report({ at: 5, ...ears() }); }, 5000);
-      setTimeout(() => { if (ws === sock) report({ at: 20, ...ears() }); }, 20000);
-      sock.send(JSON.stringify({ type: 'start', profile: selected.id, language: selected.language || 'en' }));   // the persona speaks its own language; the toggle is for the page
-    };
-    sock.onmessage = (e) => { if (typeof e.data === 'string' && ws === sock) onEvent(JSON.parse(e.data)); };
-    sock.onclose = (e) => {                                    // closed by the server or the network, not by this page
-      if (ws !== sock) return;
-      report({ opened, code: e.code, seconds: callStart ? Math.round((performance.now() - callStart) / 1000) : 0 });
-      endCall();
-      if (!opened) showNotice(t('err_server'), true); else if (e.code === 1006) showNotice(t('err_dropped'), true);
-    };
+    if (!voiceprintOn()) { connect(null); return; }
+    askVoice();
+
+    // the voice sample: a clear start and end, lines to read, and what happens to it; then the call
+    function askVoice() {
+      const box = $('enroll'), card = box.querySelector('.enroll'), go = $('enrollGo'), skip = $('enrollSkip');
+      $('enrollTitle').textContent = t('enroll_title'); $('enrollHint').textContent = t('enroll_ready');
+      $('enrollScript').textContent = SCRIPT; $('enrollScript').lang = 'en';
+      $('enrollNote').textContent = t('enroll_note'); $('enrollTime').textContent = '';
+      skip.textContent = t('enroll_skip'); go.textContent = t('enroll_go'); go.disabled = false;
+      card.dataset.state = 'ready'; box.hidden = false; go.focus();
+      let began = 0;
+      const meter = setInterval(() => {
+        if (phase !== 'call' || proc === null) { finish(false, true); return; }   // hung up meanwhile
+        $('enrollLevel').style.width = Math.round((began ? micLevel : 0) * 100) + '%';
+        if (!began) return;
+        const ms = performance.now() - began;
+        $('enrollTime').textContent = Math.floor(ms / 1000) + ' s';
+        go.disabled = ms < ENROLL_MIN_MS;
+        if (ms >= ENROLL_MAX_MS) finish(true);
+      }, 100);
+      go.onclick = () => {
+        if (began) { finish(true); return; }
+        began = performance.now(); enroll = [];
+        card.dataset.state = 'recording'; $('enrollHint').textContent = t('enroll_rec');
+        go.textContent = t('enroll_done'); go.disabled = true;
+      };
+      skip.onclick = () => finish(false);
+      function finish(keep, ended) {
+        clearInterval(meter); box.hidden = true; go.onclick = skip.onclick = null;
+        const frames = enroll; enroll = null;
+        if (ended) return;
+        if (keep && frames && frames.length) { voiceSent = true; connect(base64Of(frames)); } else connect(null);
+      }
+    }
+
+    function connect(voice) {
+      sock = ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+      let opened = false;
+      const ears = () => {                                       // is the microphone reaching the server? for the server's log
+        const tr = stream && stream.getAudioTracks()[0];
+        return { ctx: ctx ? ctx.state : 'none', frames, rate: ctx ? ctx.sampleRate : 0, muted: !!(tr && tr.muted) };
+      };
+      sock.onopen = () => {
+        opened = true; connecting = false; callStart = performance.now();
+        setTimeout(() => { if (ws === sock) report({ at: 5, ...ears() }); }, 5000);
+        setTimeout(() => { if (ws === sock) report({ at: 20, ...ears() }); }, 20000);
+        const start = { type: 'start', profile: selected.id, language: selected.language || 'en' };   // the persona speaks its own language; the toggle is for the page
+        if (voice) start.voice = voice;
+        sock.send(JSON.stringify(start));
+      };
+      sock.onmessage = (e) => { if (typeof e.data === 'string' && ws === sock) onEvent(JSON.parse(e.data)); };
+      sock.onclose = (e) => {                                    // closed by the server or the network, not by this page
+        if (ws !== sock) return;
+        report({ opened, code: e.code, seconds: callStart ? Math.round((performance.now() - callStart) / 1000) : 0 });
+        endCall();
+        if (!opened) showNotice(t('err_server'), true); else if (e.code === 1006) showNotice(t('err_dropped'), true);
+      };
+    }
   }
 
   // how a call failed, for the server's log (the failures that never reach it otherwise); nothing about who or what was said
@@ -451,8 +515,9 @@
     if (stream) { stream.getTracks().forEach((tr) => tr.stop()); stream = null; }
     voices.forEach((el) => { el.onended = null; el.pause(); }); voices = [];
     if (ctx) { ctx.close().catch(() => {}); ctx = null; analyser = null; }
-    connecting = false; waiting = null; micLevel = 0; endedUntil = performance.now() + 900;
+    connecting = false; waiting = null; micLevel = 0; endedUntil = performance.now() + 900; $('enroll').hidden = true;
     setPhase('idle'); fadeCaption('capAgent', 0); fadeCaption('capUser', 0);
+    if (voiceSent) { voiceSent = false; showNotice(t('voice_deleted')); }   // the server forgot it when the socket closed
   }
 
   // ---------- notices ----------

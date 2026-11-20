@@ -302,6 +302,21 @@ body[data-state="yielded"] .status-dot { background: var(--yield); }
 .foot-status[data-state="ready"] { color: var(--go); } .foot-status[data-state="error"] { color: #ffb3b6; } .foot-status[data-state="unsaved"] { color: var(--accent); }
 .sheet-foot .ghost { padding: 7px 16px; }
 
+/* ---------- the voice sample before a call ---------- */
+.enroll { width: min(520px, 100%); padding: 24px 26px 20px; gap: 12px; }
+.enroll h2 { margin: 0; font-size: 19px; font-weight: 600; }
+.enroll-hint, .enroll-time { margin: 0; color: var(--ink-2); font-size: 13.5px; }
+.enroll-time { font: 12.5px var(--mono); color: var(--ink-3); min-height: 1.4em; }
+.enroll-script {
+  margin: 4px 0; padding: 16px 18px; border-radius: 16px; background: var(--glass); border: 1px solid var(--line);
+  font-size: 18px; line-height: 1.7; color: var(--ink); text-wrap: pretty; white-space: pre-line;
+}
+.enroll[data-state="recording"] .enroll-script { border-color: rgba(123, 224, 176, .45); }
+.enroll-meter { height: 4px; border-radius: 4px; background: var(--glass-2); overflow: hidden; }
+.enroll-meter span { display: block; height: 100%; width: 0; background: var(--go); transition: width .1s linear; }
+.enroll-note { margin: 0; padding: 9px 12px; border-radius: 12px; font-size: 13px; color: #ffe2b3; background: rgba(255, 201, 120, .07); border: 1px solid rgba(255, 201, 120, .22); }
+.enroll-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .field { min-width: 0; }
 .field.wide { grid-column: 1 / -1; }

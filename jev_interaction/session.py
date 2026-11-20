@@ -103,6 +103,9 @@ class Session:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         await self.asr.close()
+        if self.embedder is not None:
+            self.voiceprint.clear()               # the caller's voice is kept for this call only
+            self.rec.write("voice_cleared")
         self.rec.write("end", ledger=[t.__dict__ for t in self.ledger.turns], timeline=self.ledger.timeline())
         self.rec.close()
 
@@ -295,6 +298,35 @@ class Session:
         mark = self.cfg.voice_verdict_ms
         if before < mark <= u.speech_ms or (u.speech_ms > mark and before // self.VOICE_EVERY_MS != u.speech_ms // self.VOICE_EVERY_MS):
             self._spawn(self._judge_voice(u))
+
+    SOUND_WINDOW = 8 * 16000 * 2         # 8 s of 16 kHz PCM16: all the sound model hears
+
+    def sound_ready(self) -> bool:
+        return self.sound is not None and self.cfg.sound_rule != "off" and getattr(self.sound, "ready", True)
+
+    def _hear_pause(self) -> None:
+        """A frame of quiet after the user's words: the sound model reads the last 8 s (one reading at a time; a frame
+        that comes while one is running is skipped, the next one is read). Each reading goes on the call's record."""
+        u = self.utt
+        if not self.sound_ready() or self._sound_busy or u is None or not u.segments or self.speaking:
+            return
+        self._sound_busy = True
+        self._spawn(self._read_sound(u.id, self.silence_ms, bytes(self.audio_tail)))
+
+    async def _read_sound(self, utt_id: int, quiet_ms: int, pcm: bytes) -> None:
+        try:
+            p = await asyncio.to_thread(self.sound.score, pcm)
+        finally:
+            self._sound_busy = False
+        if p is None or self.utt is None or self.utt.id != utt_id or self.silence_ms < quiet_ms:
+            return                                # the model is not ready, or the voice came back meanwhile
+        self.heard_sound = (utt_id, quiet_ms, p)
+        self.ledger.note("judge", purpose="sound", p=round(p, 3), quiet_ms=quiet_ms)
+
+    def sound_p(self) -> float | None:
+        """The latest reading of this pause, None when there is none yet."""
+        h = self.heard_sound
+        return h[2] if h and self.utt is not None and h[0] == self.utt.id else None
 
     async def _embed(self, u: Utterance):
         if self.embedder is None or not self.embedder.ready:

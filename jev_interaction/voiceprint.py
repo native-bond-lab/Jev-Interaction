@@ -2,8 +2,9 @@
 
 On a speakerphone in a busy room most of what reaches the recognizer can be other people, and the agent's own voice
 coming back. Each stretch of the user's voice gets a speaker embedding (an `Embedder`, e.g. ECAPA-TDNN on the CPU) and
-is compared with the caller's voiceprint. The print starts empty; the first words the agent answers become it, and every
-later answered match is averaged in, so the check grows surer as the call goes on. Loudness is the second cue: the
+is compared with the caller's voiceprint. The print starts empty, or from a few seconds the caller says before the call
+(`Session.enroll_sample`); the words the agent answers are averaged in, so the check grows surer as the call goes on. It
+lives only as long as the call: `Session.close` clears it. Loudness is the second cue: the
 caller's mouth is at the microphone, the room is not.
 
 The verdict is evidence, not a switch: a clear stranger is not answered and does not stop the agent's line; a doubtful
@@ -34,6 +35,10 @@ class Voiceprint:
         self.mean = m / n if n > 0 else None
         levels = [e[2] for e in self.entries if e[2] is not None]
         self.level = float(np.median(levels)) if levels else None
+
+    def clear(self) -> None:
+        """Forget the caller's voice (the call has ended): nothing of it is kept anywhere."""
+        self.entries, self.mean, self.level = [], None, None
 
     def judge(self, emb: np.ndarray | None, level: float | None, audio_ms: int) -> dict:
         """label caller | other | unknown, with the numbers behind it. A quiet voice that does not match well is the

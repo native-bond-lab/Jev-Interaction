@@ -7,7 +7,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 
 | message | when |
 |---|---|
-| `{"type": "start", "profile": "companion", "language": "en"}` | first message of the call; `profile` is an id from `/api/profiles`; `language` defaults to the profile's |
+| `{"type": "start", "profile": "companion", "language": "en", "voice"?: "<base64>"}` | first message of the call; `profile` is an id from `/api/profiles`; `language` defaults to the profile's; `voice`, optional: 15 to 30 seconds (at most 35) of the caller's voice said before the call, lines read aloud, PCM16 16 kHz, from which the voiceprint starts. It is used in memory for this call only, never written or logged, and forgotten when the call ends |
 | binary frame | 200 ms of 16 kHz mono PCM16 (3200 samples, 6400 bytes), continuously, including while the agent talks |
 | `{"type": "playback", "state": "playing" \| "idle"}` | the agent's audio started / the queue ran empty |
 | `{"type": "heard", "gen": 7, "text": "..."}` | after `stop`: what was actually played of the reply the last `line` belonged to (its `gen`): the lines that played to the end and the part of the one that was playing, joined by newlines; `""` when none of it played. Without `gen` the text replaces the last reply, and an empty text is ignored |
@@ -29,6 +29,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `ready` | | a line is free: the call starts now |
 | `busy` | `text` | the line itself is full, or today's minutes are used up; the socket closes |
 | `hangup` | `why?` | the agent ended the call (or the time limit did) |
+| `voiceprint` | `state` | after a `voice` sample: `enrolled` (the print starts from it) or `skipped` (no voiceprint model ready; it is learned from the call) |
 
 `gen` numbers each reply; events for an older `gen` refer to lines that were already replaced.
 

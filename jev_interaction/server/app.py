@@ -3,7 +3,8 @@
     pip install "jev-interaction[server]"; jev-interaction serve      then open http://localhost:8080
     (from a clone: ./scripts/setup.sh)
 
-WebSocket /ws: first message {"type": "start", "profile": "companion", "language": "en"}, then binary 200 ms PCM16
+WebSocket /ws: first message {"type": "start", "profile": "companion", "language": "en"} (optionally "voice": a few
+seconds of the caller's voice, base64 PCM16 16 kHz, for the voiceprint; kept for this call only), then binary 200 ms PCM16
 16 kHz frames and JSON client messages; events come back as JSON. The protocol is in docs/protocol.md.
 
 Providers come from the environment: ASR_PROVIDER / TTS_PROVIDER = elevenlabs (default) or dashscope (mainland China),
@@ -12,6 +13,7 @@ any OpenAI-compatible LLM (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL), and JEV_PRESET
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -263,6 +265,9 @@ async def call(ws: WebSocket):
         await ws.close(code=4429)
         return
     start = json.loads(await ws.receive_text())
+    # a few seconds of the caller's voice said before the call, for the voiceprint: used in memory for this call, never
+    # written or logged, and forgotten when the call ends (Session.close)
+    voice = start.pop("voice", None)
     pid = str(start.get("profile") or "companion").rsplit("/", 1)[-1].removesuffix(".yaml")   # an id, or an old-style path
     path = paths.profiles().get(pid)
     if path is None:
@@ -322,8 +327,17 @@ async def call(ws: WebSocket):
     try:
         judge = registry.create("judge")
         session = Session(profile, send=send, judge=judge, recognizer=make_recognizer(language),
-                          responder=registry.create("llm"), vad=best_vad(), config=cfg, cast=cast, embedder=EMBEDDER,
+                          responder=registry.create("llm"), vad=best_vad(), config=cfg, cast=cast, embedder=EMBEDDER, sound=SOUND,
                           recorder=Recorder(paths.runs_dir() / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl" if RECORD else None))
+        if voice and EMBEDDER is not None:
+            try:
+                pcm = base64.b64decode(voice)[:ENROLL_MAX_BYTES]
+            except (ValueError, TypeError):
+                pcm = b""
+            voice = None
+            made = await session.enroll_sample(pcm)
+            pcm = b""
+            await ws.send_text(json.dumps({"type": "voiceprint", "state": "enrolled" if made else "skipped"}))
         try:
             await session.start()
         except Exception as exc:  # noqa: BLE001 - e.g. the recognizer refused the key: tell the page, end the call
