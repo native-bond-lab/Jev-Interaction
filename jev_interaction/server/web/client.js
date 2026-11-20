@@ -245,6 +245,7 @@
       note({ tone: m.action === 'wait' ? 'info' : 'go', kind: 'quiet', label: t(key), value: p && p[m.action], probs: p, chosen: m.action,
              detail: m.quiet_s != null ? `${t('quiet_for')} ${m.quiet_s}s` : '' });
     } else if (m.what === 'notice') {
+      if (m.action === 'let_be') return;                       // asked about every new picture: only a remark is news
       note({ tone: m.action === 'let_be' ? 'info' : 'go', kind: 'notice', label: t(m.action === 'let_be' ? 'd_let_be' : m.action === 'due' ? 'd_due' : 'd_remark'),
              value: p && p[m.action], probs: p, chosen: m.action, detail: m.seen || '' });
     } else if (m.what === 'not_for_me') {
