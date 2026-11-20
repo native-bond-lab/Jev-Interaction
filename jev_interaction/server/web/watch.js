@@ -15,7 +15,8 @@
     still: 0.02,        // ... and it has settled: frame to frame, less than this share moving
     settle_ms: 400,     // for this long
     moving_ms: 2500,    // or it has been changing this long without settling: taken anyway
-    cooldown_ms: 2000,  // never two pictures closer than this; after each look that found nothing new it doubles,
+    cooldown_ms: 1000,  // never two pictures closer than this (the seer itself takes 1-5 s and only the latest waits,
+                        // so the real pace follows the seer); after each look that found nothing new it doubles,
     cooldown_max_ms: 8000,   // up to this, and a look that found something brings it back down (seen())
     first_ms: 1200,     // the first look, after the camera warms up
     width: 640, quality: 0.7,

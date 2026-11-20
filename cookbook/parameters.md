@@ -121,7 +121,7 @@ out. Every verdict is in the call log (`voice`, with the similarity), for tuning
 On when the server has eyes: `VISION_MODEL` names any vision model on an OpenAI-compatible endpoint (`VISION_BASE_URL`
 and `VISION_API_KEY` fall back to the responder's). No model is picked for you. The page watches the camera with plain
 rules and sends a picture only when the view has changed (its thresholds are `RULES` in `server/web/watch.js`: share of
-the frame moved, settled or still moving, a cool-down of 2 s that doubles up to 8 s while looks find nothing new); the seer writes what is new in one sentence, which goes into the
+the frame moved, settled or still moving, a cool-down of 1 s that doubles up to 8 s while looks find nothing new); the seer writes what is new in one sentence, which goes into the
 record for Jev and the responder; the `notice` question asks whether to remark on it once nobody is talking. While it
 is experimental the page opens the camera only when its address has `?camera=1`.
 
