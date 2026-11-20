@@ -1,4 +1,5 @@
-// The camera on a video call, watched with plain rules, no model: a picture goes to the server only when the view has
+// The camera on a video call, watched with plain rules, no model (and, while every_ms is set, a picture every second
+// as well: heavy first, slimmed down once the rules are tuned): a picture goes to the server only when the view has
 // changed enough from the last one sent. Five times a second the frame is drawn 64x48 in grey and compared with that
 // last picture: the share of pixels that moved (brightness and contrast of the whole frame evened out first, so a light
 // going on or the camera's exposure is not a change; the middle of the frame counts double the edges). Once the change is big, the
@@ -19,6 +20,9 @@
                         // so the real pace follows the seer); after each look that found nothing new it doubles,
     cooldown_max_ms: 8000,   // up to this, and a look that found something brings it back down (seen())
     first_ms: 1200,     // the first look, after the camera warms up
+    every_ms: 1000,     // heavy for now: a picture at least this often whatever the change (the server looks whenever
+                        // the seer is free, at the latest one), so nothing is missed while the rules are tuned; null
+                        // turns it off and leaves only the change rules above
     width: 640, quality: 0.7,
   };
   const weight = new Float32Array(W * H);
@@ -53,13 +57,13 @@
     const big = document.createElement('canvas');
     let ref = null, prev = null, changingSince = 0, stillSince = 0, lastAt = 0, cooldown = RULES.cooldown_ms;
     // the server's verdict on each look: something new keeps the eyes quick, nothing new slows them down
-    api.seen = (isNew) => { cooldown = isNew ? RULES.cooldown_ms : Math.min(cooldown * 2, RULES.cooldown_max_ms); };
+    api.seen = (isNew) => { if (RULES.every_ms) return; cooldown = isNew ? RULES.cooldown_ms : Math.min(cooldown * 2, RULES.cooldown_max_ms); };
     const began = performance.now();
     function take(g, change, first, movingMs) {
       const w = Math.min(RULES.width, video.videoWidth), h = Math.round(w * video.videoHeight / video.videoWidth);
       big.width = w; big.height = h; big.getContext('2d').drawImage(video, 0, 0, w, h);
       const image = big.toDataURL('image/jpeg', RULES.quality).split(',')[1];
-      ref = g; changingSince = stillSince = 0; lastAt = first ? 0 : performance.now();   // the first look is the scene: no cool-down after it
+      ref = g; stillSince = 0; if (!movingMs) changingSince = 0; lastAt = first ? 0 : performance.now();   // the first look is the scene: no cool-down after it
       onPicture({ image, change: Math.round(change * 1000) / 1000, first, moving_s: Math.round((movingMs || 0) / 100) / 10 });
     }
     const timer = setInterval(() => {
@@ -69,6 +73,11 @@
       if (!ref) { if (now - began >= RULES.first_ms) take(g, 0, true); return; }
       const change = moved(g, ref);
       api.last = { change, motion };                          // for tuning RULES from the console
+      if (RULES.every_ms) {                                   // the heavy pace: a look every second, saying how long
+        changingSince = motion >= RULES.still ? (changingSince || now) : 0;   // they have kept moving (from 1 s on)
+        if (now - lastAt >= RULES.every_ms) take(g, change, false, changingSince && now - changingSince >= 1000 ? now - changingSince : 0);
+        return;
+      }
       if (change < RULES.change) { changingSince = stillSince = 0; return; }
       if (!changingSince) changingSince = now;
       stillSince = motion < RULES.still ? (stillSince || now) : 0;

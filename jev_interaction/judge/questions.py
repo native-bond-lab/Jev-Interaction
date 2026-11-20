@@ -11,7 +11,7 @@ agent's short name.
     the user talks, the agent leads        cut_in      cut_in / let_finish
     quiet since the agent's last line      quiet       go_on / check / wait / hang_up
     someone else can be put on the line    who         stay / one of the others (rides in the turn request)
-    the view changed (video calls)         notice      remark / let_be
+    the view changed (video calls)         notice      due / remark / let_be
 """
 from __future__ import annotations
 
@@ -127,8 +127,11 @@ def notice(name: str) -> dict:
     return {"type": "choice", "instructions": (
         f"Something new has just come into view on the video call, and right now nobody is talking. When two people are "
         f"on a video call and something new shows up on the other's side, they usually say a word about it: what they "
-        f"are holding, what they have just done, who has walked in, where they have gone. Would {name}, being who they "
-        f"are, say something about this now?"), "criteria": {
+        f"are holding, what they have just done, who has walked in, where they have gone. And if the user asked {name} "
+        f"earlier to watch for something or to tell them when something happens, they are waiting for it. Would {name}, "
+        "being who they are, say something about this now?"), "criteria": {
+        "due": (f"earlier in the call the user asked {name} to watch for this or to say when it happens, it has just "
+                f"shown up, and {name} has not said so yet for this time"),
         "remark": f"{name} says something about it now: it is new, and {name} has not remarked on it yet",
         "let_be": (f"{name} lets it pass: it is not really new (the same as before, a small shift in the picture), "
-                   f"{name} has just remarked on the view, or the user is plainly absorbed in something on their own")}}
+                   f"{name} has just remarked on it, or the user is plainly absorbed in something on their own")}}

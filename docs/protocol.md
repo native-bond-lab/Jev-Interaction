@@ -22,7 +22,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `user` | `text, partial` | the caller's words; `partial` while they are still talking |
 | `stop` | `gen` | drop everything, then reply `heard` |
 | `finish_line` | `gen` | drop queued lines, let the current one finish |
-| `decision` | `what, action?, go?, probs?, why?, ...` | a turn-taking decision Jev just made (`end_of_turn`, `floor`, `quiet`, `notice`, `not_for_me`); `notice` has `seen`, and `action` `remark` or `let_be`, for display and logs; `not_for_me` has `why`: `jev` (Jev heard it said to someone else), `far` (Config.far_db), `voice` (the voiceprint) |
+| `decision` | `what, action?, go?, probs?, why?, ...` | a turn-taking decision Jev just made (`end_of_turn`, `floor`, `quiet`, `notice`, `not_for_me`); `notice` has `seen`, and `action` `due` (what the caller asked to be told about), `remark` or `let_be`, for display and logs; `not_for_me` has `why`: `jev` (Jev heard it said to someone else), `far` (Config.far_db), `voice` (the voiceprint) |
 | `look` | `first, new, seconds, moving_s, error` | every picture the agent looked at: whether it found anything new (then a `seen` follows), how long the look took, and the error when it failed |
 | `seen` | `text, change, first` | what the agent saw in a `frame` that was new, in one sentence; it is in the call's record for Jev and the responder from now on |
 | `persona` | `id, name, gen, accent?` | someone else is on the line from reply `gen` on (the caller asked for them): lines from that reply are theirs, in their voice; show it when the first of them plays |

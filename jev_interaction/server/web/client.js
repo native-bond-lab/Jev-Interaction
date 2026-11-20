@@ -26,7 +26,7 @@
       p_normal: 'normal', p_patient: 'patient', p_narrate: 'narrate', p_eager: 'eager',
       o_finished: 'finished', o_continuing: 'still talking', o_wait: 'wait', o_normal: 'normal', o_patient: 'patient', o_narrate: 'narrate', o_eager: 'eager',
       l_due: 'asked for', l_fits: 'in passing',
-      d_remark: 'say something about it', d_let_be: 'let it pass', k_notice: 'what it sees', k_seen: 'seen', o_remark: 'remark', o_let_be: 'let it pass',
+      d_remark: 'say something about it', d_due: 'tell them, as asked', d_let_be: 'let it pass', o_due: 'asked for', k_notice: 'what it sees', k_seen: 'seen', o_remark: 'remark', o_let_be: 'let it pass',
       why_far: 'far from the microphone', why_jev: 'meant for someone else', quiet_for: 'quiet for',
       setup_chip: 'Set up', ready_chip: 'Ready', fun: 'Fun',
       err_file: 'Opened as a file, so there is no server to call. Run jev-interaction serve and open http://localhost:8080.',
@@ -55,7 +55,7 @@
       p_normal: '正常', p_patient: '耐心', p_narrate: '讲述', p_eager: '积极',
       o_finished: '说完了', o_continuing: '还在说', o_wait: '等', o_normal: '正常', o_patient: '耐心', o_narrate: '讲述', o_eager: '积极',
       l_due: '对方在等的', l_fits: '顺口一声',
-      d_remark: '说一句', d_let_be: '不提', k_notice: '看到的', k_seen: '看到', o_remark: '说一句', o_let_be: '不提',
+      d_remark: '说一句', d_due: '照约定告诉', d_let_be: '不提', o_due: '约定的', k_notice: '看到的', k_seen: '看到', o_remark: '说一句', o_let_be: '不提',
       why_far: '声音离麦克风较远', why_jev: '在和别人说话', quiet_for: '已安静',
       setup_chip: '配置', ready_chip: '已就绪', fun: '趣味角色',
       err_file: '当前是直接打开的本地文件，没有通话服务。请运行 jev-interaction serve，然后打开 http://localhost:8080。',
@@ -245,7 +245,7 @@
       note({ tone: m.action === 'wait' ? 'info' : 'go', kind: 'quiet', label: t(key), value: p && p[m.action], probs: p, chosen: m.action,
              detail: m.quiet_s != null ? `${t('quiet_for')} ${m.quiet_s}s` : '' });
     } else if (m.what === 'notice') {
-      note({ tone: m.action === 'remark' ? 'go' : 'info', kind: 'notice', label: t(m.action === 'remark' ? 'd_remark' : 'd_let_be'),
+      note({ tone: m.action === 'let_be' ? 'info' : 'go', kind: 'notice', label: t(m.action === 'let_be' ? 'd_let_be' : m.action === 'due' ? 'd_due' : 'd_remark'),
              value: p && p[m.action], probs: p, chosen: m.action, detail: m.seen || '' });
     } else if (m.what === 'not_for_me') {
       thinkingUntil = 0;

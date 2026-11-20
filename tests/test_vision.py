@@ -135,3 +135,15 @@ async def test_a_picture_that_comes_while_the_seer_is_busy_is_looked_at_next():
     gate.set()
     await settle(s)
     assert [x[0] for x in seer.looked] == [b"one", b"three"] and s.sight == "the user waves"
+
+
+@pytest.mark.asyncio
+async def test_what_the_user_asked_to_be_told_about_is_said_as_asked():
+    s, events, judge = scripted_session({"notice": {"due": 0.7, "remark": 0.2, "let_be": 0.1}},
+                                        seer=FakeSeer("a kitchen", "the kettle is steaming"))
+    await s.see(b"scene", first=True)
+    await s.see(b"kettle")
+    await s.tick()
+    await settle(s)
+    assert any(e.get("what") == "notice" and e["action"] == "due" for e in events)
+    assert "watch for" in s.ledger.turns[-2].data_line or any("asked you to watch" in m["content"] for m in s.llm.seen[-1])

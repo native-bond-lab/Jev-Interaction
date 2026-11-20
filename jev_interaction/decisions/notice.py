@@ -4,7 +4,8 @@ The page watches the camera and sends a picture only when the view has changed e
 puts it into one sentence, which goes into the record for every reader (Session.see). This decision is asked once per
 sight, as soon as the line is free: nobody talking, nothing being said or written. While the user talks the sight
 simply waits in the record, and the reply that follows already knows it. A sight left unasked for
-Config.notice_stale_s has passed. Jev picks the moment; what is said is the responder's, from the same record.
+Config.notice_stale_s has passed. Jev picks the moment (and whether it is one the user asked to be told about); what is said is the
+responder's, from the same record.
 """
 from __future__ import annotations
 
@@ -41,9 +42,9 @@ class Notice(Decision):
     async def apply(self, s, answers, ctx):
         choice = self.choose(s, answers, "notice", ctx)
         await s.send(type="decision", what="notice", action=choice, seen=ctx["seen"], probs=P(answers, "notice"))
-        if choice == "remark":
+        if choice in ("due", "remark"):          # due: what the user asked to be told about has shown up
             s.remarks_on_view += 1
-            await s.respond("notice")
+            await s.respond("notice_due" if choice == "due" else "notice")
 
 
 NOTICE = Notice()
