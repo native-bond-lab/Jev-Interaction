@@ -31,6 +31,7 @@ from jev_interaction import Profile  # noqa: E402  (after .env, so adapters read
 from jev_interaction import preset as preset_config  # noqa: E402
 from jev_interaction.adapters import best_embedder, best_sound, best_vad, registry  # noqa: E402
 from jev_interaction.recorder import Recorder  # noqa: E402
+from jev_interaction.server import personas as PERSONAS  # noqa: E402
 from jev_interaction.server import settings as S  # noqa: E402
 from jev_interaction.session import Session  # noqa: E402
 
@@ -116,7 +117,7 @@ def profile_card(pid: str, path) -> dict:
             "title_zh": d.get("title_zh", d.get("title", p.name)), "tagline": d.get("tagline", p.task),
             "tagline_zh": d.get("tagline_zh", d.get("tagline", p.task)), "language": d.get("language", "en"),
             "accent": d.get("accent", "#3ee0c8"), "order": d.get("order", 100),
-            "group": d.get("group", "task"), "listed": d.get("listed", True)}
+            "group": d.get("group", "task"), "listed": d.get("listed", True), "own": PERSONAS.is_own(pid)}
 
 
 @app.get("/api/profiles")
@@ -124,6 +125,33 @@ def profiles():
     cards = [profile_card(pid, f) for pid, f in paths.profiles().items()]
     # the page lists the working personas; the others (display.listed: false) are still there to load and to call by id
     return sorted((c for c in cards if c["listed"]), key=lambda c: (c["order"], c["id"]))
+
+
+@app.get("/api/personas/{pid}")
+def get_persona(pid: str):
+    """One persona as the page's editor shows it (the editor is offered only where settings are writable)."""
+    try:
+        return PERSONAS.read(pid, registry.selected("tts"))
+    except KeyError:
+        raise HTTPException(404, f"no persona {pid!r}") from None
+
+
+@app.post("/api/personas")
+async def save_persona(request: Request):
+    body = await _local_json(request)
+    try:
+        pid = PERSONAS.save(body, registry.selected("tts"))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"ok": True, "id": pid}
+
+
+@app.post("/api/personas/{pid}/delete")
+async def delete_persona(pid: str, request: Request):
+    await _local_json(request)
+    if not PERSONAS.delete(pid):
+        raise HTTPException(400, "only a persona of yours (profiles/ in the working folder) can be deleted")
+    return {"ok": True}
 
 
 def sound_state() -> str:

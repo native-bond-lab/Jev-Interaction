@@ -554,6 +554,7 @@
     const accent = /^#[0-9a-f]{6}$/i.test(p.accent || '') ? p.accent : '#8ab4ff';
     document.documentElement.style.setProperty('--accent', accent); island.setAccent(accent);
     document.querySelectorAll('.card[data-id]').forEach((c) => { const on = c.dataset.id === p.id; c.setAttribute('aria-checked', String(on)); c.tabIndex = on ? 0 : -1; });
+    window.JevPersonas.paint();
   }
   // the page's language picks the cast: English personas on the English page, Chinese ones on the Chinese page
   const cast = () => { const own = profiles.filter((p) => (p.language || 'en') === lang); return own.length ? own : profiles; };
@@ -623,7 +624,7 @@
   $('logClose').onclick = () => drawer(false);
   document.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
-    if (window.JevSettings.isOpen()) return;                   // the setup flow has its own keys
+    if (window.JevSettings.isOpen() || window.JevPersonas.isOpen()) return;   // the setup flow and the editor have their own keys
     const tag = (e.target.tagName || '').toLowerCase(), typing = tag === 'input' || tag === 'textarea' || tag === 'select';
     if (e.code === 'Space' && !typing && tag !== 'a' && (tag !== 'button' || e.target.classList.contains('card'))) { e.preventDefault(); $('call').click(); }
     else if (e.key.toLowerCase() === 'h' && !typing) document.body.classList.toggle('clean');
@@ -632,11 +633,21 @@
 
   window.JevSettings.init({ lang: () => lang, onHealth: applyHealth, onStatus: (s) => { setup = s; paintSetup(); }, call: () => startCall() });
   setLang(lang);
-  if (location.protocol !== 'file:') {
-    fetch('api/profiles').then((r) => (r.ok ? r.json() : Promise.reject())).then((list) => {
+  // the personas the server has; after the editor saves one, it is picked (and the page switches to its language)
+  function loadProfiles(pick) {
+    return fetch('api/profiles').then((r) => (r.ok ? r.json() : Promise.reject())).then((list) => {
       if (Array.isArray(list)) list = list.filter((p) => p && p.path); else list = (list && list.profiles) || [];
-      if (list.length) { profiles = list.map((p) => Object.assign({ id: p.path, group: 'task' }, p)); renderCards(); }
+      if (!list.length) return;
+      profiles = list.map((p) => Object.assign({ id: p.path, group: 'task' }, p));
+      const want = pick && profiles.find((p) => p.id === pick);
+      if (want) { selected = want; store.set('jev.profile', want.id); if ((want.language || 'en') !== lang) { setLang(want.language || 'en'); return; } }
+      else if (selected && !profiles.some((p) => p.id === selected.id)) selected = null;
+      renderCards();
     }).catch(() => {});
+  }
+  window.JevPersonas.init({ lang: () => lang, selected: () => selected, onSaved: (id) => loadProfiles(id) });
+  if (location.protocol !== 'file:') {
+    loadProfiles();
     fetch('api/health').then((r) => (r.ok ? r.json() : Promise.reject())).then(applyHealth).catch(() => {});
   }
   window.JevPage = { island, startCall, endCall };   // for the console and for recordings

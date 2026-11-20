@@ -167,6 +167,14 @@ display: {title: Front desk, title_zh: 酒店前台, tagline: "...", tagline_zh:
 `language` is the call's default language; `listed: false` keeps the persona off the list but callable by id (and
 reachable through a `cast`).
 
+## Making one on the page
+
+On your own machine (or your own Docker) the page has **New persona** and **Edit** under the cards: the name and card,
+`prompt`, `manner`, the three turn-taking choices and the voice for the synthesizer in use. It writes `profiles/<id>.yaml`
+in the working folder and keeps every key it does not show (policies, a cast, other voices). Editing a built-in persona
+saves your copy under the same id; deleting the copy brings the built-in one back. A public deployment lists personas
+and never offers to edit them.
+
 ## Checking a persona
 
 - `jev_interaction.testing` runs a whole call with a fake judge, recognizer, responder and voice: no keys.
