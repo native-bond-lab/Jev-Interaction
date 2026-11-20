@@ -82,8 +82,10 @@ QUIET_S = 0.4
 
 
 def turn_questions(p) -> dict:
-    """What every turn request asks: have they finished, and one fact for each pace but the starting one."""
-    return {"done": Q.done(p.short), **Q.pace_facts(PACES, "normal")}
+    """What every turn request asks: have they finished, and one fact for each pace but the starting one (in the
+    judge's own wording, as decisions/turn.py)."""
+    facts = B.pace_facts if PROVIDER == "bailian" else Q.pace_facts
+    return {"done": Q.done(p.short), **facts(PACES, "normal")}
 
 
 def cases(held_out: bool = False, bare: bool = False) -> list[dict]:
@@ -242,7 +244,8 @@ def decision_cases(last_words: bool, held_out: bool = False, provider: str = "je
                 q = {**q, **Q.last_words()}
             st["user_words_so_far"] = " ".join(segments)
             out.append({"d": "cutting in", "lang": lang, "right": right, "q": q, "state": st,
-                        "act": lambda a: "cut_in" if P(a, "spar").get("sparring", 0.0) >= 0.5 else "let_finish",
+                        "act": lambda a, line=Config(judge_provider=provider).sparring_line():
+                            "cut_in" if P(a, "spar").get("sparring", 0.0) >= line else "let_finish",
                         "ok": lambda act, right=right: act == right})
         for recent, said, right in K.WHO[lang]:
             q, st = turn({"who": Q.who(p.short, {other_id: (b.short, b.task)})},
@@ -313,6 +316,7 @@ async def main():
     last_words = args.last_words or PROVIDER == "bailian"        # as decisions/turn.py: the provider decides
     request = last_words_request if last_words else engine_request
     line = Config(judge_provider=PROVIDER).finished_line()       # where the engine takes the turn
+    words = Config().words_min                                   # the words' line while a sound model has a say
     items = cases(args.held_out, args.bare)
     print(f"judge: {judge.model} at {judge.url.split('/')[2].split('.', 1)[-1]} · questions: {PROVIDER} · wording: "
           f"{'last words' if last_words else 'engine'} · pauses: {'held out' if args.held_out else 'tuning set'}"
@@ -340,7 +344,9 @@ async def main():
             print(f"  {lang}: {len(g)} pauses, right {sum((p >= 0.5) == y for p, y in g) / len(g):.0%}, ranking {ranking(g):.2f}, "
                   f"mean p(finished) {statistics.mean(fin):.2f} when finished / {statistics.mean(mid):.2f} when cut off; "
                   f"at the line ({line}): answers a finished one {sum(p >= line for p in fin) / len(fin):.0%}, "
-                  f"speaks into an unfinished one {sum(p >= line for p in mid) / len(mid):.0%}")
+                  f"speaks into an unfinished one {sum(p >= line for p in mid) / len(mid):.0%}; "
+                  f"at the words' line with a sound model ({words}): {sum(p >= words for p in fin) / len(fin):.0%} / "
+                  f"{sum(p >= words for p in mid) / len(mid):.0%}")
         if failed:
             print(f"  {len(failed)} requests failed, e.g. {failed[0]}")
         questions, state = engine_request(items[0])
