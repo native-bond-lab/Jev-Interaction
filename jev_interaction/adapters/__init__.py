@@ -38,4 +38,21 @@ def best_embedder() -> Embedder | None:
     return _EMBEDDER[0]
 
 
-__all__ = ["VAD", "Recognizer", "Responder", "Synthesizer", "Embedder", "Segment", "EnergyVAD", "best_vad", "best_embedder"]
+_SOUND: list = []
+
+
+def best_sound():
+    """The process's sound model for "have they finished" (SmartTurn v3.2) when onnxruntime is installed and JEV_SOUND
+    is not "off", loading in the background; None otherwise (the turn goes by the words, as before)."""
+    import importlib.util
+    import os
+    if os.getenv("JEV_SOUND", "smart-turn") in ("off", "0", "") or importlib.util.find_spec("onnxruntime") is None:
+        return None
+    if not _SOUND:
+        from .smart_turn import SmartTurn
+        _SOUND.append(SmartTurn())
+        _SOUND[0].warm()
+    return _SOUND[0]
+
+
+__all__ = ["VAD", "Recognizer", "Responder", "Synthesizer", "Embedder", "Segment", "EnergyVAD", "best_vad", "best_embedder", "best_sound"]

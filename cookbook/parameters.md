@@ -111,6 +111,25 @@ is open. The `quiet` policy is a threshold by default; `sample` draws among the 
 | `judge_turns` / `judge_turn_chars` | 8 / 300 | how much of the call Jev reads at each moment |
 | `safe_words` | ("red",) | stop everything, no judgement involved |
 
+### The sound of the voice
+
+On when the session has a sound model (`pip install "jev-interaction[sound]"`: SmartTurn v3.2, BSD-2-Clause, about 8 MB on
+CPU; the server and the Docker image pick it up by themselves, `JEV_SOUND=off` turns it off, `JEV_SOUND_RULE` sets the
+rule). At each frame of a pause after the user's words it reads the last 8 s of audio and says how likely the turn is
+over. The words and the sound miss on different pauses: on eot-bench v1.0 each cut people off on about 85 of 850
+mid-turn pauses and only 11 of those were the same, so requiring both removes most cut-offs.
+
+| field | recommended | what it does |
+|---|---|---|
+| `sound_rule` | "and" | "and": the turn is taken only when the words and the sound both say finished; "or": either; "off": the words alone |
+| `sound_min` | zh 0.8, en 0.4, other 0.5 | the sound's line, by language |
+| `words_min` | 0.8 | the words' line (Jev's p(finished)) while the sound has a say |
+| `sound_wait_ms` | 2000 | words judged finished that the sound keeps calling unfinished are answered after this much quiet |
+
+On eot-bench v1.0 at 2% cut-offs, "and" waited 1248 ms (en) / 1050 ms (zh), against 1552 / 1119 for the words alone and
+1546 / 1265 for "or". Every reading and every turn it held back is in the call log (`judge` purpose `sound`, and
+`end_of_turn` with `go: held`), for tuning the lines on your own calls.
+
 ### The caller's voiceprint
 
 On when the session has an embedder (`pip install "jev-interaction[voiceprint]"`; the server and the Docker image pick
@@ -139,7 +158,7 @@ out. Every verdict is in the call log (`voice`, with the similarity), for tuning
 
 | what you hear | try first | then |
 |---|---|---|
-| the agent jumps in while the user is still thinking | the manner: "lets a thinking pause run" | `patient` pace `max_wait_ms`, or an `end_of_turn` threshold |
+| the agent jumps in while the user is still thinking | the sound model (`[sound]` extra, `sound_rule="and"`) | the manner: "lets a thinking pause run"; `patient` pace `max_wait_ms`, or an `end_of_turn` threshold |
 | the user waits too long for an answer | `normal` pace `max_wait_ms` down | `turn_reask_ms` earlier |
 | an "mm-hm" stops the agent mid-sentence | the manner: "goes on through mm-hms" | `overlap_ask_ms` up (1000 was tested), `yield_p` up |
 | the agent talks over a real interruption | `overlap_ask_ms` down | `yield_p` down, a `floor` threshold lower |

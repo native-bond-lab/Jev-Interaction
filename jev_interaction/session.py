@@ -44,7 +44,7 @@ class Session:
     def __init__(self, profile: Profile, *, send: Callable[[dict], Awaitable[None]], judge: JevClient, recognizer: Recognizer,
                  responder: Responder, vad: VAD, config: Config | None = None, recorder: Recorder | None = None,
                  system_template: str = SYSTEM_TEMPLATE, speech: str | None = None, cast: dict[str, Profile] | None = None,
-                 embedder=None):
+                 embedder=None, sound=None):
         self.p, self.cfg, self.send_event = profile, config or Config(), send
         self.judge, self.asr, self.llm, self.vad = judge, recognizer, responder, vad
         self.ledger = Ledger()                   # the call's one record, on one clock (ledger.py)
@@ -76,6 +76,10 @@ class Session:
         self.caller_levels: list[float] = []   # loudness of the utterances answered as the caller's (Config.far_db)
         self.embedder = embedder                # speaker embeddings for the caller's voiceprint; None: no voiceprint
         self.voiceprint = Voiceprint(self.cfg.voice_same, self.cfg.voice_other, self.cfg.far_db or 10.0, self.cfg.voice_verdict_ms)
+        self.sound = sound                       # "have they finished" from the voice (adapters/smart_turn.py); None: words alone
+        self.audio_tail = bytearray()            # the last 8 s of the line from the user, pauses included, for the sound model
+        self.heard_sound: tuple[int, int, float] | None = None   # (utterance id, ms of quiet it was scored at, p(finished))
+        self._sound_busy = False
         self.hanging_up = False
         self.busy: set[str] = set()              # decisions with a question out to Jev right now
         self._tasks: set[asyncio.Task] = set()
@@ -126,6 +130,9 @@ class Session:
     async def on_audio(self, pcm: bytes):
         await self.asr.send(pcm)
         step = self.cfg.frame_ms
+        if self.sound is not None:
+            self.audio_tail += pcm
+            del self.audio_tail[:-self.SOUND_WINDOW]
         if hasattr(self.vad, "voiced_ms"):       # how much of the frame is voice, the bar raised while the agent's line plays
             heard = self.vad.voiced_ms(pcm, self.speaking)
             voiced = heard >= self.cfg.voice_min_ms
@@ -142,11 +149,13 @@ class Session:
             self.utt.levels.append(frame_db(pcm))
             self._hear_voice(pcm, heard)
             self.silence_ms = 0
+            self.heard_sound = None               # the voice is back: the last reading of the pause no longer holds
             if self.speaking:
                 self.utt.over_ms += heard         # only voice over the line counts, not what came before it
                 self._over()
         elif self.utt is not None:
             self.silence_ms += step
+            self._hear_pause()
             if not self.utt.heard and self.silence_ms >= self.cfg.sound_close_ms:
                 self.utt = None                   # a sound and nothing after it: nobody's turn
 
@@ -299,6 +308,42 @@ class Session:
         who = self.voiceprint.judge(emb, u.level, u.speech_ms)
         u.who = {**who, "emb": emb}
         self.rec.write("voice", utt=u.id, **who)
+
+    ENROLL_SECONDS_PER_PART = 4          # the voiced part of a sample is cut into pieces of about this long, 2 to 4 of them:
+                                         # at least two, so a stranger can be told from the first words (voiceprint.MIN_ENROLL)
+
+    async def enroll_sample(self, pcm: bytes, wait_s: float = 5.0) -> int:
+        """A few seconds the caller says before the call (16 kHz PCM16, lines read aloud): the print starts from it. Only
+        the frames with voice in them count (reading starts late and stops to breathe). Waits up to `wait_s` for a model
+        still loading; without one the print is learned from the call as before. Returns the entries made. The audio is
+        not kept: only the embeddings, in memory, until the call ends."""
+        if self.embedder is None or not pcm:
+            return 0
+        waited = 0.0
+        while not self.embedder.ready and waited < wait_s:
+            await asyncio.sleep(0.2)
+            waited += 0.2
+        if not self.embedder.ready:
+            return 0
+        frame = self.cfg.sample_rate * 2 * self.cfg.frame_ms // 1000
+        frames = [pcm[i:i + frame] for i in range(0, len(pcm) - frame + 1, frame)]
+        if not frames:
+            return 0
+        dbs = [frame_db(f) for f in frames]
+        loud = sorted(dbs)[len(dbs) // 2:]
+        level = sum(loud) / len(loud)
+        voiced = b"".join(f for f, d in zip(frames, dbs) if d >= max(level - 20.0, -55.0))
+        seconds = len(voiced) / (self.cfg.sample_rate * 2)
+        parts = max(2, min(4, int(seconds // self.ENROLL_SECONDS_PER_PART)))
+        step = len(voiced) // parts // 2 * 2
+        n = 0
+        for k in range(parts):
+            emb = await asyncio.to_thread(self.embedder.embed, voiced[k * step:(k + 1) * step])
+            if emb is not None:
+                self.voiceprint.add(-1 - k, emb, level)
+                n += 1
+        self.rec.write("voice_enroll", source="sample", n=len(self.voiceprint.entries), voiced_s=round(seconds, 1))
+        return n
 
     async def _enroll(self, u: Utterance) -> None:
         """An answered utterance teaches the caller's print, unless it was judged someone else's."""

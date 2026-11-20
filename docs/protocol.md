@@ -38,7 +38,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 |---|---|
 | `GET /tts/{id}` | streamed audio for a `line` or `listen` id |
 | `GET /api/profiles` | persona cards: id, path, name, title(_zh), tagline(_zh), language, accent |
-| `GET /api/health` | `ready`, `missing` settings, providers, `vad`, `voiceprint` (`off` \| `loading` \| `ready` \| `failed`) |
+| `GET /api/health` | `ready`, `missing` settings, providers, `vad`, `voiceprint` (`off` \| `loading` \| `ready` \| `failed`), `sound` (the same, and the rule) |
 | `GET /api/settings`, `POST /api/settings`, `POST /api/settings/test` | the settings page; writes only from this server's own page on this machine |
 
 Each call is logged to `runs/call-*.jsonl` (one JSON line per event and judgement, including the state Jev read, the

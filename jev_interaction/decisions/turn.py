@@ -74,7 +74,10 @@ class Turn(Decision):
         await s._update_pace(Q.pace_probs(answers, [p.name for p in s.cfg.paces], s.cfg.start_pace))
         # a failed judge: p(finished) 0, so the turn is answered at the pace's longest wait
         finished = Q.finished(answers)
-        go = self.policy_for(s, ctx).draw(finished)                 # decided here, once, with the answer
+        if s.sound_ready() and s.cfg.sound_rule == "and":           # the words' own line; the sound must agree too (on_tick)
+            go = finished >= s.cfg.words_min
+        else:
+            go = self.policy_for(s, ctx).draw(finished)             # decided here, once, with the answer
         s.judged = {"finished": finished, "go": go, "drawn": False,
                     "who": HANDOVER.chosen(s, answers, ctx) if HANDOVER.ready(s, ctx) else None}
         # one answer, one thing done. The turn is theirs to end: once it is judged finished the agent takes it when
@@ -101,7 +104,10 @@ class Turn(Decision):
             return False
         pace = s.params()
         j = s.judged
-        if j and not j["drawn"]:
+        if s.sound_ready():
+            if await self.with_sound(s, j):
+                return True
+        elif j and not j["drawn"]:
             j["drawn"] = True                 # one decision per Jev answer; new words or more quiet bring a new answer
             go = j["go"] if "go" in j else self.policy_for(s, ctx={}).draw(j["finished"])
             await s.send(type="decision", what="end_of_turn", finished=round(j["finished"], 2), go=go)
@@ -113,10 +119,35 @@ class Turn(Decision):
             await self.answer(s, "trailed")   # a long silence after their words: the agent speaks, as a person does
             return True
         crossed = any(s.silence_ms - s.cfg.frame_ms < m <= s.silence_ms for m in s.cfg.turn_reask_ms)   # any mark, not only
-        if (j is None or j["drawn"]) and crossed:   # multiples of a frame; also words nobody has judged yet (said over a
+        settled = j is None or j["drawn"] or (s.sound_ready() and not j["go"])
+        if settled and crossed:                  # multiples of a frame; also words nobody has judged yet (said over a
                                                  # line that then ended)
             s._spawn(self.ask(s, utt_id=s.utt.id))
         return False
+
+    async def with_sound(self, s, j) -> bool:
+        """The words (Jev's latest answer) and the sound (the latest reading of this pause) together, by Config.sound_rule.
+        "and": the turn is taken when both say finished; words judged finished that the sound keeps calling unfinished
+        are answered after Config.sound_wait_ms of quiet. "or": when either does. Read again on every tick: a reading
+        comes with each frame of the pause."""
+        p, line = s.sound_p(), s.cfg.sound_line()
+        words, sound = bool(j and j["go"]), p is not None and p >= line
+        if s.cfg.sound_rule == "or":
+            go, by = words or sound, ("words" if words else "sound")
+        else:
+            waited = words and s.silence_ms >= s.cfg.sound_wait_ms
+            go, by = words and (sound or waited), ("both" if sound else "waited")
+        if not go:
+            if words and not j.get("held"):           # once per answer: the words said finished, the sound held it back
+                j["held"] = True
+                s.ledger.note("decision", what="end_of_turn", finished=round(j["finished"], 3), sound=p, go="held")
+            return False
+        if j is not None:
+            j["drawn"] = True
+        await s.send(type="decision", what="end_of_turn", finished=round(j["finished"], 2) if j else None,
+                     sound=round(p, 2) if p is not None else None, go=True, by=by)
+        await self.answer(s)
+        return True
 
     async def answer(self, s, kind: str = "spoke"):
         """Answer what the user said, unless the voice was someone else's (Config.far_db, the voiceprint)."""

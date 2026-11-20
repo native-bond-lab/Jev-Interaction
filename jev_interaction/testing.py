@@ -88,6 +88,24 @@ class FakeEmbedder:
         return v / np.linalg.norm(v)
 
 
+class FakeSound:
+    """A sound model for tests: every reading is `p` (None: the model has not loaded yet)."""
+
+    def __init__(self, p: float | None = 0.5):
+        self.p, self.heard = p, []
+
+    @property
+    def ready(self) -> bool:
+        return self.p is not None
+
+    def warm(self) -> None:
+        pass
+
+    def score(self, pcm: bytes) -> float | None:
+        self.heard.append(len(pcm))
+        return self.p
+
+
 class FakeSynthesizer:
     media_type = "audio/mpeg"
 
@@ -96,7 +114,7 @@ class FakeSynthesizer:
 
 
 def scripted_session(answers: dict | None = None, policies: dict | None = None, profile: Profile | None = None,
-                     send: Callable[[dict], Awaitable[None]] | None = None, embedder=None, **config) -> tuple[Session, list[dict], FakeJudge]:
+                     send: Callable[[dict], Awaitable[None]] | None = None, embedder=None, sound=None, **config) -> tuple[Session, list[dict], FakeJudge]:
     """A session on fakes, plus the list its events land in and its judge. `config` overrides Config fields."""
     events: list[dict] = []
 
@@ -108,7 +126,7 @@ def scripted_session(answers: dict | None = None, policies: dict | None = None, 
     judge = FakeJudge(answers)
     s = Session(profile or Profile("Mara Quinn", task="A companion who chats.", manner="Chatty listener."), send=collect,
                 judge=judge, recognizer=FakeRecognizer(), responder=FakeResponder(), vad=FakeVAD(), config=cfg,
-                embedder=embedder)
+                embedder=embedder, sound=sound)
     return s, events, judge
 
 

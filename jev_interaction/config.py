@@ -86,6 +86,16 @@ class Config:
                                        # benchmarks count 4+ words as a turn). Words, or characters where words have no
                                        # spaces (Chinese, Japanese, Korean)
 
+    # the sound of the voice (adapters/smart_turn.py), used when the session has a sound model ("jev-interaction[sound]"):
+    # a second opinion on "have they finished", scored on the last 8 s of audio at each frame of the pause
+    sound_rule: str = "and"            # "and": the turn is taken only when the words and the sound both say finished (cutting
+                                       # someone off is the worse mistake); "or": either one; "off": the words alone
+    sound_min: dict = field(default_factory=lambda: {"zh": 0.8, "en": 0.4, "": 0.5})   # the sound's line, by language ("" any
+                                       # other). eot-bench v1.0 at 2% cut-offs with "and": en 0.40, zh 0.82
+    words_min: float = 0.8             # the words' line while the sound has a say (eot-bench: en 0.81, zh 0.91); words alone go
+                                       # by the end_of_turn policy
+    sound_wait_ms: int = 2000          # words judged finished and the sound still says no: answered anyway after this much quiet
+
     # the caller's voiceprint (voiceprint.py), used when the session has an embedder (pip install "jev-interaction[voiceprint]")
     voice_same: float = 0.45           # cosine to the caller's print at or above this: the caller
     voice_other: float = 0.25          # at or below this: someone else, not answered (between: as if there were no print)
@@ -112,6 +122,9 @@ class Config:
         if self.hold_release_ms is not None:
             warnings.warn("Config(hold_release_ms=...) is gone: the line is no longer paused", DeprecationWarning, stacklevel=3)
             self.hold_release_ms = None
+
+    def sound_line(self) -> float:
+        return self.sound_min.get(self.language, self.sound_min.get("", 0.5))
 
     def pace(self, name: str) -> Pace:
         return next(p for p in self.paces if p.name == name)
