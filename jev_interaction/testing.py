@@ -22,8 +22,9 @@ class FakeJudge:
     def __init__(self, answers: dict[str, dict[str, float]] | None = None):
         self.answers, self.asked = dict(answers or {}), []
 
-    async def ask(self, questions: dict, state: str) -> dict:
+    async def ask(self, questions: dict, state: str, assets: dict | None = None) -> dict:
         self.asked.append((set(questions), state))
+        self.assets = assets
         return {k: {"choice": max(v, key=v.get), "probabilities": v} for k, v in self.answers.items() if k in questions}
 
     async def aclose(self) -> None: ...

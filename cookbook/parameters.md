@@ -127,6 +127,7 @@ is experimental the page opens the camera only when its address has `?camera=1`.
 
 | field | recommended | what it does |
 |---|---|---|
+| `jev_sees` | False | Jev compares the last picture that was news with the newest itself (its experimental image input), and the responder is shown the view; the seer only writes the record line, off the path. The server turns it on with `JEV_SEES=1` |
 | `notice_stale_s` | 6.0 | a sight not yet asked about after this long has passed: no remark on it |
 | `frame_max_bytes` | 600000 | a bigger picture from the page is dropped |
 

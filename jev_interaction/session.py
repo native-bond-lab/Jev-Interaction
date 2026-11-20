@@ -85,6 +85,8 @@ class Session:
         self.seeing = False                      # a picture is with the seer: the page's next one waits its turn
         self.video = False                       # the page has sent a picture: this is a video call
         self.frame_waiting: dict | None = None   # the latest picture that came while the seer was busy
+        self.frame_now: bytes | None = None      # the latest picture from the page (Config.jev_sees: Jev and the responder
+        self.frame_fresh = False                 # see it themselves); fresh until the notice question has seen it
         self.remarks_on_view = 0
         self.hanging_up = False
         self.busy: set[str] = set()              # decisions with a question out to Jev right now
@@ -174,9 +176,10 @@ class Session:
                     last.text, last.cut = heard, True
 
     def _frame(self, msg: dict) -> None:
-        """A picture the page took because the view changed. One at a time: while the seer is on one, the latest to arrive
-        waits and is looked at next (any older waiting one is dropped)."""
-        if self.seer is None:
+        """A picture from the page. With Config.jev_sees, Jev compares it with the last one that was news and the
+        responder is shown it (the notice decision); the seer, if any, only writes the record line afterwards. Without,
+        the seer looks first, one at a time: the latest to arrive while it is busy waits (any older one is dropped)."""
+        if self.seer is None and not self.cfg.jev_sees:
             return
         self.video = True
         data = str(msg.get("image") or "")
@@ -185,6 +188,14 @@ class Session:
         try:
             image = base64.b64decode(data.split(",", 1)[-1], validate=True)
         except (binascii.Error, ValueError):
+            return
+        if self.cfg.jev_sees:
+            self.frame_now, self.frame_fresh = image, True
+            if self.sight_image is None:          # the first picture is the scene: what later ones are compared with
+                self.sight_image, self.frame_fresh = image, False
+                if self.seer is not None and not self.seeing:
+                    self.seeing = True
+                    self._spawn(self.see(image, first=True))
             return
         look = dict(image=image, change=float(msg.get("change") or 0.0), first=bool(msg.get("first")),
                     moving_s=float(msg.get("moving_s") or 0.0))
@@ -226,10 +237,29 @@ class Session:
         if seen:
             self.sight, self.sight_image = seen, image
             self.ledger.seen(seen)
-            if not first:
+            if not first and not self.cfg.jev_sees:
                 self.sight_pending = (time.monotonic(), seen)
             await self.send(type="seen", text=seen, change=round(change, 3), first=first)
         return seen
+
+    async def record_sight(self, before: bytes, now: bytes) -> None:
+        """Jev saw something worth a word (Config.jev_sees): the seer, if any, puts it into one sentence for the record,
+        off the path of the reply, so later turns know what was seen."""
+        if self.seer is None:
+            return
+        from .speaking import LANGUAGES
+        try:
+            seen = await asyncio.wait_for(self.seer.describe(now, before=self.sight, before_image=before, name=self.p.short,
+                                                             language=LANGUAGES.get(self.cfg.language, self.cfg.language)), 15)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - no record line; the call goes on
+            self.rec.write("seer_error", error=f"{type(exc).__name__}: {str(exc)[:160]}")
+            return
+        if seen:
+            self.sight = seen
+            self.ledger.seen(seen)
+            await self.send(type="seen", text=seen, change=0.0, first=False)
 
     async def _segments_loop(self):
         async for seg in self.asr.segments():
@@ -373,12 +403,13 @@ class Session:
         self.utt, self.judged = None, None
 
     # ------------------------------------------------------------------ judgements
-    async def _ask(self, purpose: str, questions: dict, state: str) -> dict:
+    async def _ask(self, purpose: str, questions: dict, state: str, assets: dict | None = None) -> dict:
         """Jev's answers, or {} when the judge fails or is slow: every decision then takes its fallback (floor -> carry on,
         turn -> the pace's max wait, quiet -> nothing), so a judge error never freezes the call."""
         t = time.monotonic()
         try:
-            answers = await asyncio.wait_for(self.judge.ask(questions, state), self.cfg.judge_timeout_s)
+            asked = self.judge.ask(questions, state, assets) if assets else self.judge.ask(questions, state)
+            answers = await asyncio.wait_for(asked, self.cfg.judge_timeout_s)
         except Exception as exc:  # noqa: BLE001
             self.rec.write("judge_error", purpose=purpose, error=f"{type(exc).__name__}: {str(exc)[:200]}")
             await self.send(type="error", what="judge", purpose=purpose, text=f"{type(exc).__name__}: {str(exc)[:120]}")
@@ -461,7 +492,7 @@ class Session:
                         accent=(new.extra.get("display") or {}).get("accent"))
         await self.respond("take_over", who=old.short)
 
-    async def respond(self, kind: str, quiet_s: float = 0.0, who: str = ""):
+    async def respond(self, kind: str, quiet_s: float = 0.0, who: str = "", image: bytes | None = None):
         self.gen += 1
         gen = self.gen
         self.generating = True
@@ -481,6 +512,12 @@ class Session:
         else:
             self.ledger.user("", line, who=self.p.short)
         messages = [{"role": "system", "content": self.system}, *self.ledger.messages(self.p.short)]
+        image = image or (self.frame_now if self.cfg.jev_sees and self.video else None)
+        plain = messages
+        if image is not None and messages[-1]["role"] == "user":     # on a video call the responder sees the view too
+            url = "data:image/jpeg;base64," + base64.b64encode(image).decode()
+            parts = [dict(type="text", text=messages[-1]["content"]), dict(type="image_url", image_url={"url": url})]
+            messages = [*messages[:-1], {"role": "user", "content": parts}]
         turn = self.ledger.agent("", who=self.p.short)
         self.replies[gen] = turn
         self.rec.write("respond", gen=gen, kind=kind, data_line=line)
@@ -506,6 +543,7 @@ class Session:
                 if turn.text or gen != self.gen:
                     break
                 self.rec.write("no_reply", gen=gen, kind=kind, attempt=attempt, error=error)
+                messages = plain                      # a responder that would not take the picture: words only
                 if attempt == 2:                      # twice nothing: the page is told, the quiet question takes it from here
                     await self.send(type="error", what="responder", text=error or "the model wrote nothing")
         finally:

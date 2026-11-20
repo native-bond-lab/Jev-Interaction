@@ -48,3 +48,11 @@ def notice(name: str, seen: str, remarks: int) -> str:
     if remarks:
         s += f"{name} has remarked on the view {remarks} time(s) on this call, unasked.\n"
     return s
+
+
+def notice_pictures(name: str, before: str, now: str, remarks: int) -> str:
+    s = (f"What {name} saw when something last changed: {before}\nWhat {name} sees now: {now}\n"
+         "Nobody is talking right now.\n")
+    if remarks:
+        s += f"{name} has remarked on the view {remarks} time(s) on this call, unasked.\n"
+    return s

@@ -47,6 +47,10 @@ class Decision:
         """The text Jev reads. The header (who, the task profile, the pace, the recent turns) opens every state."""
         return S.header(s.p, s.pace, s.ledger, s.cfg.judge_turns, s.cfg.judge_turn_chars, video=s.video)
 
+    def assets(self, s: Session, ctx: dict) -> dict | None:
+        """Pictures the state names by key (video calls); None for a question in words only."""
+        return None
+
     def allowed(self, s: Session, ctx: dict) -> Iterable[str] | None:
         """The choices that apply right now; None for all of them."""
         return None
@@ -75,7 +79,7 @@ class Decision:
         try:
             questions, state = self.questions(s, ctx), self.state(s, ctx)
             ctx.setdefault("gen", s.gen)
-            answers = await s._ask(self.name, questions, state)
+            answers = await s._ask(self.name, questions, state, self.assets(s, ctx))
             if self.current(s, ctx):
                 await self.apply(s, answers, ctx)
         finally:

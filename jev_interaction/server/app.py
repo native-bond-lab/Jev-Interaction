@@ -45,6 +45,7 @@ DAY_BUDGET_S = 60 * float(os.getenv("MAX_CALL_MINUTES_PER_DAY", "0"))   # 0 = no
 VAD_NAME = type(best_vad()).__name__     # which ear this server has: TenVAD, or EnergyVAD without the ten-vad package
 EMBEDDER = best_embedder()               # the caller's voiceprint: ECAPA when speechbrain is installed (loads in the background)
 SEER = best_seer()                       # eyes for video calls when VISION_MODEL names a vision model; None: voice only
+JEV_SEES = os.getenv("JEV_SEES") == "1"  # Jev looks at the pictures itself, the responder is shown them (Config.jev_sees)
 MAX_WAITING = int(os.getenv("MAX_WAITING_CALLS", "20"))     # callers held in line when every line is taken; more than this hear busy
 LOG = logging.getLogger("uvicorn.error")   # uvicorn's own logger: the lines land beside its access log
 ACTIVE = {"calls": 0}
@@ -135,7 +136,7 @@ def health():
     missing = registry.missing_settings()
     llm = f"{os.getenv('LLM_MODEL', '')} @ {os.getenv('LLM_BASE_URL', '')}" if os.getenv("LLM_BASE_URL") else None
     return {"ready": not missing, "missing": missing, "preset": os.getenv("JEV_PRESET", "recommended"),
-            "vad": VAD_NAME, "voiceprint": voiceprint_state(), "vision": SEER is not None,
+            "vad": VAD_NAME, "voiceprint": voiceprint_state(), "vision": SEER is not None or JEV_SEES,
             "providers": {"judge": os.getenv("JEV_MODEL", "jev-latest"), "llm": llm, "asr": registry.selected("asr"),
                           "tts": registry.selected("tts")}, "speech": registry.speech_style()}
 
@@ -288,6 +289,7 @@ async def call(ws: WebSocket):
     profile = Profile.load(path)
     language = start.get("language") or (profile.extra.get("display") or {}).get("language", "en")
     cfg = preset_config(os.getenv("JEV_PRESET", "recommended"), language=language)
+    cfg.jev_sees = JEV_SEES
     synth = make_synthesizer(profile, pid)
     # who else can be put on this line (the persona's `cast`): the caller asks, Jev hears it, the session hands over
     cast = {pid: profile, **{c: Profile.load(paths.profiles()[c]) for c in profile.extra.get("cast") or [] if c in paths.profiles()}}

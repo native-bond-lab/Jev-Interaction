@@ -75,6 +75,8 @@ class Config:
     voice_enroll_ms: int = 2000        # an answered utterance at least this long teaches the print
 
     # video calls (a session with a seer; the page decides when the view changed, see client.js `watch`)
+    jev_sees: bool = False             # Jev compares the pictures itself (its image input) and the responder is shown the
+                                       # view; the seer, if any, only writes the record line. Off: the seer looks first
     notice_stale_s: float = 6.0        # a sight not yet asked about after this long has passed: no remark on it
     frame_max_bytes: int = 600_000     # a bigger picture from the page is dropped
 

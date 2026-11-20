@@ -22,12 +22,18 @@ class JevClient:
         self.url = url
         self._http = httpx.AsyncClient(timeout=timeout)
 
-    async def ask(self, questions: dict, state: str) -> dict:
-        """{name: {"choice": str, "probabilities": {choice: p}}} for every question asked."""
+    async def ask(self, questions: dict, state: str, assets: dict | None = None) -> dict:
+        """{name: {"choice": str, "probabilities": {choice: p}}} for every question asked. `assets`: pictures the state
+        names by their key, {key: {"type": "image", "format": "jpg", "data_base64": ...}} (Jev's image input, which
+        TypeSafe still calls experimental: it needs its opt-in header)."""
         if not self.api_key:
             raise JudgeError("JEV_API_KEY is not set")
-        r = await self._http.post(self.url, headers={"Authorization": f"Bearer {self.api_key}"},
-                                  json={"model": self.model, "state": state, "questions": questions})
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        body = {"model": self.model, "state": state, "questions": questions}
+        if assets:
+            headers["TypeSafe-Danger-Zone-Images"] = "true"
+            body["assets"] = assets
+        r = await self._http.post(self.url, headers=headers, json=body)
         if r.status_code != 200:
             raise JudgeError(f"jev {r.status_code}: {r.text[:200]}")
         return r.json()["answers"]

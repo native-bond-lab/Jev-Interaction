@@ -147,3 +147,23 @@ async def test_what_the_user_asked_to_be_told_about_is_said_as_asked():
     await settle(s)
     assert any(e.get("what") == "notice" and e["action"] == "due" for e in events)
     assert "watch for" in s.ledger.turns[-2].data_line or any("asked you to watch" in m["content"] for m in s.llm.seen[-1])
+
+
+@pytest.mark.asyncio
+async def test_jev_sees_compares_two_pictures_and_the_responder_is_shown_the_view():
+    seer = FakeSeer("the user holds up a red mug")
+    s, events, judge = scripted_session({"notice": {"remark": 0.9, "let_be": 0.1}}, seer=seer, jev_sees=True)
+    await s.on_client({"type": "frame", "image": base64.b64encode(b"scene").decode(), "first": True})
+    await s.tick()
+    assert not any("notice" in qs for qs, _ in judge.asked)          # the first picture is only the scene
+    await s.on_client({"type": "frame", "image": base64.b64encode(b"mug").decode()})
+    await s.tick()
+    await settle(s)
+    from jev_interaction.decisions.notice import BEFORE, NOW
+    state = [st for qs, st in judge.asked if "notice" in qs][0]
+    assert BEFORE in state and NOW in state
+    assert base64.b64decode(judge.assets[NOW]["data_base64"]) == b"mug"
+    last = s.llm.seen[-1][-1]
+    assert isinstance(last["content"], list) and last["content"][1]["image_url"]["url"].endswith(base64.b64encode(b"mug").decode())
+    assert s.sight_image == b"mug" and any(t.role == "seen" for t in s.ledger.turns)   # the record line, off the path
+    assert seer.looked[-1][2] == b"scene"

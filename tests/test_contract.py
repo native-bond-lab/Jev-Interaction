@@ -19,7 +19,7 @@ CONFIG_FIELDS = {"language", "frame_ms", "sample_rate", "paces", "start_pace", "
                  "overlap_ask_ms", "sound_close_ms", "listen_gap_s", "listen_min_gap_s", "listen_due_min", "turn_reask_ms",
                  "turn_last_ms", "listen_finished_max", "quiet_marks_s", "quiet_jitter", "check_min_quiet_s",
                  "hangup_min_quiet_s", "judge_timeout_s", "judge_turns", "judge_turn_chars", "safe_words",
-                 "listen_max_words", "notice_stale_s", "frame_max_bytes", "voice_same", "voice_other", "voice_verdict_ms", "voice_enroll_ms", "not_for_me",
+                 "listen_max_words", "jev_sees", "notice_stale_s", "frame_max_bytes", "voice_same", "voice_other", "voice_verdict_ms", "voice_enroll_ms", "not_for_me",
                  "far_db", "hold_after_ms", "hold_release_ms"}
 PACE_FIELDS = {"name", "description", "max_wait_ms", "yield_p", "leads", "cut_in"}
 PROTOCOLS = {"VAD": {"is_voice"}, "Recognizer": {"connect", "send", "segments", "close"}, "Responder": {"lines"},
