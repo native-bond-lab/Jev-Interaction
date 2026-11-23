@@ -11,6 +11,15 @@ from dataclasses import dataclass
 _TAG = re.compile(r"\[[^\]]*\]")
 
 
+_MARKUP = re.compile(r"</?[A-Za-z_][\w:.-]*(?:\s[^<>]*)?>")
+
+
+def unmarked(text: str) -> str:
+    """A written line without markup in angle brackets: a model that calls tools elsewhere sometimes leaves pieces of
+    that syntax in what it writes here ("</invoke>"), and none of it is ever to be said."""
+    return re.sub(r"[ \t]+", " ", _MARKUP.sub(" ", text or "")).strip()
+
+
 def has_voice(text: str) -> bool:
     """Whether a written line has anything a voice can say. A line of audio tags alone ("[laughs]") has not: a tag
     shapes the words beside it, and the synthesizers refuse a text that is nothing else."""

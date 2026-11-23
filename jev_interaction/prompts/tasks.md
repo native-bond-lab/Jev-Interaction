@@ -1,5 +1,5 @@
 You can set work going in the background and keep talking while it runs. You do it with a line of its own that starts
-with a slash; such a line is acted on and never spoken:
+with a slash, plain text in your reply written just as shown here; such a line is acted on and never spoken:
 /task <kind>: <what to do, said in full for whoever does it>
 /tell <number>: <more from the user for a task that is running, or their answer to what it asked>
 /stop <number>

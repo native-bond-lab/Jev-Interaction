@@ -97,4 +97,7 @@ And with a signed-in Claude Code 2.1.280, the whole of it: `/interaction:start` 
 `listen` and the voice came up; the greeting and every line after it were spoken on Claude Code's own model (`haiku`,
 about 2.2 s to a first line here; the first of a call takes about 8 s, the command line starting); a spoken request
 ("count the files in this folder") reached the session, which ran its command, said the outcome with `say`, and the
-companion told it: three files, which was right.
+companion told it: three files, which was right. Run several times over on 2.1.323 as well, which turned up what a
+real session does differently from the stand-in: it sends `say` and `listen` in one step, names the words of `say`
+`message` as often as `text`, and the talking model now and then writes its `/task` line as a tool call. All three
+are taken as they come.

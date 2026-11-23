@@ -237,6 +237,50 @@ async def test_the_session_listens_does_the_work_says_the_outcome_and_listens_ag
     assert hub.got[-1] == {"type": "turn_end", "text": ""}
 
 
+async def test_the_outcome_is_heard_however_the_session_names_it_and_an_empty_say_is_told_so():
+    c, hub, written = connector()
+    await call(c, 1, "listen")
+    c.prompts.put_nowait({"type": "prompt", "task": "1", "text": "count the files"})
+    await settle()
+    await call(c, 2, "say", task="1", message="There are three files.")  # "message", not "text"
+    assert hub.got[-1] == {"type": "say", "task": "1", "text": "There are three files."} and answer(written, 2) == "Said."
+    await call(c, 3, "say", content="Three.")                            # no task named: the one it is on
+    assert hub.got[-1] == {"type": "say", "task": "1", "text": "Three."}
+    n = len(hub.got)
+    await call(c, 4, "say", task="1")
+    assert "Nothing was said" in answer(written, 4) and len(hub.got) == n
+
+
+async def test_say_and_listen_called_together_end_the_turn_with_the_outcome_whichever_arrives_first():
+    c, hub, written = connector()
+    await call(c, 1, "listen")
+    c.prompts.put_nowait({"type": "prompt", "task": "1", "text": "count the files"})
+    await settle()
+    await call(c, 2, "listen")                                           # the session sent say and listen at once, and
+    assert hub.got[-1]["type"] == "turn_start"                           # listen got here first: the turn is not ended yet
+    await call(c, 3, "say", task="1", text="Three files.")
+    assert [e["type"] for e in hub.got[-2:]] == ["say", "turn_end"]      # the outcome, then the end of the turn
+    # sent in one step with listen first, say does not run while listen waits: listen answers at once instead
+    CC.SAY_S = 0.05
+    c.prompts.put_nowait({"type": "prompt", "task": "2", "text": "count them again"})
+    await settle()
+    n = len(hub.got)
+    await call(c, 4, "listen")
+    await asyncio.sleep(0.15)
+    assert "no outcome said yet" in answer(written, 4) and 'task "2"' in answer(written, 4) and len(hub.got) == n
+    await call(c, 5, "say", task="2", text="Still three.")
+    await call(c, 6, "listen")
+    assert [e["type"] for e in hub.got[-2:]] == ["say", "turn_end"]
+    c.prompts.put_nowait({"type": "prompt", "task": "3", "text": "nothing to report on this one"})
+    await settle()
+    await call(c, 7, "listen")
+    await asyncio.sleep(0.15)                                            # told once ...
+    await call(c, 8, "listen")
+    await asyncio.sleep(0.15)                                            # ... a session with nothing to say is let through
+    assert hub.got[-1] == {"type": "turn_end", "text": ""}
+    CC.SAY_S = 1.0
+
+
 async def test_a_turn_ending_while_voice_interaction_is_on_is_sent_back_to_listening():
     c, hub, written = connector()
     await call(c, 1, "listen")
@@ -374,7 +418,7 @@ async def test_claude_codes_own_model_talks_through_one_open_command_line(tmp_pa
     log = [json.loads(x) for x in (tmp_path / "claude.log").read_text().splitlines()]
     assert len([x for x in log if isinstance(x, list)]) == 1             # one process for the whole call
     argv = log[0]
-    assert argv[argv.index("--model") + 1] == "haiku" and argv[argv.index("--system-prompt") + 1] == "You are Biscuit."
+    assert argv[argv.index("--model") + 1] == "haiku" and argv[argv.index("--system-prompt") + 1].startswith("You are Biscuit.\n\nEverything you write here is said aloud")
     assert argv[argv.index("--tools") + 1] == "" and "--strict-mcp-config" in argv
     heard = [x["heard"] for x in log if isinstance(x, dict)]
     assert heard[0] == "[event: they spoke]\nHello?"

@@ -755,10 +755,12 @@ class Session:
                         if gen != self.gen:
                             break
                         if T.action(text):                # a line that starts or steers a task: done, kept, not said
-                            if text not in turn.acts:     # (written twice in one reply, it is still one thing to do)
-                                turn.acts.append(text)
-                                await self._act(text)
+                            act = T.written(text)
+                            if act not in turn.acts:      # (written twice in one reply, it is still one thing to do)
+                                turn.acts.append(act)
+                                await self._act(act)
                             continue
+                        text = speaking.unmarked(text)    # markup is never spoken
                         if not speaking.has_voice(text):  # a tag with no word or sound beside it cannot be voiced: not said
                             self.rec.write("unvoiced", gen=gen, text=text)
                             continue
@@ -805,6 +807,7 @@ class Session:
         async for said in self.llm.lines(messages, max_tokens=14):
             text = said
             break
+        text = speaking.unmarked(text)
         if (T.action(text) or not speaking.has_voice(text) or speaking.units(text) > self.cfg.listen_max_words or self.speaking
                 or self.generating or self.utt is not utt):
             return

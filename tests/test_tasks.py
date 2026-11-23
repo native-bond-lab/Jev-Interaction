@@ -62,6 +62,21 @@ async def test_the_responder_starts_a_task_with_a_line_that_is_never_spoken():
     assert s.ledger.last_agent().text == "On it."                        # what the user heard has no action in it
 
 
+async def test_an_action_written_as_a_tool_call_is_still_done_and_markup_is_never_spoken():
+    assert T.action('<parameter name="task">agent: count the files') == ("task", "agent", "count the files")
+    assert T.action('<parameter name="tell">2: yes</parameter>') == ("tell", "2", "yes")
+    assert T.written('<parameter name="task">agent: count the files') == "/task agent: count the files"
+    assert T.action("</invoke>") is None and T.action('<invoke name="task">') is None
+    s, events, _, ex = make()
+    s.llm.out = ('<invoke name="task">', '<parameter name="task">agent: count the files', "</invoke>", "On it. <b>Now.</b>")
+    await s.on_segment(Segment("How many files are here?"))
+    await s.respond("spoke")
+    await settle()
+    assert len(ex.started) == 1 and ex.started[0].about == "count the files"
+    assert lines(events) == ["On it. Now."]                               # no markup reaches the voice
+    assert s.ledger.last_agent().acts == ["/task agent: count the files"]  # kept on the record in the plain form
+
+
 async def test_an_action_written_twice_in_one_reply_is_done_once():
     s, events, _, ex = make()
     s.llm.out = ("/task agent: count the pictures", "/task agent: count the pictures", "On it.")

@@ -10,7 +10,8 @@ Voice interaction starts now. Call the `listen` tool of the `jev` server.
 It returns what the user asked for out loud, with a task number. Do it as you would a typed request of theirs. When it
 is done, call `say` with that task number and what to tell them: a sentence or two in plain spoken words, what matters
 and nothing else. They are listening, not reading, so no code, no paths, no lists; the details stay on the screen.
-Then call `listen` again.
+When `say` has answered, call `listen` again. One after the other, never in the same step: `listen` waits, and what is
+sent along with it does not run until it returns.
 
 Keep going this way: listen, do the work, say, listen. If the user asks to end voice interaction, call `stop`.
 

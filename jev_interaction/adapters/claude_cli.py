@@ -17,6 +17,12 @@ import json
 import os
 
 
+# The command line is a coding agent's: its model does not know, unless told, that here nothing it writes is read. Seen
+# on a real call (11-23): a line of its own planning, in English, went out to the voice.
+SPOKEN = ("\n\nEverything you write here is said aloud to the user by a voice, word for word as you write it (a line that "
+          "starts with a slash is the one exception). So you write only what you say to them.")
+
+
 class ClaudeCodeResponder:
     def __init__(self, model: str | None = None, command: str | None = None, **_):
         self.model = model or os.getenv("JEV_FAST_MODEL", "")
@@ -30,7 +36,7 @@ class ClaudeCodeResponder:
 
     def argv(self, system: str) -> list[str]:
         return [self.command, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-                "--include-partial-messages", "--model", self.model, "--system-prompt", system, "--tools", "",
+                "--include-partial-messages", "--model", self.model, "--system-prompt", system + SPOKEN, "--tools", "",
                 "--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands", "--no-session-persistence"]
 
     async def _start(self, system: str) -> None:

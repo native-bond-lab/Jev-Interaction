@@ -109,17 +109,26 @@ class FunctionExecutor:
 
 # ---------------------------------------------------------------------- what the responder writes
 _ACTION = re.compile(r"^/(task|tell|stop)\b[ \t]*(.*)$", re.I)
+# the same action written as a tool call's argument, which a model trained to call tools sometimes does instead of the
+# plain line it was asked for (Claude, 11-23: <parameter name="task">agent: count the files)
+_AS_CALL = re.compile(r"""^<parameter\s+name=["'](task|tell|stop)["']\s*>[ \t]*(.*?)(?:</parameter>)?[ \t]*$""", re.I)
 
 
 def action(line: str) -> tuple[str, str, str] | None:
     """A line of the responder's that is an action, not words: ("task", kind, about), ("tell", number, text) or
     ("stop", number, ""). None for anything else."""
-    m = _ACTION.match((line or "").strip())
+    m = _ACTION.match((line or "").strip()) or _AS_CALL.match((line or "").strip())
     if not m:
         return None
     verb, rest = m.group(1).lower(), m.group(2).strip()
     head, _, tail = rest.partition(":")
     return verb, head.strip().lower(), tail.strip()
+
+
+def written(line: str) -> str:
+    """An action line as it is kept on the record: the plain form, however the responder wrote it."""
+    verb, head, tail = action(line)
+    return f"/{verb} {head}" + (f": {tail}" if tail else "")
 
 
 # ---------------------------------------------------------------------- what the responder and Jev read

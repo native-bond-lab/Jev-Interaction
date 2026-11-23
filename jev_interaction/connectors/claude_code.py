@@ -42,6 +42,7 @@ from ..harness import where
 HARNESS = "Claude Code"
 SERVER = "jev"
 LISTEN_S = 45 * 60               # a listen call ends after this with "nobody asked"; under the server's tool time limit
+SAY_S = 1.0                      # a listen that arrives before the say sent with it waits this long for it
 HOME = pathlib.Path.home() / ".jev-interaction"
 DEFAULTS = {"TTS_VOICE_ID": "TX3LPaxmHKxFdv7VOQHJ"}     # written for the user when missing (a premade ElevenLabs voice, for
                                                        # personas that bring none of their own); theirs to change in .env
@@ -279,8 +280,20 @@ class Connector:
         self.prompts: asyncio.Queue = asyncio.Queue()
         self.turn: str | None = None              # the turn the session is in, until it ends: "voice" (a task that
                                                   # listen handed it) or "typed" (the user typed a prompt)
+        self.said = asyncio.Event()               # the session has said something for the task it is on
+        self.task = ""                            # ... its number
+        self.reminded = False                     # ... and has been told once that listen comes after say
         self.calls: dict = {}                     # tool calls in progress, by their request id
         self._lock = threading.Lock()
+
+    def note(self, what: str, **more) -> None:
+        """JEV_CONNECT_LOG names a file: every tool call and its answer is written there, with the time (to see what a
+        session really did, in what order)."""
+        path = os.getenv("JEV_CONNECT_LOG")
+        if path:
+            import time
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"t": round(time.time(), 2), "what": what, **more}, ensure_ascii=False) + "\n")
 
     def write(self, message: dict) -> None:
         with self._lock:
@@ -343,6 +356,17 @@ class Connector:
             return f"Voice interaction did not start: {why}."
         self.on = True
         if self.turn == "voice":                  # back from the work: that task's turn is over
+            if not self.said.is_set():            # say and listen are often called together, and listen may get here
+                try:                              # first: the outcome is waited for a moment
+                    await asyncio.wait_for(self.said.wait(), SAY_S)
+                except asyncio.TimeoutError:
+                    pass
+            if not self.said.is_set() and not self.reminded:
+                # ... or the two were sent in one step with listen first, and say will not run while this waits: it is
+                # answered at once, so the outcome is said, and the session listens again
+                self.reminded = True
+                return (f'Task {self.task} has no outcome said yet. Call say with task "{self.task}" and what to tell the '
+                        "user; when it has answered, call listen again. One after the other: listen waits.")
             self.turn = None
             await self.to_hub({"type": "turn_end", "text": ""})
         try:
@@ -350,9 +374,12 @@ class Connector:
         except asyncio.TimeoutError:
             return "Nobody has asked for anything. Call listen again to keep listening."
         task, self.turn = str(e.get("task") or ""), "voice"
+        self.task, self.reminded = task, False
+        self.said.clear()
         await self.to_hub({"type": "turn_start", "text": e["text"], "ours": True})
         return (f"The user asks, out loud (task {task}):\n{e['text']}\n\nDo it as you would a typed request. When it is done, "
-                f'call say with task "{task}" and what to tell them, a sentence or two of plain spoken words; then call listen again.')
+                f'call say with task "{task}" and what to tell them, a sentence or two of plain spoken words. When say has '
+                "answered, call listen again: one after the other, since listen waits.")
 
     @staticmethod
     def setup(values: dict) -> str:
@@ -381,14 +408,22 @@ class Connector:
         return KEEP_ON if hook["hook_event_name"] == "Stop" and self.on else "{}"
 
     async def call(self, mid, name: str, args: dict) -> None:
+        self.note("call", id=mid, name=name, args={k: str(v)[:160] for k, v in args.items()})
         try:
             if name == "hook":
                 text = await self.hook(args)
             elif name == "listen":
                 text = await self.listen()
             elif name == "say":
-                sent = await self.to_hub({"type": "say", "task": str(args.get("task") or ""), "text": str(args.get("text") or "")})
-                text = "Said." if sent else "Voice interaction is not on: nothing was said."
+                # the words are `text`; a session sometimes names them otherwise (Claude, 11-23: "message"), and they are
+                # the user's answer either way
+                words = str(next((args[k] for k in ("text", "message", "content", "words") if args.get(k)), "")).strip()
+                if not words:
+                    text = 'Nothing was said: give the words in "text".'
+                else:
+                    sent = await self.to_hub({"type": "say", "task": str(args.get("task") or self.task), "text": words})
+                    self.said.set()
+                    text = "Said." if sent else "Voice interaction is not on: nothing was said."
             elif name == "stop":
                 await self.leave()
                 await asyncio.to_thread(self.service.stop)
@@ -398,8 +433,10 @@ class Connector:
             else:
                 self.write({"id": mid, "error": {"code": -32602, "message": f"no such tool: {name}"}})
                 return
+            self.note("answer", id=mid, name=name, text=text[:200])
             self.write({"id": mid, "result": {"content": [{"type": "text", "text": text}]}})
         except asyncio.CancelledError:            # the user interrupted it (Esc): they are back at the keyboard
+            self.note("cancelled", id=mid, name=name)
             self.on = False
             raise
         finally:
