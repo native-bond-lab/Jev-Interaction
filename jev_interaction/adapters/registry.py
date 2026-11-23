@@ -22,7 +22,8 @@ from typing import Any
 
 KINDS = {"judge": ("Judge", "法官 (Jev)"), "llm": ("Language model", "大模型"),
          "asr": ("Speech recognition", "语音识别"), "tts": ("Speech synthesis", "语音合成")}
-SELECTOR = {"asr": "ASR_PROVIDER", "tts": "TTS_PROVIDER"}     # nodes with a choice of provider, and the setting that picks it
+SELECTOR = {"asr": "ASR_PROVIDER", "tts": "TTS_PROVIDER",     # nodes with a choice of provider, and the setting that picks it
+            "llm": "LLM_PROVIDER"}                            # (the language model has a default: any OpenAI-compatible endpoint)
 # Nodes with a single built-in provider use it; speech is the user's choice, never picked for them.
 DEFAULT: dict[str, str | None] = {"judge": "jev", "llm": "openai-compatible", "asr": None, "tts": None}
 # Optional local models beside the four nodes: on when their package is installed, never a setup step. The setting
@@ -250,6 +251,11 @@ def _openai_compat(**options):
     return OpenAICompatResponder(**options)
 
 
+def _claude_code(**options):
+    from .claude_cli import ClaudeCodeResponder
+    return ClaudeCodeResponder(**options)
+
+
 def _jev(**options):
     from ..judge import JevClient
     return JevClient(**options)
@@ -296,6 +302,9 @@ register("llm", "openai-compatible", _openai_compat, [
     Setting("LLM_API_KEY", "API key", "密钥", secret=True, required=lambda: not _local_llm()),
     Setting("LLM_MODEL", "Model", "模型", required=True),
     Setting("LLM_TEMPERATURE", "Temperature", "温度", default="0.7")], label="OpenAI-compatible")
+register("llm", "claude-code", _claude_code, [
+    Setting("JEV_FAST_MODEL", "Fast model for talking (a Claude Code model: haiku, sonnet, ...)", "说话用的快模型（Claude Code 的模型：haiku、sonnet…）",
+            required=True)], label="Claude Code's own model")
 register("asr", "elevenlabs", _scribe, [
     ELEVEN_KEY, Setting("ELEVENLABS_ASR_MODEL", "Model", "模型", default="scribe_v3_live")], label="ElevenLabs Scribe", **ELEVEN)
 register("asr", "dashscope", _paraformer, [

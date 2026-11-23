@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "mcp_tool",
-            "server": "plugin:jev-voice:jev",
+            "server": "plugin:interaction:jev",
             "tool": "hook",
             "timeout": 5,
             "input": {
@@ -21,11 +21,31 @@
         "hooks": [
           {
             "type": "mcp_tool",
-            "server": "plugin:jev-voice:jev",
+            "server": "plugin:interaction:jev",
             "tool": "hook",
             "timeout": 5,
             "input": {
               "event": "PreToolUse",
+              "tool_name": "${tool_name}",
+              "description": "${tool_input.description}",
+              "command": "${tool_input.command}",
+              "file_path": "${tool_input.file_path}",
+              "pattern": "${tool_input.pattern}"
+            }
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:interaction:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "PermissionRequest",
               "tool_name": "${tool_name}",
               "description": "${tool_input.description}",
               "command": "${tool_input.command}",
@@ -41,7 +61,7 @@
         "hooks": [
           {
             "type": "mcp_tool",
-            "server": "plugin:jev-voice:jev",
+            "server": "plugin:interaction:jev",
             "tool": "hook",
             "timeout": 5,
             "input": {
@@ -57,7 +77,7 @@
         "hooks": [
           {
             "type": "mcp_tool",
-            "server": "plugin:jev-voice:jev",
+            "server": "plugin:interaction:jev",
             "tool": "hook",
             "timeout": 5,
             "input": {
@@ -73,7 +93,7 @@
         "hooks": [
           {
             "type": "mcp_tool",
-            "server": "plugin:jev-voice:jev",
+            "server": "plugin:interaction:jev",
             "tool": "hook",
             "timeout": 5,
             "input": {
@@ -89,7 +109,7 @@
         "hooks": [
           {
             "type": "mcp_tool",
-            "server": "plugin:jev-voice:jev",
+            "server": "plugin:interaction:jev",
             "tool": "hook",
             "timeout": 5,
             "input": {
@@ -105,7 +125,7 @@
         "hooks": [
           {
             "type": "mcp_tool",
-            "server": "plugin:jev-voice:jev",
+            "server": "plugin:interaction:jev",
             "tool": "hook",
             "timeout": 5,
             "input": {

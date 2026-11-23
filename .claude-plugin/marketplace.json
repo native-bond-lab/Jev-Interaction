@@ -8,9 +8,9 @@
   },
   "plugins": [
     {
-      "name": "jev-voice",
+      "name": "interaction",
       "source": "./connectors/claude-code",
-      "description": "Talk to Claude Code out loud through your Jev-Interaction voice companion."
+      "description": "Talk to Claude Code out loud: /interaction:start brings up a full-duplex voice companion for the session."
     }
   ]
 }

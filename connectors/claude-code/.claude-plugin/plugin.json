@@ -1,7 +1,7 @@
 {
-  "name": "jev-voice",
-  "version": "0.1.1",
-  "description": "Talk to Claude Code out loud. Your voice companion (Jev-Interaction) hears you, passes your words on as prompts, and tells you when the work is done or needs your OK.",
+  "name": "interaction",
+  "version": "0.2.0",
+  "description": "Talk to Claude Code out loud. /interaction:start brings up a voice companion that hears you, hands what you ask for to this session, and tells you when it is done. Full-duplex: it knows when you have finished, lets you cut in, and sleeps when nothing is happening.",
   "author": {
     "name": "Native Bond Lab"
   },
@@ -9,23 +9,80 @@
   "repository": "https://github.com/native-bond-lab/Jev-Interaction",
   "keywords": [
     "voice",
-    "channel",
+    "interaction",
     "full-duplex"
   ],
+  "userConfig": {
+    "fast_model": {
+      "type": "string",
+      "title": "Fast model for talking",
+      "description": "The Claude Code model that does the talking (this session keeps its own model for the work). Pick a fast one: haiku.",
+      "required": true
+    },
+    "asr_provider": {
+      "type": "string",
+      "title": "Speech recognition",
+      "description": "Who turns your voice into words.",
+      "required": true,
+      "options": [
+        "elevenlabs",
+        "dashscope"
+      ]
+    },
+    "tts_provider": {
+      "type": "string",
+      "title": "Speech synthesis",
+      "description": "Whose voice speaks to you.",
+      "required": true,
+      "options": [
+        "elevenlabs",
+        "dashscope"
+      ]
+    },
+    "elevenlabs_key": {
+      "type": "string",
+      "title": "ElevenLabs API key",
+      "description": "Needed when recognition or synthesis is elevenlabs.",
+      "sensitive": true
+    },
+    "dashscope_key": {
+      "type": "string",
+      "title": "DashScope (Bailian) API key",
+      "description": "Needed when recognition or synthesis is dashscope.",
+      "sensitive": true
+    },
+    "voice": {
+      "type": "string",
+      "title": "ElevenLabs voice ID",
+      "description": "The voice used when a persona has none of its own.",
+      "default": "TX3LPaxmHKxFdv7VOQHJ"
+    },
+    "jev_key": {
+      "type": "string",
+      "title": "Jev API key",
+      "description": "The judge of every turn-taking decision (typesafe.ai).",
+      "sensitive": true,
+      "required": true
+    }
+  },
   "mcpServers": {
     "jev": {
       "command": "sh",
       "args": [
-        "${CLAUDE_PLUGIN_ROOT}/bin/channel.sh",
+        "${CLAUDE_PLUGIN_ROOT}/bin/connect.sh",
         "--cwd",
         "${CLAUDE_PROJECT_DIR}"
-      ]
+      ],
+      "timeout": 3600000,
+      "env": {
+        "JEV_FAST_MODEL": "${user_config.fast_model}",
+        "ASR_PROVIDER": "${user_config.asr_provider}",
+        "TTS_PROVIDER": "${user_config.tts_provider}",
+        "TTS_API_KEY": "${user_config.elevenlabs_key}",
+        "DASHSCOPE_API_KEY": "${user_config.dashscope_key}",
+        "TTS_VOICE_ID": "${user_config.voice}",
+        "JEV_API_KEY": "${user_config.jev_key}"
+      }
     }
-  },
-  "channels": [
-    {
-      "server": "jev",
-      "displayName": "Jev voice"
-    }
-  ]
+  }
 }
