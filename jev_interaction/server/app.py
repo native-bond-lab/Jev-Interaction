@@ -28,6 +28,7 @@ from jev_interaction.server import paths
 paths.load_env()
 
 from jev_interaction import Profile  # noqa: E402  (after .env, so adapters read the keys)
+from jev_interaction import harness as H  # noqa: E402
 from jev_interaction import preset as preset_config  # noqa: E402
 from jev_interaction.adapters import best_embedder, best_sound, best_vad, registry  # noqa: E402
 from jev_interaction.recorder import Recorder  # noqa: E402
@@ -55,6 +56,23 @@ ACTIVE = {"calls": 0}
 STARTS: list[float] = []                # when each call in progress began (for the wait a caller in line is told)
 WAITING: list[object] = []              # callers in line, first come first
 SPENT = {"day": "", "seconds": 0.0}     # call time already used today (finished calls)
+# JEV_HARNESS=1: the voice of the coding agents open on this machine (harness.py, docs/harness.md). Their connectors
+# join at /harness/ws; a call then has an "agent" kind of background task, sleeps when the line is quiet and is never
+# hung up. JEV_VOICE_APPROVALS=1 passes the user's spoken allow / deny back to the harness; off, they answer on screen
+HUB = H.Hub(voice_approvals=os.getenv("JEV_VOICE_APPROVALS", "0") == "1") if os.getenv("JEV_HARNESS", "0") == "1" else None
+if HUB is not None and os.getenv("JEV_SERVE_PORT"):
+    H.announce(int(os.environ["JEV_SERVE_PORT"]))     # so the connectors find this server, whatever port it is on
+LOCAL: dict = {}                        # the call on this computer's own microphone and speakers (local.py), when on
+
+
+async def local_call():
+    """JEV_LOCAL_AUDIO=1 (a harness started this server): the call is on the computer itself, with no page."""
+    from jev_interaction import local
+    if os.getenv("JEV_LOCAL_AUDIO") == "1" and os.getenv("JEV_SERVE_PORT") and not local.available():
+        LOCAL["call"] = asyncio.get_running_loop().create_task(local.LocalCall(int(os.environ["JEV_SERVE_PORT"])).run())
+
+
+app.router.on_startup.append(local_call)
 
 
 def spent_today() -> float:
@@ -177,7 +195,9 @@ def health():
             "vad": VAD_NAME, "voiceprint": voiceprint_state(), "sound": sound_state(),
             "providers": {"judge": os.getenv("JEV_MODEL", "jev-latest"), "llm": llm, "asr": registry.selected("asr"),
                           "tts": registry.selected("tts"), "sound": registry.selected("sound") if SOUND else None,
-                          "voiceprint": registry.selected("voiceprint") if EMBEDDER else None}, "speech": registry.speech_style()}
+                          "voiceprint": registry.selected("voiceprint") if EMBEDDER else None}, "speech": registry.speech_style(),
+            "harness": None if HUB is None else [{"harness": k.harness, "cwd": k.cwd, "busy": k.busy} for k in HUB.links.values()],
+            "local": bool(LOCAL)}
 
 
 def _who(request) -> tuple[str | None, str, str]:
@@ -273,6 +293,46 @@ async def tts(line_id: str, request: Request):
                     headers={"Content-Range": f"bytes {start}-{end}/{len(body)}", "Accept-Ranges": "bytes"})
 
 
+def _this_machine(client, origin: str) -> bool:
+    """A harness connector: a process on this machine, never a page (a browser always sends an Origin)."""
+    return HUB is not None and not origin and client is not None and client.host in S.LOOPBACK
+
+
+@app.websocket("/harness/ws")
+async def harness_link(ws: WebSocket):
+    """One harness session's connector on the hub: its first message says which harness and where (harness.py)."""
+    if not _this_machine(ws.client, ws.headers.get("origin", "")):
+        await ws.close(code=4403)
+        return
+    await ws.accept()
+
+    async def send(event: dict):
+        await ws.send_text(json.dumps(event, ensure_ascii=False))
+    link = None
+    try:
+        hello = json.loads(await ws.receive_text())
+        link = HUB.add(H.Link(str(hello.get("harness") or "harness"), send, cwd=str(hello.get("cwd") or ""),
+                              steer=str(hello.get("steer") or "turn"), acks=bool(hello.get("acks")), talks=bool(hello.get("talks"))))
+        LOG.info("harness joined: %s", link.harness)
+        while True:
+            HUB.post(link, json.loads(await ws.receive_text()))
+    except (WebSocketDisconnect, RuntimeError, ValueError):
+        pass
+    finally:
+        if link is not None:
+            HUB.drop(link)
+            LOG.info("harness left: %s", link.harness)
+
+
+@app.get("/harness/setup")
+def harness_setup(request: Request):
+    """What is still to be chosen before a call can start, for a connector to put to its user (harness.needs)."""
+    if not _this_machine(request.client, request.headers.get("origin", "")):
+        raise HTTPException(403, "Only from this machine, with JEV_HARNESS=1.")
+    choose, keys, said = H.needs(S.steps())
+    return {"ready": not registry.missing_settings(), "choose": choose, "keys": keys, "said": said}
+
+
 def same_origin(origin: str, host: str) -> bool:
     """A call may be opened only by this server's own page (or an origin listed in ALLOWED_ORIGINS): any other site
     could otherwise open a billed call through the visitor's browser."""
@@ -333,6 +393,10 @@ async def call(ws: WebSocket):
     cfg = preset_config(os.getenv("JEV_PRESET", "recommended"), language=language,
                         turn_question=os.getenv("JEV_TURN_QUESTION") or "engine",
                         judge_provider=os.getenv("JEV_PROVIDER") or "jev", sound_rule=os.getenv("JEV_SOUND_RULE") or "and")
+    if HUB is not None:
+        cfg.sleep_when_idle = True            # it stays on the desk all day: quiet means asleep, never a hang-up
+    if LOCAL:
+        cfg.echo_tail_s, cfg.echo_same = 3.0, 0.7    # the computer's own speakers and microphone: nothing cancels the echo
     synth = make_synthesizer(profile, pid)
     # who else can be put on this line (the persona's `cast`): the caller asks, Jev hears it, the session hands over
     cast = {pid: profile, **{c: Profile.load(paths.profiles()[c]) for c in profile.extra.get("cast") or [] if c in paths.profiles()}}
@@ -357,6 +421,7 @@ async def call(ws: WebSocket):
         judge = registry.create("judge")
         session = Session(profile, send=send, judge=judge, recognizer=make_recognizer(language),
                           responder=registry.create("llm"), vad=best_vad(), config=cfg, cast=cast, embedder=EMBEDDER, sound=SOUND,
+                          executors={HUB.kind: HUB.executor()} if HUB is not None else None,
                           recorder=Recorder(paths.runs_dir() / f"call-{time.strftime('%Y%m%d-%H%M%S')}.jsonl" if RECORD else None))
         if voice and EMBEDDER is not None:
             try:
@@ -367,6 +432,8 @@ async def call(ws: WebSocket):
             made = await session.enroll_sample(pcm)
             pcm = b""
             await ws.send_text(json.dumps({"type": "voiceprint", "state": "enrolled" if made else "skipped"}))
+        if HUB is not None:
+            HUB.attach(session)
         try:
             await session.start()
         except Exception as exc:  # noqa: BLE001 - e.g. the recognizer refused the key: tell the page, end the call
@@ -393,6 +460,10 @@ async def call(ws: WebSocket):
         pass
     except Exception as exc:  # noqa: BLE001 - named in the log, then raised as before
         why = f"error: {type(exc).__name__}: {str(exc)[:160]}"
+        try:                                   # said to whoever is on the line, so a call that died is not just silence
+            await ws.send_text(json.dumps({"type": "error", "what": "call", "text": why.removeprefix("error: ")}))
+        except Exception:  # noqa: BLE001 - the line is gone already
+            pass
         raise
     finally:
         LOG.info("call end profile=%s seconds=%.0f why=%s", pid, time.monotonic() - started, why)
@@ -402,6 +473,8 @@ async def call(ws: WebSocket):
         SPENT["seconds"] += time.monotonic() - started
         try:
             if session is not None:
+                if HUB is not None:
+                    HUB.detach(session)
                 await session.close()
         finally:
             if judge is not None:

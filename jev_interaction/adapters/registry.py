@@ -22,7 +22,8 @@ from typing import Any
 
 KINDS = {"judge": ("Judge", "法官 (Jev)"), "llm": ("Language model", "大模型"),
          "asr": ("Speech recognition", "语音识别"), "tts": ("Speech synthesis", "语音合成")}
-SELECTOR = {"asr": "ASR_PROVIDER", "tts": "TTS_PROVIDER"}     # nodes with a choice of provider, and the setting that picks it
+SELECTOR = {"asr": "ASR_PROVIDER", "tts": "TTS_PROVIDER",     # nodes with a choice of provider, and the setting that picks it
+            "llm": "LLM_PROVIDER"}                            # (the language model has a default: any OpenAI-compatible endpoint)
 # Nodes with a single built-in provider use it; speech is the user's choice, never picked for them.
 DEFAULT: dict[str, str | None] = {"judge": "jev", "llm": "openai-compatible", "asr": None, "tts": None}
 # Optional local models beside the four nodes: on when their package is installed, never a setup step. The setting
@@ -96,7 +97,10 @@ def providers(kind: str) -> list[Provider]:
 def selected(kind: str) -> str | None:
     """The provider name chosen for a node: its selector setting, or the node's only built-in; None when not chosen."""
     if kind in SELECTOR:
-        return (os.getenv(SELECTOR[kind]) or "").strip().lower() or DEFAULT[kind]
+        # JEV_LLM_DEFAULT: a harness that starts the call server offers its own model first (connectors/); the user's
+        # own choice, LLM_PROVIDER in their .env, still wins
+        default = (os.getenv("JEV_LLM_DEFAULT") or "").strip().lower() if kind == "llm" else ""
+        return (os.getenv(SELECTOR[kind]) or "").strip().lower() or default or DEFAULT[kind]
     if kind in OPTIONAL:
         name, default = OPTIONAL_SELECTOR[kind]
         v = (os.getenv(name) or "").strip().lower() or default
@@ -240,6 +244,16 @@ def _eleven_tts(voice: str | None = None, **_):
     return ElevenLabsTTS(voice_id=voice)
 
 
+def _openai_tts(voice: str | None = None, **_):
+    from .openai_speech import OpenAICompatTTS
+    return OpenAICompatTTS(voice=voice)
+
+
+def _openai_asr(language: str = "en", **_):
+    from .openai_speech import OpenAICompatASR
+    return OpenAICompatASR(language=language)
+
+
 def _cosyvoice(voice: str | None = None, **_):
     from .dashscope_tts import CosyVoiceTTS
     return CosyVoiceTTS(voice=voice)
@@ -248,6 +262,18 @@ def _cosyvoice(voice: str | None = None, **_):
 def _openai_compat(**options):
     from .openai_compat import OpenAICompatResponder
     return OpenAICompatResponder(**options)
+
+
+def _claude_code(**options):
+    from .claude_cli import ClaudeCodeResponder
+    return ClaudeCodeResponder(**options)
+
+
+def _harness(**_):
+    from ..server import app  # the call server a harness started: its hub lends the model
+    if app.HUB is None:
+        raise ValueError("LLM_PROVIDER=harness needs a call server started by a harness (JEV_HARNESS=1)")
+    return app.HUB.responder()
 
 
 def _jev(**options):
@@ -296,6 +322,12 @@ register("llm", "openai-compatible", _openai_compat, [
     Setting("LLM_API_KEY", "API key", "密钥", secret=True, required=lambda: not _local_llm()),
     Setting("LLM_MODEL", "Model", "模型", required=True),
     Setting("LLM_TEMPERATURE", "Temperature", "温度", default="0.7")], label="OpenAI-compatible")
+register("llm", "claude-code", _claude_code, [
+    Setting("JEV_FAST_MODEL", "Fast model for talking (a Claude Code model: haiku, sonnet, ...)", "说话用的快模型（Claude Code 的模型：haiku、sonnet…）",
+            required=True)], label="Claude Code's own model")
+register("llm", "harness", _harness, [
+    Setting("JEV_FAST_MODEL", "Fast model for talking (one of the harness's own, as provider/model)",
+            "说话用的快模型（harness 自己的模型，写成 服务商/模型）", required=True)], label="The harness's own model")
 register("asr", "elevenlabs", _scribe, [
     ELEVEN_KEY, Setting("ELEVENLABS_ASR_MODEL", "Model", "模型", default="scribe_v3_live")], label="ElevenLabs Scribe", **ELEVEN)
 register("asr", "dashscope", _paraformer, [
@@ -307,6 +339,18 @@ register("tts", "elevenlabs", _eleven_tts, [
 register("tts", "dashscope", _cosyvoice, [
     DASHSCOPE_KEY, Setting("DASHSCOPE_TTS_VOICE", "Voice", "音色", default="longxiaochun_v2"),
     Setting("DASHSCOPE_TTS_MODEL", "Model", "模型", default="cosyvoice-v2")], label="CosyVoice (Alibaba Cloud Bailian)", **DASHSCOPE)
+# any service that speaks the OpenAI audio API (adapters/openai_speech.py): OpenAI, Groq, SiliconFlow, a local Whisper or
+# Kokoro server... The key is optional: a server on this machine asks for none
+register("asr", "openai-compatible", _openai_asr, [
+    Setting("ASR_BASE_URL", "Endpoint (serves /audio/transcriptions)", "接口地址（提供 /audio/transcriptions）", required=True),
+    Setting("ASR_API_KEY", "API key", "密钥", secret=True),
+    Setting("ASR_MODEL", "Model", "模型", required=True)], label="OpenAI-compatible (any Whisper-style endpoint)")
+register("tts", "openai-compatible", _openai_tts, [
+    Setting("TTS_BASE_URL", "Endpoint (serves /audio/speech)", "接口地址（提供 /audio/speech）", required=True),
+    Setting("TTS_API_KEY", "API key", "密钥", secret=True),
+    Setting("TTS_MODEL", "Model", "模型", required=True),
+    Setting("TTS_VOICE", "Voice", "音色"),
+    Setting("TTS_FORMAT", "Audio format", "音频格式", default="mp3")], label="OpenAI-compatible (any /audio/speech endpoint)")
 
 
 # ---------------------------------------------------------------- optional local models (no keys; CPU)

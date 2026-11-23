@@ -6,15 +6,20 @@ those methods; there is no base class to inherit.
 | node | protocol | built in |
 |---|---|---|
 | VAD | `is_voice(pcm: bytes) -> bool` | `EnergyVAD` |
-| recognizer | `connect()`, `send(pcm)`, `segments()` (async iterator of `Segment(text)`), `close()` | ElevenLabs Scribe, Paraformer |
+| recognizer | `connect()`, `send(pcm)`, `segments()` (async iterator of `Segment(text)`), `close()` | ElevenLabs Scribe, Paraformer, any OpenAI-compatible `/audio/transcriptions` endpoint |
 | responder | `lines(messages, max_tokens)` (async iterator of spoken lines) | any OpenAI-compatible endpoint |
-| synthesizer | `audio(text)` (async iterator of encoded bytes) and `media_type` | ElevenLabs, CosyVoice |
+| synthesizer | `audio(text)` (async iterator of encoded bytes) and `media_type` | ElevenLabs, CosyVoice, any OpenAI-compatible `/audio/speech` endpoint |
 | judge | `ask(questions, state) -> {name: {"choice", "probabilities"}}` | Jev; any service with the same protocol through `JEV_URL` / `JEV_MODEL` / `JEV_HEADERS` |
 | sound model (optional) | `ready`, `warm()`, `score(pcm) -> p(finished) or None` | SmartTurn v3.2 (`[sound]` extra) |
 | voiceprint (optional) | `ready`, `warm()`, `embed(pcm) -> unit vector or None` | ECAPA-TDNN (`[voiceprint]` extra) |
 
 A recognizer should close a segment after a short quiet (about 0.35 s) and send only closed segments: the session
 decides turns from those, not from partial words.
+
+No provider is ours to choose for the user: speech recognition and synthesis have no default (`ASR_PROVIDER`,
+`TTS_PROVIDER` are asked for), and `openai-compatible` (`adapters/openai_speech.py`) covers whoever serves the OpenAI
+audio API, a model on the user's own machine included. Its recognizer cuts clips on pauses and sends each whole, since
+that API takes finished clips: no words arrive until the pause.
 
 ## Register it
 

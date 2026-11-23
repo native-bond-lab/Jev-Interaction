@@ -67,6 +67,7 @@ something else.
 | `turn_last_ms` | 4000 | this far past the pace's longest wait the agent speaks anyway, and its line is told the user went silent (`trailed`) rather than finished |
 | `pause_mark_ms` | 600 | the user's voice stops this long inside their turn and comes back: kept in the call's record as a pause of theirs (`Turn.pauses`). Nothing is decided on it; it is there for reading a user's rhythm and for tuning |
 | `echo_tail_s` | 2.0 | the agent's own words heard this long after its line stopped playing are its echo, not the user (four characters or more; a short word is the user's) |
+| `echo_same` | 0.8 | "its echo" when this share of what was recognized runs in order through one of its recent lines (a recognizer mishears an echo a little). The call on the computer's own speakers, where nothing cancels the echo, sets 0.7 and `echo_tail_s` 3 |
 | `sound_close_ms` | 1500 | a sound with no words (a cough, a breath) is over after this much quiet |
 
 ### When both talk at once
@@ -105,6 +106,29 @@ the words from the call's record.
 The move is the agent's own (its last line asked nothing): it goes on after the pace's `lead_after_s`. The move is the
 user's: it lets the quiet be, and checks on them after `check_min_quiet_s`. The call has ended: it hangs up once that
 is open. The `quiet` policy is a threshold by default; `sample` draws among the same actions if you want that back.
+
+### Background tasks and sleep
+
+Used when the session has executors (`Session(executors=...)`, `jev_interaction/tasks.py`). These are starting values:
+none of them has been tuned on recorded calls yet.
+
+| field | default | what it does |
+|---|---|---|
+| `task_report_after_s` | 1.0 | a task's news is said into a quiet once it has lasted this long; while anyone is talking it rides with the next line instead |
+| `task_result_chars` | 1200 | what came back from a task is kept on the record up to this length; an executor should hand back what is worth saying, not a file |
+| `sleep_after_s` | 60 | a task is unfinished and it has been this long since the user and the agent last exchanged anything (a line the agent says into the quiet on its own does not start the count again): the session sleeps. Nothing is asked of Jev and no audio goes to the recognizer until the user's voice, the task's news or the client wakes it. `None`: never |
+| `sleep_when_idle` | False | for a companion that stays on all day, not a phone call: it sleeps after `sleep_after_s` with no task either, checks on the user at most once in a quiet, and goes to sleep where a call would be hung up |
+| `wake_voice_ms` | 400 | asleep, this much voice in a row wakes it. A sound with no words after it puts it back to sleep, with nothing asked |
+| `sleep_preroll_ms` | 1200 | asleep, the last of the audio is kept this far back and heard on waking, so the words that woke it are not lost |
+
+While a task is unfinished the call is not hung up.
+
+### Without echo cancellation
+
+A page in a browser cancels the echo of the agent's voice; the call on the computer's own speakers (`local.py`) does not.
+
+| field | default | what it does |
+|---|---|---|
 
 ### The judge
 

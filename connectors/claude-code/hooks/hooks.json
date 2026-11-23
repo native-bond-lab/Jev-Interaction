@@ -1,0 +1,141 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:interaction:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "UserPromptSubmit",
+              "prompt": "${prompt}"
+            }
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:interaction:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "PreToolUse",
+              "tool_name": "${tool_name}",
+              "description": "${tool_input.description}",
+              "command": "${tool_input.command}",
+              "file_path": "${tool_input.file_path}",
+              "pattern": "${tool_input.pattern}"
+            }
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:interaction:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "PermissionRequest",
+              "tool_name": "${tool_name}",
+              "description": "${tool_input.description}",
+              "command": "${tool_input.command}",
+              "file_path": "${tool_input.file_path}",
+              "pattern": "${tool_input.pattern}"
+            }
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:interaction:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "PostToolUse",
+              "tool_name": "${tool_name}"
+            }
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:interaction:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "PostToolUseFailure",
+              "tool_name": "${tool_name}"
+            }
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:interaction:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "PermissionDenied",
+              "tool_name": "${tool_name}"
+            }
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:interaction:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "Stop",
+              "last_assistant_message": "${last_assistant_message}"
+            }
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "plugin:interaction:jev",
+            "tool": "hook",
+            "timeout": 5,
+            "input": {
+              "event": "StopFailure",
+              "error": "${error}",
+              "last_assistant_message": "${last_assistant_message}"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

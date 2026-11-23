@@ -1,0 +1,26 @@
+{
+  "name": "interaction",
+  "version": "0.2.0",
+  "description": "Talk to Claude Code out loud. /interaction:start brings up a voice companion that hears you, hands what you ask for to this session, and tells you when it is done. Full-duplex: it knows when you have finished, lets you cut in, and sleeps when nothing is happening.",
+  "author": {
+    "name": "Native Bond Lab"
+  },
+  "homepage": "https://github.com/native-bond-lab/Jev-Interaction",
+  "repository": "https://github.com/native-bond-lab/Jev-Interaction",
+  "keywords": [
+    "voice",
+    "interaction",
+    "full-duplex"
+  ],
+  "mcpServers": {
+    "jev": {
+      "command": "sh",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/bin/connect.sh",
+        "--cwd",
+        "${CLAUDE_PROJECT_DIR}"
+      ],
+      "timeout": 3600000
+    }
+  }
+}

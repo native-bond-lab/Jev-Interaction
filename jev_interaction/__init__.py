@@ -10,7 +10,9 @@ from .presets import PRESETS, preset
 from .profile import Profile
 from .recorder import Recorder
 from .session import Session
+from .tasks import Executor, FunctionExecutor, Task
 
 __all__ = ["Session", "Profile", "Config", "Pace", "preset", "PRESETS", "JevClient", "Recorder",
-           "Decision", "DECISIONS", "register", "Policy", "SamplePolicy", "ThresholdPolicy", "ArgmaxPolicy"]
+           "Decision", "DECISIONS", "register", "Policy", "SamplePolicy", "ThresholdPolicy", "ArgmaxPolicy",
+           "Task", "Executor", "FunctionExecutor"]
 __version__ = "0.3.0"

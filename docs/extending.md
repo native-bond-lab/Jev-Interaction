@@ -64,6 +64,9 @@ jev_interaction/
   presets.py          recommended · tested · default
   ledger.py           the call's one record, on one clock: turns, their times, what was judged and done
   recorder.py         one JSON line per event, for replay
+  tasks.py            background tasks: the agent hands work off (an executor) and keeps talking; sleep is in session.py
+  harness.py          the hub a coding agent's connector joins; connectors/ holds Claude Code's side
+  local.py            the call on this computer's own microphone and speakers, no page
   adapters/           VAD · recognizer · responder · synthesizer · sound model · voiceprint; registry.py lists the providers
   prompts/            the responder's system prompt; speech/ holds one writing style per kind of voice
   profiles/           the built-in personas
@@ -71,6 +74,7 @@ jev_interaction/
   replay.py           re-ask the recorded questions, as asked or reworded
   testing.py          fake judge, recognizer, responder, VAD and synthesizer: a call with no keys
   cli.py              `jev-interaction serve` / `init` / `replay`
+connectors/           the plugins a harness installs: claude-code/ · deepseek-harness/
 scripts/setup.sh      one-click local setup (--china: domestic PyPI mirror)
 deploy/huggingface/   Hugging Face Space card; scripts/push_hf_space.sh publishes it
 deploy/mainland-china.env  the setup that measured best in mainland China, ready to copy to .env

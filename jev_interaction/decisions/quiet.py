@@ -15,6 +15,11 @@ The policy under "quiet" turns that into the one action. By default it is a thre
 way every time; what varies from one quiet to the next is when it is asked (Config.quiet_marks_s, jittered). A judge
 that fails says nothing.
 
+While a background task is unfinished (tasks.py) the call has something to wait for: it is not hung up, and once the
+quiet has lasted Config.sleep_after_s the session goes to sleep and this question is not asked again until it wakes
+(Session.sleep). Under Config.sleep_when_idle the agent stays on a desk all day: it may check on the user once in a
+quiet and not again, and where a call would be hung up it goes to sleep instead.
+
 Asked as one question about the whole quiet ("would the agent, being who they are, say something now?"), Jev answered
 "let it be" to nearly every written moment (33% right on tools/judge_bench.py --decisions); asked the facts, 100%.
 """
@@ -65,7 +70,7 @@ class Quiet(Decision):
     policy = "quiet"
 
     async def on_tick(self, s, now):
-        if s.utt is None and not s.speaking and not s.generating and s.quiet_marks:
+        if s.utt is None and not s.speaking and not s.generating and s.quiet_marks and not s.asleep:
             quiet_s = now - s.idle_since
             if quiet_s >= s.quiet_marks[0]:
                 s.quiet_marks.pop(0)
@@ -82,17 +87,23 @@ class Quiet(Decision):
         return B.quiet_state(text, m.agent_line, said[-1] if said else "", m.quiet_s, m.spoke_into_quiet, s.pace)
 
     def allowed(self, s, ctx):
-        return allowed(ctx["quiet_s"], s.spoke_into_quiet, lead_after_s=s.params().lead_after_s,
-                       check_after_s=s.cfg.check_min_quiet_s, hangup_after_s=s.cfg.hangup_min_quiet_s)
+        out = allowed(ctx["quiet_s"], s.spoke_into_quiet, lead_after_s=s.params().lead_after_s,
+                      check_after_s=s.cfg.check_min_quiet_s, hangup_after_s=s.cfg.hangup_min_quiet_s)
+        if s.cfg.sleep_when_idle:              # on a desk all day: it may ask after them once in a quiet, not again; and
+            return [x for x in out if x != "check" or not s.spoke_into_quiet]   # "the call has ended" puts it to sleep
+        return [x for x in out if x != "hang_up"] if s.open_tasks() else out
 
     def current(self, s, ctx):
-        return ctx["gen"] == s.gen and not s.speaking and not s.generating and s.utt is None
+        return ctx["gen"] == s.gen and not s.speaking and not s.generating and s.utt is None and not s.asleep
 
     async def apply(self, s, answers, ctx):
         quiet_s = ctx["quiet_s"]
         ps = probs(B.merge(answers), long=quiet_s >= s.cfg.check_min_quiet_s, may_hang_up="hang_up" in self.allowed(s, ctx))
         choice = self.choose(s, {"quiet": {"probabilities": ps}}, "quiet", ctx)
         await s.send(type="decision", what="quiet", action=choice, quiet_s=round(quiet_s, 1), probs=ps)
+        if choice == "hang_up" and s.cfg.sleep_when_idle:      # nobody is answering: asleep until their voice
+            await s.sleep("quiet")
+            return
         if choice in LINES:
             s.spoke_into_quiet += 1
             s.hanging_up = choice == "hang_up"

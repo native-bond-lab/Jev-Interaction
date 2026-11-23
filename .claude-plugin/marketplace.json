@@ -1,0 +1,16 @@
+{
+  "name": "jev-interaction",
+  "owner": {
+    "name": "Native Bond Lab"
+  },
+  "metadata": {
+    "description": "Connectors that put a coding agent under the voice of Jev-Interaction, a full-duplex voice companion."
+  },
+  "plugins": [
+    {
+      "name": "interaction",
+      "source": "./connectors/claude-code",
+      "description": "Talk to Claude Code out loud: /interaction:start brings up a full-duplex voice companion for the session."
+    }
+  ]
+}

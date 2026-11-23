@@ -58,6 +58,9 @@ class Config:
     pause_mark_ms: int = 600           # the user's voice stops this long inside their turn and comes back: kept in the
                                        # call's record as a pause of theirs (Turn.pauses). Nothing is decided on it
     echo_tail_s: float = 2.0           # the agent's own words heard this long after its line stopped playing are its echo
+    echo_same: float = 0.8             # ... when this share of what was recognized runs in order through one of its recent
+                                       # lines (a recognizer mishears an echo a little). The call on the computer's own
+                                       # speakers, where nothing cancels the echo, sets 0.7 and a tail of 3 s (server/app.py)
     sound_close_ms: int = 1500         # a sound with no words behind it is over after this much quiet (a cough, a breath)
     listen_gap_s: float = 3.0          # at least this long between two listening sounds that could as well be left out
     listen_gap_jitter: float = 0.3     # after each one the gap to the next moves by up to this share, so they do not come
@@ -86,6 +89,20 @@ class Config:
     quiet_jitter: float = 0.3
     check_min_quiet_s: float = 10.0    # "are you there?" only after this much quiet
     hangup_min_quiet_s: float = 25.0   # a hang-up only after this much quiet, and never as the first thing said into it
+    sleep_after_s: float | None = 60.0   # a background task is unfinished and it has been this long since the user and the
+                                       # agent last exchanged anything (a line the agent says into the quiet on its own
+                                       # does not start the count again): the session sleeps (Session.sleep). Nothing is
+                                       # asked of Jev and no audio goes to the recognizer until the user's voice or the
+                                       # task wakes it. None: it never sleeps
+    sleep_when_idle: bool = False      # a companion that stays on a desk all day, not a phone call: it sleeps after
+                                       # sleep_after_s with no task either, checks on the user at most once in a quiet,
+                                       # and goes to sleep where a call would be hung up
+    wake_voice_ms: int = 400           # asleep, this much voice in a row wakes it
+    sleep_preroll_ms: int = 1200       # asleep, the last of the audio is kept this far back and heard on waking, so the
+                                       # words that woke it are not lost
+    task_report_after_s: float = 1.0   # a task's news is said into a quiet once it has lasted this long (the user may be
+                                       # about to answer the line just said)
+    task_result_chars: int = 1200      # what came back from a task is kept on the record up to this length
     judge_timeout_s: float = 3.0       # a judge answer slower than this is dropped and the decision takes its fallback
     judge_turns: int = 8               # recent turns in every Jev state
     judge_turn_chars: int = 300

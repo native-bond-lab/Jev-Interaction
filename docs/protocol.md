@@ -11,6 +11,8 @@ events. Audio for the agent's lines is fetched over HTTP.
 | binary frame | 200 ms of 16 kHz mono PCM16 (3200 samples, 6400 bytes), continuously, including while the agent talks |
 | `{"type": "playback", "state": "playing" \| "idle"}` | the agent's audio started / the queue ran empty |
 | `{"type": "heard", "gen": 7, "text": "..."}` | after `stop`: what was actually played of the reply the last `line` belonged to (its `gen`): the lines that played to the end and the part of the one that was playing, joined by newlines; `""` when none of it played. Without `gen` the text replaces the last reply, and an empty text is ignored |
+| `{"type": "sleep"}` | put the session to sleep now (a key, a click): nothing is asked of Jev and no audio goes to the recognizer until the caller's voice, a background task's news or `wake`. Ignored while anyone has the floor |
+| `{"type": "wake"}` | wake it |
 
 ## Server → client
 
@@ -24,11 +26,14 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `decision` | `what, action?, go?, probs?, why?, ...` | a turn-taking decision Jev just made (`end_of_turn`, `floor`, `quiet`, `not_for_me`), for display and logs; `not_for_me` has `why`: `jev` (Jev heard it said to someone else), `far` (Config.far_db), `voice` (the voiceprint) |
 | `persona` | `id, name, gen, accent?` | someone else is on the line from reply `gen` on (the caller asked for them): lines from that reply are theirs, in their voice; show it when the first of them plays |
 | `pace` | `pace, probs` | the call's pace changed (normal, patient, narrate, eager) |
-| `error` | `what, text, missing?` | `settings`: required keys are empty (`missing` lists them; the socket closes with 4412); `start`: a provider refused; `judge`: a decision failed, the call falls back and goes on; `responder`: a reply failed or came back empty twice, nothing is said and the call goes on |
+| `error` | `what, text, missing?` | `settings`: required keys are empty (`missing` lists them; the socket closes with 4412); `start`: a provider refused; `call`: the call could not be set up or broke, and ends here; `judge`: a decision failed, the call falls back and goes on; `responder`: a reply failed or came back empty twice, nothing is said and the call goes on |
 | `queue` | `ahead, wait_s` | every line is taken and this caller is held in line: `ahead` callers before them, at most `wait_s` seconds (null when unknown); sent again when either changes. Audio sent meanwhile is ignored |
 | `ready` | | a line is free: the call starts now |
 | `busy` | `text` | the line itself is full, or today's minutes are used up; the socket closes |
 | `hangup` | `why?` | the agent ended the call (or the time limit did) |
+| `task` | `id, kind, about, status, progress, question` | something happened to a background task (`status`: `running`, `waiting` on the caller's answer to `question`, `done`, `empty`, `failed`, `stopped`; sent again on each change, and on each `progress` it reports): for display. What the agent says about it comes as `line` |
+| `sleep` | `why` | the session went to sleep (`task`: a background task is unfinished and the line has been quiet for `Config.sleep_after_s`; `quiet`: the same with no task, or nobody answering, under `Config.sleep_when_idle`; `client`; `no words`: a sound woke it and no words followed). Keep sending audio: the caller's voice wakes it |
+| `wake` | `why` | it woke: `voice`, `task` (a task has news, a `line` follows), `client`, `speak` |
 | `voiceprint` | `state` | after a `voice` sample: `enrolled` (the print starts from it) or `skipped` (no voiceprint model ready; it is learned from the call) |
 
 `gen` numbers each reply; events for an older `gen` refer to lines that were already replaced.

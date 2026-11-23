@@ -61,6 +61,9 @@ jev_interaction/
   presets.py          recommended · tested · default 预设
   ledger.py           整通电话的一份记录，一个时钟：每轮话、它们的时间、判断过什么、做过什么
   recorder.py         每个事件一行 JSON，供重放
+  tasks.py            后台任务：把活交给执行器，嘴上接着聊；休眠在 session.py 里
+  harness.py          编程助手的连接器接入的中转站；connectors/ 里是 Claude Code 这一侧
+  local.py            用这台电脑自己的麦克风和喇叭通话，不用网页
   adapters/           VAD · 识别 · 大模型 · 合成 · 声音模型 · 声纹；registry.py 是服务商表
   prompts/            大模型的系统提示；speech/ 里每类音色一种写法
   profiles/           内置角色
@@ -68,6 +71,7 @@ jev_interaction/
   replay.py           重问录下来的题目，原样或改写后
   testing.py          假的法官、识别、大模型、VAD 和合成：不要密钥也能跑一通电话
   cli.py              `jev-interaction serve` / `init` / `replay`
+connectors/           harness 安装的插件：claude-code/ · deepseek-harness/
 scripts/setup.sh      一键本地部署（--china 走国内 PyPI 镜像）
 deploy/huggingface/   Hugging Face Space 说明；scripts/push_hf_space.sh 负责发布
 deploy/mainland-china.env  中国大陆实测最好的一套配置，复制成 .env 就能用

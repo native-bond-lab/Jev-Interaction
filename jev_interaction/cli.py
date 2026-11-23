@@ -3,6 +3,8 @@
     jev-interaction serve [--host 127.0.0.1] [--port 8080] [--preset recommended] [--home .]
     jev-interaction init [--reference global|china]   write .env (empty, or a reference setup's values) and profiles/
     jev-interaction replay runs/*.jsonl --purpose floor [--edit my_questions.py]
+    jev-interaction connect claude-code [--cwd .]     Claude Code's side of voice interaction: started by its plugin,
+                                                      not by hand (docs/harness.md)
 """
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ def _serve(a: argparse.Namespace) -> int:
         os.environ["JEV_HOME"] = str(pathlib.Path(a.home).resolve())
     if a.preset:
         os.environ["JEV_PRESET"] = a.preset
+    os.environ["JEV_SERVE_PORT"] = str(a.port)
     from jev_interaction.server import paths
     if not paths.env_file().exists():
         print(f"No .env in {paths.home()} yet: the page walks you through the providers and keys.")
@@ -50,7 +53,19 @@ def _init(a: argparse.Namespace) -> int:
     return 0
 
 
+def no_proxy() -> None:
+    """An IPv6 address written in brackets in NO_PROXY (`[::1]`: DeepSeek Harness adds it to what it hands the programs
+    it starts) is one the HTTP client cannot read: every client it makes fails, so no call starts. Written bare it
+    means the same, and that it reads."""
+    for name in ("NO_PROXY", "no_proxy"):
+        if name in os.environ:
+            hosts = [h.strip() for h in os.environ[name].split(",")]
+            hosts = [h[1:-1] if h.startswith("[") and h.endswith("]") else h for h in hosts]
+            os.environ[name] = ",".join(dict.fromkeys(hosts))
+
+
 def main(argv: list[str] | None = None) -> int:
+    no_proxy()
     ap = argparse.ArgumentParser(prog="jev-interaction", description="Full-duplex voice calls, turn-taking judged by Jev.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("serve", help="run the call server and its page")
@@ -68,6 +83,11 @@ def main(argv: list[str] | None = None) -> int:
     from jev_interaction import replay as R
     R.add_arguments(r)
     r.set_defaults(run=lambda a: __import__("asyncio").run(R.run(a)))
+    c = sub.add_parser("connect", help="a harness's side of voice interaction (an MCP server on stdio), started by its plugin")
+    c.add_argument("harness", choices=["claude-code"])
+    c.add_argument("--hub", help="a call server's hub to join as it is (a test); by default one is found or started")
+    c.add_argument("--cwd", help="the project folder of the harness's session")
+    c.set_defaults(run=lambda a: __import__("jev_interaction.connectors.claude_code", fromlist=["main"]).main(a.hub, a.cwd))
     a = ap.parse_args(argv)
     return a.run(a)
 

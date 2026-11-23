@@ -106,6 +106,33 @@ class FakeSound:
         return self.p
 
 
+class FakeExecutor:
+    """A background task's executor for tests: it runs until the test lets it go. `finish(result)` makes it come back
+    ("" for nothing), `fail(error)` makes it fail; `progress` and `ask` go through the task's line back to the call."""
+    describe = "anything that takes a while"
+
+    def __init__(self):
+        self.started: list = []          # the tasks it was given
+        self.steered: list[tuple[int, str]] = []
+        self.tells: dict[int, object] = {}
+        self._done: dict[int, asyncio.Future] = {}
+
+    async def run(self, task, tell) -> str:
+        self.started.append(task)
+        self.tells[task.id] = tell
+        self._done[task.id] = asyncio.get_running_loop().create_future()
+        return await self._done[task.id]
+
+    async def steer(self, task, text: str) -> None:
+        self.steered.append((task.id, text))
+
+    def finish(self, task_id: int, result: str = "done") -> None:
+        self._done[task_id].set_result(result)
+
+    def fail(self, task_id: int, error: str = "it broke") -> None:
+        self._done[task_id].set_exception(RuntimeError(error))
+
+
 class FakeSynthesizer:
     media_type = "audio/mpeg"
 
@@ -114,7 +141,8 @@ class FakeSynthesizer:
 
 
 def scripted_session(answers: dict | None = None, policies: dict | None = None, profile: Profile | None = None,
-                     send: Callable[[dict], Awaitable[None]] | None = None, embedder=None, sound=None, **config) -> tuple[Session, list[dict], FakeJudge]:
+                     send: Callable[[dict], Awaitable[None]] | None = None, embedder=None, sound=None, executors=None,
+                     **config) -> tuple[Session, list[dict], FakeJudge]:
     """A session on fakes, plus the list its events land in and its judge. `config` overrides Config fields."""
     events: list[dict] = []
 
@@ -126,7 +154,7 @@ def scripted_session(answers: dict | None = None, policies: dict | None = None, 
     judge = FakeJudge(answers)
     s = Session(profile or Profile("Mara Quinn", task="A companion who chats.", manner="Chatty listener."), send=collect,
                 judge=judge, recognizer=FakeRecognizer(), responder=FakeResponder(), vad=FakeVAD(), config=cfg,
-                embedder=embedder, sound=sound)
+                embedder=embedder, sound=sound, executors=executors)
     return s, events, judge
 
 
