@@ -10,7 +10,7 @@ cfg = preset("recommended", language="en", overlap_ask_ms=600)
 | preset | what it is |
 |---|---|
 | `recommended` (default) | the timing the voice-call engine in our product runs on at scale |
-| `tested` | `recommended` plus the knobs measured on the benchmarks (README, "All knobs together") |
+| `tested` | `recommended` plus the knobs measured on the benchmarks ([docs/benchmarks.md](../docs/benchmarks.md#all-knobs-together)) |
 | `default` | the library defaults |
 
 `JEV_PRESET` sets it for the server; `production`, the earlier name of `recommended`, still works.

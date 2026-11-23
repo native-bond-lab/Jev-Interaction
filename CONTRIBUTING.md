@@ -30,7 +30,7 @@ Start from `dev` (`git switch -c my-change origin/dev`) and open the pull reques
 | reword a question or a choice | `jev_interaction/judge/questions.py` | `jev-interaction replay <call logs> --purpose <decision> --edit <file>` shows which recorded answers flip |
 | add a decision | the question in `judge/questions.py`, one module in `jev_interaction/decisions/` registered in `DECISIONS`, a policy in `Config.policies` | a test in `tests/`, then replay recorded calls |
 | change what Jev reads | `jev_interaction/judge/state.py` | replay: the state is the only input besides the question |
-| a new VAD, recognizer, responder or synthesizer | `jev_interaction/adapters/` | implement the protocol in the README table "Swappable pieces"; add a fake-driven test |
+| a new VAD, recognizer, responder or synthesizer | `jev_interaction/adapters/` | implement the protocol in the README table "Swappable pieces" ([docs/adapters.md](docs/adapters.md) has the registry); add a fake-driven test |
 | a policy | `jev_interaction/policy.py` | a unit test; policies are pure functions of probabilities |
 | a task profile | `jev_interaction/profiles/*.yaml` | load it in the browser client and call it; describe what changed |
 
