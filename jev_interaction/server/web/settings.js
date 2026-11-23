@@ -201,6 +201,7 @@
   function pickVendor(id, auto) {
     const st = step('llm'), was = llmBase();
     if (!auto) clicked.llm = id;
+    if (st.selector) draft[st.selector] = st.providers[0].name;     // an endpoint of the user's own, not the harness's model
     if (id === 'custom') { if ((st.vendors || []).some((v) => v.base_url === was)) draft[BASE] = ''; }
     else draft[BASE] = st.vendors.find((v) => v.id === id).base_url;
     if (llmBase() !== was && val(field(st, LLM_MODEL))) draft[LLM_MODEL] = '';     // a model belongs to its endpoint
@@ -274,11 +275,16 @@
       advanced(st, fs.filter((f) => !f.secret && !required(st, f))), result(st)];
   }
   function bodyLlm(st) {
-    const v = vendor(), hits = suggest.llm || [];
+    // a harness that started this server offers its own model first (Claude Code's: no key, the account already signed
+    // in); any endpoint of the user's own is still there to choose
+    const own = st.selector ? st.providers.slice(1) : [], mine = own.find((x) => x.name === chosen(st)) || null;
+    const v = mine ? null : vendor(), hits = suggest.llm || [];
     const vs = (st.vendors || []).slice().sort((a, b) => (hits.indexOf(b.id) >= 0) - (hits.indexOf(a.id) >= 0) || hits.indexOf(a.id) - hits.indexOf(b.id));
     const picks = h('div', { class: 'picks', role: 'group', 'aria-label': t('provider') },
+      own.map((x) => choice(x.label, mine === x, () => { delete clicked.llm; pickProvider(st, x.name); })),
       vs.map((x) => choice(x.label, v === x, () => pickVendor(x.id), { maybe: hits.indexOf(x.id) >= 0 && v !== x, title: x.base_url })),
       choice(t('custom'), v === 'custom', () => pickVendor('custom')));
+    if (mine) return [picks, h('div', { class: 'fields' }, mine.fields.map((f) => plainField(st, f, true))), result(st)];
     const out = [picks];
     const grid = h('div', { class: 'fields' });
     if (v === 'custom') grid.appendChild(plainField(st, field(st, BASE), true));
@@ -319,6 +325,10 @@
     return [h('dl', { class: 'ro' }, rows.map(([k, v, ok]) => [h('dt', { text: k }), h('dd', null, v ? h('code', { text: v }) : h('span', { class: 'tag ' + (ok ? 'go' : 'hold'), text: t(ok ? 'set' : 'not_set') }))]))];
   }
   function summary(st) {
+    if (st.id === 'llm' && st.selected && st.selected !== st.providers[0].name) {       // a harness's own model
+      const own = st.providers.find((x) => x.name === st.selected), m = own && own.fields[0];
+      return own ? (m && m.value ? m.value + ' · ' : '') + own.label : '';
+    }
     if (st.id === 'llm') { const f = (n) => field(st, n).value || ''; return f(LLM_MODEL) ? f(LLM_MODEL) + ' · ' + f(BASE).replace(/^https?:\/\//, '').replace(/\/.*$/, '') : ''; }
     const p = st.providers.find((x) => x.name === st.selected); if (!p) return '';
     if (st.id === 'judge') { const m = p.fields.find((f) => !f.secret); return m ? m.value || m.default || p.label : p.label; }

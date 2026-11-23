@@ -97,7 +97,10 @@ def providers(kind: str) -> list[Provider]:
 def selected(kind: str) -> str | None:
     """The provider name chosen for a node: its selector setting, or the node's only built-in; None when not chosen."""
     if kind in SELECTOR:
-        return (os.getenv(SELECTOR[kind]) or "").strip().lower() or DEFAULT[kind]
+        # JEV_LLM_DEFAULT: a harness that starts the call server offers its own model first (connectors/); the user's
+        # own choice, LLM_PROVIDER in their .env, still wins
+        default = (os.getenv("JEV_LLM_DEFAULT") or "").strip().lower() if kind == "llm" else ""
+        return (os.getenv(SELECTOR[kind]) or "").strip().lower() or default or DEFAULT[kind]
     if kind in OPTIONAL:
         name, default = OPTIONAL_SELECTOR[kind]
         v = (os.getenv(name) or "").strip().lower() or default

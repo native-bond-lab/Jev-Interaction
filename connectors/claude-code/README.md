@@ -1,14 +1,14 @@
-# jev-voice: Claude Code under your voice
+# interaction: talk to Claude Code out loud
 
-A Claude Code plugin that puts the session on the hub of a running [Jev-Interaction](../../README.md) call server:
+A Claude Code plugin. `/interaction:start` brings up a voice companion for the session you are in: it hears you, hands
+what you ask for to the session, tells you how it is going and when it is done, and sleeps in between.
+`/interaction:stop` ends it.
 
-- a channel (`jev-interaction channel`, started by Claude Code) through which your spoken words arrive as prompts,
-  Claude says things back with a `say` tool, and permission prompts are relayed;
-- hooks that tell what Claude Code is doing (a prompt typed, a tool about to run, the turn ended) by calling the
-  channel's own `hook` tool, so each event comes from the session it is about.
+- The session keeps working on its own model. The talking is done by a fast model of Claude Code's own that you choose
+  the first time (a setup page opens), or by another model of your choice.
+- Nothing to start beside Claude Code: the plugin's server brings the voice up when the session first listens and takes
+  it down when the session ends.
+- The hooks only tell what the session is doing; none of them decides anything, except that a turn ending while voice
+  interaction is on is sent back to listening.
 
-Setup and what to expect: [docs/harness.md](../../docs/harness.md).
-
-The hooks only tell: none of them decides anything in Claude Code, and when the call server is not running the channel
-answers them all the same and Claude Code carries on. The channel finds the call server by
-itself (the server writes its address to `~/.jev-interaction/hub`); `JEV_INTERACTION_HUB` overrides it.
+Setup and how it works: [docs/harness.md](../../docs/harness.md).

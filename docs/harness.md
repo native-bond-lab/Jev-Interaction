@@ -1,32 +1,50 @@
-# The voice of a coding agent
+# Voice interaction inside a coding agent
 
-With `JEV_HARNESS=1` the call server is also a hub for the coding agents open on this machine. You talk; the agent on
-the line hands the work to the coding agent as a background task ([tasks.md](tasks.md)), keeps the call going, and
-tells you when it is done or needs your OK. While nothing is happening it sleeps.
+You are in Claude Code. You run `/interaction:start`, and from then on you can talk: a voice companion hears you,
+hands what you ask for to the session you are in, says how far it has got when you ask, and tells you when it is
+done. While nothing is happening it sleeps.
 
-    you  <— voice —>  Jev-Interaction (call server + hub)  <— connector —>  Claude Code
+    you  <— voice —>  the companion (a fast model talks)  <— tasks —>  your Claude Code session (its own model works)
 
-Today there is one connector, for Claude Code. Codex and DeepSeek Harness speak the same small protocol to the hub
-(`jev_interaction/harness.py`) and are next.
+Nothing is started beside the harness and nothing is configured outside it. The plugin's server, which Claude Code
+starts with the session, brings the voice up on a free port the first time the session listens, and takes it down
+when the session ends.
 
-## Set it up with Claude Code
+## Set it up in Claude Code
 
-1. Install the package so that `jev-interaction` is on your PATH (Claude Code starts it):
-   `pipx install "jev-interaction[server]"` or `uv tool install "jev-interaction[server]"`.
-2. Add `JEV_HARNESS=1` to `.env` and run `jev-interaction serve` (any port: the server writes where it is to
-   `~/.jev-interaction/hub` and the connectors read it).
-3. In Claude Code: `/plugin marketplace add native-bond-lab/Jev-Interaction`, then
-   `/plugin install jev-voice@jev-interaction`. Installing it for one project (scope `local` or `project`) is enough:
-   the plugin's server and hooks then run only in sessions of that project.
-4. Start Claude Code in your project with the channel on:
-   `claude --dangerously-load-development-channels plugin:jev-voice@jev-interaction`
-   and confirm "I am using this for local development". Channels are a research preview in Claude Code and this one is
-   not on Anthropic's allowlist, which is why the flag is needed. On Team and Enterprise plans an admin has to enable
-   channels. Only a session started this way is put on the hub: other Claude Code windows, with or without the plugin,
-   are left alone.
-5. Open http://localhost:8080, start a call, and ask for something: "can you run the tests and fix what fails?"
+1. Install the package where Claude Code can find it: `pipx install "jev-interaction[server]"` or
+   `uv tool install "jev-interaction[server]"`. The Claude Code command line has to be signed in (`claude`, then `/login`).
+2. In Claude Code: `/plugin marketplace add native-bond-lab/Jev-Interaction`, then
+   `/plugin install interaction@jev-interaction`.
+3. Run `/interaction:start`.
 
-`GET /api/health` lists the harness sessions on the hub under `harness`.
+The first time, a setup page opens in the browser, and you choose:
+
+| | |
+|---|---|
+| the fast model that does the talking | Claude Code's own by default (`haiku`, for instance): no key, the account you are signed in to. Any OpenAI-compatible endpoint of your own can be chosen instead |
+| speech recognition, speech synthesis | a provider each, and its key |
+| the judge | Jev, and its key |
+
+Nothing starts until the fast model is chosen. What you choose is kept in `~/.jev-interaction/.env`. Then run
+`/interaction:start` again: the pet appears and you can talk. `/interaction:stop` ends it, and so does pressing Esc
+while it is listening.
+
+## How it works
+
+`/interaction:start` puts the session in a loop of three tools of the plugin's server
+(`jev_interaction/connectors/claude_code.py`):
+
+| tool | |
+|---|---|
+| `listen` | waits for what you ask for out loud and gives it to the session, with a task number |
+| `say` | the session's words for you to hear: the outcome, in a sentence or two |
+| `stop` | ends voice interaction |
+
+The session does the work as it would a typed prompt, on its own model. The talking is done by the call server, on the
+fast model (`adapters/claude_cli.py`: one `claude -p` kept open). Claude Code's hooks tell the call server what the
+session is doing by calling a fourth tool the model never sees. If the session ends its turn while voice interaction
+is on, it is sent back to listening.
 
 ## The pet
 
@@ -35,8 +53,9 @@ The call does not need the big page. `/pet` is the same call drawn as a pixel do
 
     cd pet && npm install && npm start
 
-Starting the pet starts everything: it runs the call server itself, on a free port and with the hub on, and stops it
-when it quits. Steps 2 and 5 above are then not needed.
+The pet's window can also be started on its own (it then runs the call server itself), for a call that is not tied
+to a harness session. With `JEV_PET_APP` set to the `pet/` folder, `/interaction:start` shows the pet in that window
+instead of the browser.
 
 Click the dog to start. It perks its ears when it hears you, struts while a task runs, waves when the coding agent
 needs your OK, and lies down when it sleeps. Click it (or Cmd/Ctrl+Shift+J) to put it to sleep or wake it.
@@ -45,29 +64,31 @@ needs your OK, and lies down when it sleeps. Click it (or Cmd/Ctrl+Shift+J) to p
 
 | you | what it does |
 |---|---|
-| ask for work by voice | the agent on the line writes `/task agent: ...`; the words arrive in Claude Code as a prompt |
-| ask how it is going | it answers from what Claude Code is doing right now (each tool call is reported) |
-| add something while it works | passed on; Claude Code takes it up when the turn it is on ends |
-| Claude Code needs permission | you are told. With `JEV_VOICE_APPROVALS=1` your spoken allow or deny is passed back; without it you answer on your own screen, as always |
-| Claude Code finishes | Claude writes a sentence or two to be said (its `say` tool) and you are told at a quiet moment |
-| you typed a prompt in that Claude Code session yourself | if it runs longer than 30 seconds, you are told when it is done; a short one is left alone |
-| nothing happens for a while | it may ask after you once; a minute after your last exchange, or sooner when you do not answer, it sleeps: no question to Jev, no audio to the recognizer. Your voice or Claude Code's news wakes it |
+| ask for work by voice | the companion says it is on it and hands the task to the session through `listen` |
+| ask how it is going | it answers from what the session is doing right now (each tool call is reported) |
+| add something while it works | passed on; the session hears it when it next listens |
+| the session needs permission | you are told, and answer on your own screen as always |
+| the session finishes | it writes a sentence or two with `say`, and you are told at a quiet moment |
+| you type a prompt yourself | it is done as usual; if it runs longer than 30 seconds you are told when it is done |
+| nothing happens for a while | it may ask after you once; a minute after your last exchange, or sooner when you do not answer, it sleeps: no question to Jev, no audio to the recognizer. Your voice or the session's news wakes it |
 
 ## What Claude Code does not allow from outside
 
-- A turn that is running cannot be interrupted. "Stop" drops the task on the voice's side; Claude Code finishes its turn.
-- Words pushed while a turn runs wait for it to end.
+- A turn that is running cannot be interrupted by the voice. "Stop" drops the task on the voice's side; the session finishes its turn.
+- A plugin cannot ask Claude Code for a model directly, which is why the talking goes through `claude -p` and needs the command line signed in.
 
 ## A connector for another harness
 
-A connector opens `ws://127.0.0.1:8080/harness/ws` (from this machine only, never from a page), says
+A connector joins the hub of the call server (`ws://127.0.0.1:<port>/harness/ws`, from this machine only, never from a
+page; the server writes its address to `~/.jev-interaction/hub`), says
 `{"type": "hello", "harness": "...", "cwd": "...", "steer": "now" | "turn"}`, and then exchanges the events listed at
 the top of `jev_interaction/harness.py`.
 
 ## Checked, and not yet
 
-Checked against Claude Code 2.1.280: the channel registers, a pushed prompt arrives as a turn, the hooks reach the hub
-through the channel's own `hook` tool (so only the session that has the channel is heard, however many others are
-open), and a turn that breaks off fails the task with its reason. Installed as a plugin from the marketplace file and started
-with `plugin:jev-voice@jev-interaction`, it found the call server by itself. Not checked yet with a signed-in session: Claude calling
-`say`, the permission relay, and a whole spoken round trip.
+Checked: the loop end to end with a stand-in for the session's model (a spoken request reached `listen`, `say` was
+told by the pet, the call server stopped with the session); in Claude Code 2.1.280 the plugin loads, `/interaction:start`
+and `/interaction:stop` are there, its server connects with three tools; the setup page offers Claude Code's own model
+and saving it works; the talker reached the real `claude -p` and read its answer (an error: not signed in).
+Not checked yet, for want of a signed-in command line: the session itself running the loop, and a reply spoken on
+Claude Code's own model.

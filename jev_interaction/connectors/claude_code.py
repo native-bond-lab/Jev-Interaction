@@ -149,9 +149,8 @@ class Service:
                 return "", 'the call server is not installed: pip install "jev-interaction[server]"'
             port = _free_port()
             HOME.mkdir(parents=True, exist_ok=True)
-            env = {**os.environ, "JEV_HARNESS": "1", "JEV_HOME": os.getenv("JEV_HOME") or str(HOME)}
-            if not env.get("LLM_PROVIDER") and not env.get("LLM_BASE_URL"):
-                env["LLM_PROVIDER"] = "claude-code"       # the talking is done by Claude Code's own fast model
+            # the talking is done by Claude Code's own model unless the user chose another on the setup page
+            env = {**os.environ, "JEV_HARNESS": "1", "JEV_HOME": os.getenv("JEV_HOME") or str(HOME), "JEV_LLM_DEFAULT": "claude-code"}
             log = open(HOME / "server.log", "ab")        # noqa: SIM115 - the server's for as long as it runs
             self.server = subprocess.Popen([sys.executable, "-m", "jev_interaction.cli", "serve", "--port", str(port), "--quiet"],
                                            env=env, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
@@ -166,27 +165,34 @@ class Service:
                 return "", f"the call server did not start (see {HOME / 'server.log'})"
         if health.get("harness") is None:
             return "", "a call server is running on this machine without its hub for coding agents (JEV_HARNESS=1)"
-        if health.get("missing"):
-            self.stop()
-            return "", ("voice interaction is not set up yet: " + ", ".join(health["missing"]) + " missing. They are set in "
-                        "this plugin's options (run /plugin, choose interaction, Configure)")
+        if health.get("missing"):                 # the first time: the user chooses the models on the setup page
+            page = url.replace("ws://", "http://").split("/harness/")[0] + "/"
+            self.open(page)
+            return "", ("voice interaction is not set up yet (" + ", ".join(health["missing"]) + "). The setup page is open in "
+                        f"the browser ({page}): there the user chooses the fast model that does the talking and the "
+                        "speech models, and then runs /interaction:start again")
         if self.server is not None and self.pet is None:
             self.show(url.replace("ws://", "http://").split("/harness/")[0] + "/pet")
         return url, ""
+
+    @staticmethod
+    def open(page: str) -> None:
+        if (os.getenv("JEV_PET") or "").lower() not in ("off", "0", "no"):      # off: nobody is to see it (a test)
+            import webbrowser
+            webbrowser.open(page)
 
     def show(self, page: str) -> None:
         """The pet: the small window of its own when there is one (JEV_PET_APP: the pet/ folder, with Electron
         installed), the browser otherwise."""
         if (os.getenv("JEV_PET") or "").lower() in ("off", "0", "no"):
-            return                                # the user opens the page themself (or nobody is to see it: a test)
+            return
         app = pathlib.Path(os.getenv("JEV_PET_APP") or "")
         electron = app / "node_modules" / ".bin" / "electron"
         if os.getenv("JEV_PET_APP") and electron.exists():
             self.pet = subprocess.Popen([str(electron), str(app)], env={**os.environ, "JEV_PET_URL": page}, stdin=subprocess.DEVNULL,
                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         else:
-            import webbrowser
-            webbrowser.open(page)
+            self.open(page)
 
     def stop(self) -> None:
         for p in (self.pet, self.server):

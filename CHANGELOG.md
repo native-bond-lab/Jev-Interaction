@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Voice interaction from inside Claude Code.** The plugin is `interaction` (`connectors/claude-code/`):
+  `/interaction:start` puts the session in a loop of `listen`, the work, `say`, and brings the voice up by itself on a
+  free port; `/interaction:stop` or Esc ends it. No channel, no launch flag, nothing to start beside the harness. The
+  talking is done by Claude Code's own fast model (`adapters/claude_cli.py`, `LLM_PROVIDER=claude-code`,
+  `JEV_FAST_MODEL`), which the setup page asks for the first time and which nothing starts without; another model
+  can be chosen there. This replaces the channel connector and the standalone start of the entries below.
 - **The pet.** The call as a pixel dog that stands on two legs, for the corner of the screen: `/pet`
   (`server/web/pet.js`; personas `pet` and `pet_zh`, a work buddy that leaves a quiet alone) and a small floating
   window for it (`pet/`, Electron: frameless, see-through, always on top, Cmd/Ctrl+Shift+J to sleep or wake). The dog

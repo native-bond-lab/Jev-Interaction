@@ -143,8 +143,11 @@ def steps() -> list[dict]:
             if kind == "tts":
                 card["speech"] = R.speech_style(p.name)
             provs.append(card)
+        if kind == "llm":                       # a harness's own model is offered only where a harness started this
+            offered = ("openai-compatible", chosen, (os.getenv("JEV_LLM_DEFAULT") or "").strip().lower())   # server
+            provs = [c for c in provs if c["name"] in offered]
         step = {"id": kind, "title": title, "title_zh": title_zh, "selected": chosen, "providers": provs}
-        if kind in R.SELECTOR:
+        if kind in R.SELECTOR and (kind != "llm" or len(provs) > 1):
             step["selector"] = R.SELECTOR[kind]
         if kind == "llm":
             step["vendors"] = [v.card() for v in R.LLM_VENDORS]
