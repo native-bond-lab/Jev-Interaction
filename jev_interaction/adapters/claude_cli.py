@@ -8,14 +8,14 @@ the conversation itself, so each reply sends only what it has not heard yet: eve
 It runs with no tools, no MCP servers, no settings and no session file: it only talks. The model is the one the user
 chose for talking (JEV_FAST_MODEL: a fast one, "haiku" for instance); the session they work in keeps its own.
 
-Not checked against a signed-in command line yet: written from the documented stream-json format.
+Checked with a signed-in Claude Code (2.1.280, 2.1.323) on haiku: about 2.2 s to a first line, about 8 s for the
+first of a call (the command line starting).
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import os
-
 
 # The command line is a coding agent's: its model does not know, unless told, that here nothing it writes is read. Seen
 # on a real call (11-23): a line of its own planning, in English, went out to the voice.

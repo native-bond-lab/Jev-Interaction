@@ -44,8 +44,6 @@ SERVER = "jev"
 LISTEN_S = 45 * 60               # a listen call ends after this with "nobody asked"; under the server's tool time limit
 SAY_S = 1.0                      # a listen that arrives before the say sent with it waits this long for it
 HOME = pathlib.Path.home() / ".jev-interaction"
-DEFAULTS = {"TTS_VOICE_ID": "TX3LPaxmHKxFdv7VOQHJ"}     # written for the user when missing (a premade ElevenLabs voice, for
-                                                       # personas that bring none of their own); theirs to change in .env
 
 INSTRUCTIONS = (
     "Voice interaction (the /interaction:start command): the user talks to a voice companion, which hands what they ask "
@@ -192,13 +190,12 @@ def unset(origin: str) -> tuple[list[str], list[str], str]:
             if f.get("secret"):
                 if f["name"] not in keys:         # one key may serve two parts (recognition and synthesis)
                     keys.append(f["name"])
-            elif f["name"] in DEFAULTS:
-                continue                          # has a default the connector writes: not a question for the user
             elif f["name"] not in choose:
                 choose.append(f["name"])
                 others = [p["name"] for p in st["providers"] if p is not chosen]
                 other = f" (or set {st['selector']} to {', '.join(others)} for another)" if st.get("selector") and others else ""
-                said.append(f"- {f['label']}: set {f['name']}{other}")
+                hint = f" ({f['hint']})" if f.get("hint") else ""
+                said.append(f"- {f['label']}{hint}: set {f['name']}{other}")
     return choose, keys, "\n".join(said)
 
 
@@ -243,11 +240,8 @@ class Service:
             return "", "a call server is running on this machine without its hub for coding agents (JEV_HARNESS=1)"
         if health.get("missing"):                 # the first time: the user chooses, here in the session
             choose, keys, said = unset(url.replace("ws://", "http://").split("/harness/")[0])
-            keep({**{k: v for k, v in DEFAULTS.items() if k in health["missing"]},
-                  **{k: "" for k in keys}})       # the keys' names are in the file, waiting for their values
-            if not choose and not keys:           # only defaults were missing: they are written, start over
-                self.stop()
-                return self.start()
+            if keys:
+                keep({k: "" for k in keys})       # the keys' names are in the file, waiting for their values
             self.stop()                           # it is started again, with what they chose, at the next listen
             ask = (f"Ask the user to choose, then call setup with their choices:\n{said}\n" if choose else "")
             key = (f"Keys are not typed into this conversation. Tell the user to fill in {', '.join(keys)} in the file "

@@ -32,6 +32,36 @@ def profile_for(language: str | None = None) -> tuple[str, str]:
     return os.getenv("JEV_LOCAL_PROFILE") or ("pet_zh" if zh else "pet"), "zh" if zh else "en"
 
 
+def encoded(miniaudio, media: str):
+    """The decoder for a synthesizer's media type; None for raw PCM16, which needs none. Whatever provider the user
+    chose, its audio is played: nothing here assumes one vendor's format."""
+    media = (media or "").lower()
+    if "pcm" in media or "l16" in media:
+        return None
+    for mark, fmt in (("wav", miniaudio.FileFormat.WAV), ("flac", miniaudio.FileFormat.FLAC), ("ogg", miniaudio.FileFormat.VORBIS),
+                      ("vorbis", miniaudio.FileFormat.VORBIS)):
+        if mark in media:
+            return fmt
+    return miniaudio.FileFormat.MP3
+
+
+def raw(source, media: str):
+    """Raw PCM16 mono at the rate its media type names (24 kHz unless it says otherwise), as the speakers' rate."""
+    import re
+    m = re.search(r"rate=(\d+)", media or "")
+    rate, step = int(m.group(1)) if m else RATE, 4800
+    while True:
+        pcm = source.read(step)
+        if not pcm:
+            return
+        if rate != RATE:                          # the nearest sample: enough for a voice, and no dependency
+            import array
+            x = array.array("h", pcm[:len(pcm) // 2 * 2])
+            n = len(x) * RATE // rate
+            pcm = array.array("h", (x[min(len(x) - 1, i * rate // RATE)] for i in range(n))).tobytes()
+        yield pcm
+
+
 def device(kind: str, name: str | None):
     """The id of the capture or playback device whose name has `name` in it; None for the default (or no such one)."""
     if not name:
@@ -112,9 +142,19 @@ class LocalCall:
             self.speaker.played = 0
             chunks: queue.Queue = queue.Queue()
 
-            def decode(mine=self.current, source=Source(chunks)):
+            kind: queue.Queue = queue.Queue(maxsize=1)     # the line's media type, once the synthesizer has answered
+
+            def decode(mine=self.current, source=Source(chunks), told=kind):
                 try:
-                    for pcm in miniaudio.stream_any(source, source_format=miniaudio.FileFormat.MP3, nchannels=1, sample_rate=RATE,
+                    media = told.get()
+                    fmt = encoded(miniaudio, media)
+                    if fmt is None:               # raw PCM16 ("audio/pcm;rate=24000"): nothing to decode, only its rate
+                        for pcm in raw(source, media):
+                            if self.current is not mine:
+                                return
+                            self.speaker.feed(pcm)
+                        return
+                    for pcm in miniaudio.stream_any(source, source_format=fmt, nchannels=1, sample_rate=RATE,
                                                     output_format=miniaudio.SampleFormat.SIGNED16, frames_to_read=RATE // 20):
                         if self.current is not mine:
                             return                # stopped: the rest of it is not for the speakers
@@ -126,11 +166,14 @@ class LocalCall:
             threading.Thread(target=decode, daemon=True).start()
             try:
                 async with http.stream("GET", f"http://127.0.0.1:{self.port}{line['audio']}") as r:
+                    kind.put(r.headers.get("content-type", "audio/mpeg"))
                     async for piece in r.aiter_bytes():
                         chunks.put(piece)
             except Exception:  # noqa: BLE001 - the synthesizer failed: this line is not heard, the call goes on
                 pass
             finally:
+                if kind.empty():
+                    kind.put("audio/mpeg")
                 chunks.put(None)
             mine = self.current
             while self.current is mine and not (mine["done"] and self.speaker.waiting() == 0):

@@ -423,3 +423,68 @@ async def test_claude_codes_own_model_talks_through_one_open_command_line(tmp_pa
     heard = [x["heard"] for x in log if isinstance(x, dict)]
     assert heard[0] == "[event: they spoke]\nHello?"
     assert heard[1] == "(background task 1 started)\n[event: they spoke]\nHow far is it?"     # only what it had not heard
+
+
+# ---------------------------------------------------------------------- any provider that speaks the OpenAI audio API
+async def test_speech_from_any_openai_compatible_service_and_no_provider_is_chosen_for_the_user(monkeypatch):
+    import httpx
+
+    from jev_interaction.adapters import registry as R
+    from jev_interaction.adapters.openai_speech import OpenAICompatASR, OpenAICompatTTS
+    seen = []
+
+    def service(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.path, request.headers.get("authorization"), request.content))
+        if request.url.path.endswith("/audio/speech"):
+            return httpx.Response(200, content=b"ID3-some-mp3-bytes", headers={"content-type": "audio/mpeg"})
+        return httpx.Response(200, json={"text": "count the files"})
+    transport = httpx.MockTransport(service)
+    tts = OpenAICompatTTS(voice="nova", base_url="http://speech.test/v1/", api_key="k", model="tts-1", transport=transport)
+    assert b"".join([c async for c in tts.audio("Three files.")]) == b"ID3-some-mp3-bytes" and tts.media_type == "audio/mpeg"
+    said = json.loads(seen[-1][2])
+    assert seen[-1][:2] == ("/v1/audio/speech", "Bearer k") and said == {"model": "tts-1", "input": "Three files.", "response_format": "mp3", "voice": "nova"}
+    asr = OpenAICompatASR(language="en", base_url="http://speech.test/v1", model="whisper-1", transport=transport)   # no key: a local server
+    await asr.connect()
+    quiet, voice = b"\x00\x00" * 3200, (b"\x00\x40" + b"\x00\xc0") * 1600          # 200 ms frames: silence, and a loud square wave
+    for frame in (quiet, quiet, voice, voice, voice, quiet):
+        await asr.send(frame)
+    assert asr.clips.empty()                                             # one quiet frame is not yet a pause
+    await asr.send(quiet)                                                # 400 ms of quiet: the stretch is a clip
+    seg = await asyncio.wait_for(asr.out.get(), 2)
+    assert seg.text == "count the files" and seg.final
+    path, auth, body = seen[-1]
+    assert path == "/v1/audio/transcriptions" and auth is None and b"RIFF" in body and b"whisper-1" in body
+    await asr.close()
+    strict = OpenAICompatASR(base_url="http://speech.test/v1", model="whisper-1", min_voice_ms=300, transport=transport)
+    await strict.connect()
+    for frame in (quiet, voice, quiet, quiet):                           # one frame of sound: under min_voice_ms, not a clip
+        await strict.send(frame)
+    assert strict.clips.empty() and strict.out.empty()
+    await strict.close()
+    # the registry offers it beside the others, and nothing is the default for speech
+    for k in ("ASR_PROVIDER", "TTS_PROVIDER"):
+        monkeypatch.delenv(k, raising=False)
+    assert R.selected("asr") is None and R.selected("tts") is None
+    assert {"elevenlabs", "dashscope", "openai-compatible"} <= {p.name for p in R.providers("asr")}
+    assert {"elevenlabs", "dashscope", "openai-compatible"} <= {p.name for p in R.providers("tts")}
+
+
+def test_the_local_call_plays_whatever_format_the_chosen_synthesizer_sends():
+    import miniaudio
+
+    from jev_interaction import local
+    assert local.encoded(miniaudio, "audio/mpeg") == miniaudio.FileFormat.MP3
+    assert local.encoded(miniaudio, "audio/wav") == miniaudio.FileFormat.WAV
+    assert local.encoded(miniaudio, "audio/ogg") == miniaudio.FileFormat.VORBIS
+    assert local.encoded(miniaudio, "audio/pcm;rate=24000") is None      # raw: no decoder
+
+    class Source:
+        def __init__(self, data): self.data = data
+
+        def read(self, n):
+            out, self.data = self.data[:n], self.data[n:]
+            return out
+    same = b"".join(local.raw(Source(b"\x01\x00" * 2400), "audio/pcm;rate=24000"))
+    assert same == b"\x01\x00" * 2400
+    up = b"".join(local.raw(Source(b"\x01\x00" * 1600), "audio/pcm;rate=16000"))        # 16 kHz to the speakers' 24 kHz
+    assert len(up) == 1600 * 2 * 24000 // 16000

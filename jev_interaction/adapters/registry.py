@@ -244,6 +244,16 @@ def _eleven_tts(voice: str | None = None, **_):
     return ElevenLabsTTS(voice_id=voice)
 
 
+def _openai_tts(voice: str | None = None, **_):
+    from .openai_speech import OpenAICompatTTS
+    return OpenAICompatTTS(voice=voice)
+
+
+def _openai_asr(language: str = "en", **_):
+    from .openai_speech import OpenAICompatASR
+    return OpenAICompatASR(language=language)
+
+
 def _cosyvoice(voice: str | None = None, **_):
     from .dashscope_tts import CosyVoiceTTS
     return CosyVoiceTTS(voice=voice)
@@ -319,6 +329,18 @@ register("tts", "elevenlabs", _eleven_tts, [
 register("tts", "dashscope", _cosyvoice, [
     DASHSCOPE_KEY, Setting("DASHSCOPE_TTS_VOICE", "Voice", "音色", default="longxiaochun_v2"),
     Setting("DASHSCOPE_TTS_MODEL", "Model", "模型", default="cosyvoice-v2")], label="CosyVoice (Alibaba Cloud Bailian)", **DASHSCOPE)
+# any service that speaks the OpenAI audio API (adapters/openai_speech.py): OpenAI, Groq, SiliconFlow, a local Whisper or
+# Kokoro server... The key is optional: a server on this machine asks for none
+register("asr", "openai-compatible", _openai_asr, [
+    Setting("ASR_BASE_URL", "Endpoint (serves /audio/transcriptions)", "接口地址（提供 /audio/transcriptions）", required=True),
+    Setting("ASR_API_KEY", "API key", "密钥", secret=True),
+    Setting("ASR_MODEL", "Model", "模型", required=True)], label="OpenAI-compatible (any Whisper-style endpoint)")
+register("tts", "openai-compatible", _openai_tts, [
+    Setting("TTS_BASE_URL", "Endpoint (serves /audio/speech)", "接口地址（提供 /audio/speech）", required=True),
+    Setting("TTS_API_KEY", "API key", "密钥", secret=True),
+    Setting("TTS_MODEL", "Model", "模型", required=True),
+    Setting("TTS_VOICE", "Voice", "音色"),
+    Setting("TTS_FORMAT", "Audio format", "音频格式", default="mp3")], label="OpenAI-compatible (any /audio/speech endpoint)")
 
 
 # ---------------------------------------------------------------- optional local models (no keys; CPU)

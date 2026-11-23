@@ -24,7 +24,9 @@ The first time, the session asks you what to use, in Claude Code itself:
 | | |
 |---|---|
 | the fast model that does the talking | Claude Code's own (`haiku`, for instance): no key, the account you are signed in to. Any OpenAI-compatible endpoint of your own can be chosen instead |
-| speech recognition, speech synthesis | a provider each |
+| speech recognition, speech synthesis | a provider each, from the ones the engine has adapters for (ElevenLabs, Alibaba Cloud Bailian, or any OpenAI-compatible speech endpoint, your own machine's included: [adapters.md](adapters.md)), and what that provider needs: a voice, a model, an address |
+
+None is chosen for you.
 
 Nothing starts until the fast model is chosen. Keys are not typed into the conversation: the session names the file
 they go in, `~/.jev-interaction/.env`, where their names are already waiting (the judge's, `JEV_API_KEY`, and the
@@ -101,3 +103,23 @@ companion told it: three files, which was right. Run several times over on 2.1.3
 real session does differently from the stand-in: it sends `say` and `listen` in one step, names the words of `say`
 `message` as often as `text`, and the talking model now and then writes its `/task` line as a tool call. All three
 are taken as they come.
+
+## What is open
+
+For whoever picks this up. Each of these was seen on a real run or is a known gap, not a guess.
+
+| | |
+|---|---|
+| it is slow to answer | per reply: the talking model's first line (about 2.2 s here, through a proxy) plus the synthesizer's first bytes (about 1.9 s). The first reply of a call adds the command line starting, about 8 s: `claude -p` could be started when the call server starts rather than at the first line. A provider near the user is the rest |
+| echo, with speakers | handled by dropping words that are mostly its own (`Config.echo_tail_s`); a stretch the recognizer closes with its words and the user's in one piece still gets through. Real echo cancellation (the OS's voice processing, or a WebRTC one fed what is played) is not there |
+| the talking model | it sometimes says it will try again without writing the `/task` line; once in a while it writes its planning out, which is then spoken (it is told that everything it writes is said, `adapters/claude_cli.py`); it wrote `/task` as a tool call a few times (taken as it comes, `tasks.action`) |
+| when the news is told | a clock (`Config.task_report_after_s`), not a question to Jev. The sleep and echo numbers are starting values too; none has been tuned on recorded calls |
+| permission prompts | told to the user, answered on their screen. Answering by voice (the `PermissionRequest` hook can decide) is not wired |
+| stopping a task | Claude Code cannot be interrupted from outside: "stop" only drops the task on the voice's side |
+| other voices in the room | the local call has no voiceprint on; anyone's voice is heard and wakes it |
+| the generic speech adapters | `openai-compatible` recognition and synthesis are tested against a stand-in only, with no real service yet |
+| other harnesses | Codex and DeepSeek Harness connectors are not written; the hub's protocol is at the top of `harness.py` |
+| other systems | checked on macOS only (`bin/connect.sh` is a shell script; the audio is miniaudio's) |
+
+To see what a session really does, in what order: `JEV_CONNECT_LOG=/tmp/connect.log` in Claude Code's environment
+writes every tool call the plugin's server gets and what it answered.

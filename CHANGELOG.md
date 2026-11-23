@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Speech from any provider.** `ASR_PROVIDER=openai-compatible` and `TTS_PROVIDER=openai-compatible`
+  (`adapters/openai_speech.py`): any service that serves the OpenAI audio API (`/audio/transcriptions`,
+  `/audio/speech`), a model on your own machine included; the key is optional. The recognizer cuts clips on pauses and
+  sends each whole. The call on the computer's own speakers plays whatever format the chosen synthesizer sends (mp3,
+  wav, flac, ogg, raw PCM). Nothing of one vendor's is written for the user any more: what the chosen provider needs
+  (a voice, a model, an address) is asked for. Tested against a stand-in, not a real service yet.
 - **Voice interaction from inside Claude Code.** The plugin is `interaction` (`connectors/claude-code/`):
   `/interaction:start` puts the session in a loop of `listen`, the work, `say`, and brings the voice up by itself on a
   free port; `/interaction:stop` or Esc ends it. No channel, no launch flag, nothing to start beside the harness. The
