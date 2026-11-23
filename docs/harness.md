@@ -91,5 +91,10 @@ keys' names wait in the file); the local call against the real stack with stand-
 request recognized, lines decoded and played in order, talking over a line stops it); in Claude Code 2.1.280 the plugin
 loads, both commands are there, its server connects; the talker reached the real `claude -p` and read its answer (an
 error: not signed in).
-Checked out loud on a MacBook's own speakers and microphone as well (see above). Not checked yet, for want of a
-signed-in command line: the session itself running the loop and a reply spoken on Claude Code's own model.
+Checked out loud on a MacBook's own speakers and microphone as well (see above).
+
+And with a signed-in Claude Code 2.1.280, the whole of it: `/interaction:start` typed in a session, the session called
+`listen` and the voice came up; the greeting and every line after it were spoken on Claude Code's own model (`haiku`,
+about 2.2 s to a first line here; the first of a call takes about 8 s, the command line starting); a spoken request
+("count the files in this folder") reached the session, which ran its command, said the outcome with `say`, and the
+companion told it: three files, which was right.
