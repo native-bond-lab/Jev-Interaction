@@ -1,0 +1,17 @@
+name: base branch
+
+# Work lands on dev; main takes releases from dev only (CONTRIBUTING.md). A pull request against main from any other
+# branch is turned back here, with what to do instead.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  from-dev:
+    runs-on: ubuntu-latest
+    steps:
+      - name: main takes pull requests from dev only
+        if: github.head_ref != 'dev'
+        run: |
+          echo "::error::Pull requests go to dev. Change the base branch of this one to dev (Edit, next to the title)."
+          exit 1
