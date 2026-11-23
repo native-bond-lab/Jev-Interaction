@@ -3,7 +3,7 @@
     python3 docs/charts/make_charts.py
 
 The images carry only the data (bars, row names, values, short panel headers); titles and notes live in the README.
-Every number is copied from the README tables. Needs Google Chrome (headless) and Pillow.
+Every number is copied from the tables in docs/benchmarks.md. Needs Google Chrome (headless) and Pillow.
 """
 from __future__ import annotations
 

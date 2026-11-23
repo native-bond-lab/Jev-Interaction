@@ -396,7 +396,7 @@ async def call(ws: WebSocket):
     if HUB is not None:
         cfg.sleep_when_idle = True            # it stays on the desk all day: quiet means asleep, never a hang-up
     if LOCAL:
-        cfg.echo_tail_s = 3.0                 # the computer's own speakers and microphone: nothing cancels the echo
+        cfg.echo_tail_s, cfg.echo_same = 3.0, 0.7    # the computer's own speakers and microphone: nothing cancels the echo
     synth = make_synthesizer(profile, pid)
     # who else can be put on this line (the persona's `cast`): the caller asks, Jev hears it, the session hands over
     cast = {pid: profile, **{c: Profile.load(paths.profiles()[c]) for c in profile.extra.get("cast") or [] if c in paths.profiles()}}

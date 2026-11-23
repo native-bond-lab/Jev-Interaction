@@ -16,13 +16,13 @@ EXPORTS = {"Session", "Profile", "Config", "Pace", "preset", "PRESETS", "JevClie
 SESSION_ARGS = ["profile", "send", "judge", "recognizer", "responder", "vad", "config", "recorder", "system_template",
                 "speech", "cast", "embedder", "sound", "executors"]
 CONFIG_FIELDS = {"language", "frame_ms", "sample_rate", "paces", "start_pace", "opening_turns", "policies", "voice_min_ms",
-                 "overlap_ask_ms", "pause_mark_ms", "sound_close_ms", "listen_gap_s", "listen_gap_jitter", "listen_min_gap_s", "listen_due_min", "turn_reask_ms",
+                 "overlap_ask_ms", "echo_tail_s", "pause_mark_ms", "sound_close_ms", "listen_gap_s", "listen_gap_jitter", "listen_min_gap_s", "listen_due_min", "turn_reask_ms",
                  "turn_last_ms", "listen_finished_max", "quiet_marks_s", "quiet_jitter", "check_min_quiet_s",
                  "hangup_min_quiet_s", "judge_timeout_s", "judge_turns", "judge_turn_chars", "safe_words",
                  "listen_max_words", "voice_same", "voice_other", "voice_verdict_ms", "voice_enroll_ms", "not_for_me",
                  "far_db", "hold_after_ms", "hold_release_ms", "turn_question", "judge_provider", "finished_min", "sparring_min",
                  "sound_rule", "sound_min", "words_min", "sound_wait_ms", "sleep_after_s", "sleep_when_idle", "wake_voice_ms", "sleep_preroll_ms",
-                 "task_report_after_s", "task_result_chars", "echo_tail_s", "echo_same"}
+                 "task_report_after_s", "task_result_chars", "echo_same"}
 PACE_FIELDS = {"name", "description", "max_wait_ms", "yield_p", "leads", "cut_in", "lead_after_s"}
 PROTOCOLS = {"VAD": {"is_voice"}, "Recognizer": {"connect", "send", "segments", "close"}, "Responder": {"lines"},
              "Synthesizer": {"audio"}, "Embedder": {"ready", "warm", "embed"},

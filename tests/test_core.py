@@ -439,6 +439,24 @@ async def test_the_agents_own_words_back_through_the_microphone_are_not_the_user
     assert any(e["type"] == "stop" for e in events)
 
 
+async def test_the_echo_that_comes_back_just_after_the_line_or_misheard_is_still_the_agents():
+    s, events, _ = make({})
+    line = "[softly] 嗯，我刚泡了杯红豆沙，要不要我陪你坐会儿？"
+    s.ledger.agent(line)
+    s.lines["a"] = line
+    s.speaking = True
+    await s.on_client({"type": "playback", "state": "idle"})            # the line has just stopped playing
+    await s.on_segment(Segment("我刚泡了杯红豆沙要不要我陪你做会儿"))          # misheard, and a moment late
+    await asyncio.sleep(0.05)
+    assert s.utt is None and not any(e["type"] == "user" for e in events)
+    await s.on_segment(Segment("好的"))                                   # a short word of the user's is theirs
+    assert s.utt is not None
+    s.utt = None
+    s.played_until -= 5                                                  # long after: the same words are the user's
+    await s.on_segment(Segment("我刚泡了杯红豆沙"))
+    assert s.utt is not None
+
+
 async def test_a_detector_that_measures_voice_is_asked_how_much_and_told_when_the_line_plays():
     s, events, _ = make({})
 

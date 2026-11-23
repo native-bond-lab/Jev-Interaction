@@ -10,7 +10,7 @@ cfg = preset("recommended", language="en", overlap_ask_ms=600)
 | preset | what it is |
 |---|---|
 | `recommended` (default) | the timing the voice-call engine in our product runs on at scale |
-| `tested` | `recommended` plus the knobs measured on the benchmarks (README, "All knobs together") |
+| `tested` | `recommended` plus the knobs measured on the benchmarks ([docs/benchmarks.md](../docs/benchmarks.md#all-knobs-together)) |
 | `default` | the library defaults |
 
 `JEV_PRESET` sets it for the server; `production`, the earlier name of `recommended`, still works.
@@ -66,6 +66,8 @@ something else.
 | `turn_question` | "engine" | how "have they finished" is worded. `"last_words"` asks about the user's own words, sent in a field of their own, with the options in both orders; for judges that read the engine's wording poorly ([stacks](stacks.md#recommended-mainland-china)) |
 | `turn_last_ms` | 4000 | this far past the pace's longest wait the agent speaks anyway, and its line is told the user went silent (`trailed`) rather than finished |
 | `pause_mark_ms` | 600 | the user's voice stops this long inside their turn and comes back: kept in the call's record as a pause of theirs (`Turn.pauses`). Nothing is decided on it; it is there for reading a user's rhythm and for tuning |
+| `echo_tail_s` | 2.0 | the agent's own words heard this long after its line stopped playing are its echo, not the user (four characters or more; a short word is the user's) |
+| `echo_same` | 0.8 | "its echo" when this share of what was recognized runs in order through one of its recent lines (a recognizer mishears an echo a little). The call on the computer's own speakers, where nothing cancels the echo, sets 0.7 and `echo_tail_s` 3 |
 | `sound_close_ms` | 1500 | a sound with no words (a cough, a breath) is over after this much quiet |
 
 ### When both talk at once
@@ -127,8 +129,6 @@ A page in a browser cancels the echo of the agent's voice; the call on the compu
 
 | field | default | what it does |
 |---|---|---|
-| `echo_tail_s` | 0 | words recognized while a line plays, or within this long after it, that are mostly the agent's own recent words are that line coming back through the microphone, and are dropped. 0: only an exact match while a line plays, as with a page. The local call sets 3 |
-| `echo_same` | 0.7 | "mostly": this share of what was recognized is found in one of its recent lines (a recognizer mishears a little of what a speaker plays) |
 
 ### The judge
 

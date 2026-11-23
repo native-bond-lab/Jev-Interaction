@@ -57,6 +57,10 @@ class Config:
                                        # until Jev says the user needs the floor: no clock pauses it
     pause_mark_ms: int = 600           # the user's voice stops this long inside their turn and comes back: kept in the
                                        # call's record as a pause of theirs (Turn.pauses). Nothing is decided on it
+    echo_tail_s: float = 2.0           # the agent's own words heard this long after its line stopped playing are its echo
+    echo_same: float = 0.8             # ... when this share of what was recognized runs in order through one of its recent
+                                       # lines (a recognizer mishears an echo a little). The call on the computer's own
+                                       # speakers, where nothing cancels the echo, sets 0.7 and a tail of 3 s (server/app.py)
     sound_close_ms: int = 1500         # a sound with no words behind it is over after this much quiet (a cough, a breath)
     listen_gap_s: float = 3.0          # at least this long between two listening sounds that could as well be left out
     listen_gap_jitter: float = 0.3     # after each one the gap to the next moves by up to this share, so they do not come
@@ -99,12 +103,6 @@ class Config:
     task_report_after_s: float = 1.0   # a task's news is said into a quiet once it has lasted this long (the user may be
                                        # about to answer the line just said)
     task_result_chars: int = 1200      # what came back from a task is kept on the record up to this length
-    echo_tail_s: float = 0.0           # for a client with no echo cancellation (the call on the computer's own speakers:
-                                       # local.py): words recognized while a line plays, or within this long after it,
-                                       # that are mostly the agent's own recent words are that line coming back through
-                                       # the microphone, and are dropped. 0: only an exact match while a line plays
-    echo_same: float = 0.7             # ... "mostly": this share of what was recognized is in one of its recent lines (the
-                                       # recognizer mishears a little of what comes out of a speaker)
     judge_timeout_s: float = 3.0       # a judge answer slower than this is dropped and the decision takes its fallback
     judge_turns: int = 8               # recent turns in every Jev state
     judge_turn_chars: int = 300

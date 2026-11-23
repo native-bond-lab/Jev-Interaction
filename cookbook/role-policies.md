@@ -113,7 +113,7 @@ What the shipped personas use:
 | Lyra, Kai | 0 | pace | 1 | their manner already moves with the call |
 
 Two personas from our product with the two settings above act alike in everyday moments and differently in 6 of 16
-moments of a scene of control, each the way round one would expect (`tools/persona_bench.py`; the README has the
+moments of a scene of control, each the way round one would expect (`tools/persona_bench.py`; [docs/policy.md](../docs/policy.md) has the
 numbers). Check a persona of yours the same way before you rely on it.
 
 ## Listening with content (experimental)
