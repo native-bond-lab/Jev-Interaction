@@ -62,6 +62,17 @@ SPENT = {"day": "", "seconds": 0.0}     # call time already used today (finished
 HUB = H.Hub(voice_approvals=os.getenv("JEV_VOICE_APPROVALS", "0") == "1") if os.getenv("JEV_HARNESS", "0") == "1" else None
 if HUB is not None and os.getenv("JEV_SERVE_PORT"):
     H.announce(int(os.environ["JEV_SERVE_PORT"]))     # so the connectors find this server, whatever port it is on
+LOCAL: dict = {}                        # the call on this computer's own microphone and speakers (local.py), when on
+
+
+async def local_call():
+    """JEV_LOCAL_AUDIO=1 (a harness started this server): the call is on the computer itself, with no page."""
+    from jev_interaction import local
+    if os.getenv("JEV_LOCAL_AUDIO") == "1" and os.getenv("JEV_SERVE_PORT") and not local.available():
+        LOCAL["call"] = asyncio.get_running_loop().create_task(local.LocalCall(int(os.environ["JEV_SERVE_PORT"])).run())
+
+
+app.router.on_startup.append(local_call)
 
 
 def spent_today() -> float:
@@ -185,7 +196,8 @@ def health():
             "providers": {"judge": os.getenv("JEV_MODEL", "jev-latest"), "llm": llm, "asr": registry.selected("asr"),
                           "tts": registry.selected("tts"), "sound": registry.selected("sound") if SOUND else None,
                           "voiceprint": registry.selected("voiceprint") if EMBEDDER else None}, "speech": registry.speech_style(),
-            "harness": None if HUB is None else [{"harness": k.harness, "cwd": k.cwd, "busy": k.busy} for k in HUB.links.values()]}
+            "harness": None if HUB is None else [{"harness": k.harness, "cwd": k.cwd, "busy": k.busy} for k in HUB.links.values()],
+            "local": bool(LOCAL)}
 
 
 def _who(request) -> tuple[str | None, str, str]:
@@ -475,12 +487,6 @@ NO_STALE = {"Cache-Control": "no-cache"}     # revalidate the page's files each 
 @app.get("/")
 def index():
     return FileResponse(WEB / "index.html", headers=NO_STALE)
-
-
-@app.get("/pet")
-def pet():
-    """The pet: the same call as the page's, drawn as a pixel dog for a small floating window (docs/harness.md)."""
-    return FileResponse(WEB / "pet.html", headers=NO_STALE)
 
 
 @app.get("/{name:path}")

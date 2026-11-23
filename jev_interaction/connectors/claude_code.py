@@ -4,9 +4,14 @@ Claude Code starts this process with the session, as an MCP server on stdio. Not
 /interaction:start; then the session itself keeps the loop going, with three tools:
 
     listen    waits for what the user asks for out loud and returns it. The first call brings the voice up: it finds
-              the call server on this machine or starts one (a free port, the hub on, the pet shown), and joins its hub
+              the call server on this machine or starts one (a free port, the hub on, the call on the computer's own
+              microphone and speakers: local.py), and joins its hub
     say       words for the user to hear: the outcome of a task, in a sentence or two
     stop      ends voice interaction
+    setup     the first time: keeps what the user chose (the fast model that talks, the speech providers)
+
+There is no page and no window. What has to be chosen the first time is asked in the session; keys are not typed into
+it, they go in ~/.jev-interaction/.env.
 
 So the session works as it always does, on its own model; the talking is done by the call server, on the fast model the
 user chose (JEV_FAST_MODEL, Claude Code's own: adapters/claude_cli.py). No channel and no launch flag are involved.
@@ -38,6 +43,8 @@ HARNESS = "Claude Code"
 SERVER = "jev"
 LISTEN_S = 45 * 60               # a listen call ends after this with "nobody asked"; under the server's tool time limit
 HOME = pathlib.Path.home() / ".jev-interaction"
+DEFAULTS = {"TTS_VOICE_ID": "TX3LPaxmHKxFdv7VOQHJ"}     # written for the user when missing (a premade ElevenLabs voice, for
+                                                       # personas that bring none of their own); theirs to change in .env
 
 INSTRUCTIONS = (
     "Voice interaction (the /interaction:start command): the user talks to a voice companion, which hands what they ask "
@@ -53,6 +60,11 @@ SAY = {"name": "say", "description": "Say something to the user out loud: the ou
        "inputSchema": {"type": "object", "required": ["text"], "properties": {
            "text": {"type": "string", "description": "what to say, as it should be heard"},
            "task": {"type": "string", "description": "the number of the task this answers, as listen gave it"}}}}
+SETUP = {"name": "setup", "description": "Keep what the user chose for voice interaction (the fast model that does the "
+         "talking, the speech providers), as listen asked for the first time. Never a key: keys go in the file listen names.",
+         "inputSchema": {"type": "object", "required": ["values"], "properties": {"values": {
+             "type": "object", "description": "setting name -> value, for example {\"JEV_FAST_MODEL\": \"haiku\"}",
+             "additionalProperties": {"type": "string"}}}}}
 STOP = {"name": "stop", "description": "End voice interaction (the user asked to, or typed that they are done with it).",
         "inputSchema": {"type": "object", "properties": {}}}
 KEEP_ON = json.dumps({"decision": "block", "reason": "Voice interaction is on. Call the listen tool to wait for what the "
@@ -130,15 +142,74 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def _get(origin: str, path: str) -> dict | None:
+    import urllib.request
+    try:
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(origin + path, timeout=3) as r:
+            return json.loads(r.read())
+    except (OSError, ValueError):
+        return None
+
+
+def env_file() -> pathlib.Path:
+    return pathlib.Path(os.getenv("JEV_HOME") or HOME) / ".env"
+
+
+def keep(values: dict[str, str]) -> None:
+    """Write settings into the call server's .env (private to the user), each name once."""
+    f = env_file()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    lines = f.read_text(encoding="utf-8").splitlines() if f.exists() else []
+    left = dict(values)
+    for i, line in enumerate(lines):
+        name = line.split("=", 1)[0].strip()
+        if name in left and not line.lstrip().startswith("#"):
+            if left[name] or not line.split("=", 1)[1].strip():      # an empty value never wipes one that is there
+                lines[i] = f"{name}={left[name]}"
+            del left[name]
+    lines += [f"{k}={v}" for k, v in left.items()]
+    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    f.chmod(0o600)
+
+
+def unset(origin: str) -> tuple[list[str], list[str], str]:
+    """What the call server still needs, read from its own settings: (things to choose, keys to put in the file, the
+    choices spelled out for the session to put to the user)."""
+    steps = (_get(origin, "/api/settings") or {}).get("steps") or []
+    choose, keys, said = [], [], []
+    for st in steps:
+        if st.get("ready"):
+            continue
+        chosen = next((p for p in st["providers"] if p["name"] == st.get("selected")), None)
+        if chosen is None:                        # nobody has been chosen for this part yet
+            choose.append(st["selector"])
+            said.append(f"- {st['title']}: set {st['selector']} to one of {', '.join(p['name'] for p in st['providers'])}")
+            continue
+        for f in chosen["fields"]:
+            if f["name"] not in chosen["missing"]:
+                continue
+            if f.get("secret"):
+                if f["name"] not in keys:         # one key may serve two parts (recognition and synthesis)
+                    keys.append(f["name"])
+            elif f["name"] in DEFAULTS:
+                continue                          # has a default the connector writes: not a question for the user
+            elif f["name"] not in choose:
+                choose.append(f["name"])
+                others = [p["name"] for p in st["providers"] if p is not chosen]
+                other = f" (or set {st['selector']} to {', '.join(others)} for another)" if st.get("selector") and others else ""
+                said.append(f"- {f['label']}: set {f['name']}{other}")
+    return choose, keys, "\n".join(said)
+
+
 class Service:
-    """The call server this connector started, and the pet it showed; both end with the connector."""
+    """The call server this connector started; it ends with the connector."""
 
     def __init__(self):
         self.server: subprocess.Popen | None = None
-        self.pet: subprocess.Popen | None = None
 
     def start(self) -> tuple[str, str]:
         """(hub address, "") once a call server is up and set up; ("", why not) otherwise. Blocking: run in a thread."""
+        from ..local import available
         url = where()
         health = _health(url)
         if health is None:
@@ -146,11 +217,15 @@ class Service:
                 import fastapi  # noqa: F401  (the call server's extras)
                 import uvicorn  # noqa: F401
             except ImportError:
-                return "", 'the call server is not installed: pip install "jev-interaction[server]"'
+                return "", 'the call server is not installed: pip install "jev-interaction[server,local]"'
+            if available():
+                return "", available()
             port = _free_port()
             HOME.mkdir(parents=True, exist_ok=True)
-            # the talking is done by Claude Code's own model unless the user chose another on the setup page
-            env = {**os.environ, "JEV_HARNESS": "1", "JEV_HOME": os.getenv("JEV_HOME") or str(HOME), "JEV_LLM_DEFAULT": "claude-code"}
+            # the call is on this computer's own microphone and speakers, and the talking is done by Claude Code's own
+            # model unless the user chose another
+            env = {**os.environ, "JEV_HARNESS": "1", "JEV_HOME": os.getenv("JEV_HOME") or str(HOME), "JEV_LLM_DEFAULT": "claude-code",
+                   "JEV_LOCAL_AUDIO": os.getenv("JEV_LOCAL_AUDIO") or "1"}
             log = open(HOME / "server.log", "ab")        # noqa: SIM115 - the server's for as long as it runs
             self.server = subprocess.Popen([sys.executable, "-m", "jev_interaction.cli", "serve", "--port", str(port), "--quiet"],
                                            env=env, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
@@ -165,43 +240,31 @@ class Service:
                 return "", f"the call server did not start (see {HOME / 'server.log'})"
         if health.get("harness") is None:
             return "", "a call server is running on this machine without its hub for coding agents (JEV_HARNESS=1)"
-        if health.get("missing"):                 # the first time: the user chooses the models on the setup page
-            page = url.replace("ws://", "http://").split("/harness/")[0] + "/"
-            self.open(page)
-            return "", ("voice interaction is not set up yet (" + ", ".join(health["missing"]) + "). The setup page is open in "
-                        f"the browser ({page}): there the user chooses the fast model that does the talking and the "
-                        "speech models, and then runs /interaction:start again")
-        if self.server is not None and self.pet is None:
-            self.show(url.replace("ws://", "http://").split("/harness/")[0] + "/pet")
+        if health.get("missing"):                 # the first time: the user chooses, here in the session
+            choose, keys, said = unset(url.replace("ws://", "http://").split("/harness/")[0])
+            keep({**{k: v for k, v in DEFAULTS.items() if k in health["missing"]},
+                  **{k: "" for k in keys}})       # the keys' names are in the file, waiting for their values
+            if not choose and not keys:           # only defaults were missing: they are written, start over
+                self.stop()
+                return self.start()
+            self.stop()                           # it is started again, with what they chose, at the next listen
+            ask = (f"Ask the user to choose, then call setup with their choices:\n{said}\n" if choose else "")
+            key = (f"Keys are not typed into this conversation. Tell the user to fill in {', '.join(keys)} in the file "
+                   f"{env_file()} (the names are already there).\n" if keys else "")
+            return "", f"voice interaction is not set up yet.\n{ask}{key}When that is done, call listen again"
         return url, ""
 
-    @staticmethod
-    def open(page: str) -> None:
-        if (os.getenv("JEV_PET") or "").lower() not in ("off", "0", "no"):      # off: nobody is to see it (a test)
-            import webbrowser
-            webbrowser.open(page)
-
-    def show(self, page: str) -> None:
-        """The pet: the small window of its own when there is one (JEV_PET_APP: the pet/ folder, with Electron
-        installed), the browser otherwise."""
-        if (os.getenv("JEV_PET") or "").lower() in ("off", "0", "no"):
-            return
-        app = pathlib.Path(os.getenv("JEV_PET_APP") or "")
-        electron = app / "node_modules" / ".bin" / "electron"
-        if os.getenv("JEV_PET_APP") and electron.exists():
-            self.pet = subprocess.Popen([str(electron), str(app)], env={**os.environ, "JEV_PET_URL": page}, stdin=subprocess.DEVNULL,
-                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        else:
-            self.open(page)
-
     def stop(self) -> None:
-        for p in (self.pet, self.server):
-            if p is not None and p.poll() is None:
-                try:
-                    os.killpg(p.pid, 15)
-                except OSError:
-                    p.terminate()
-        self.pet = self.server = None
+        p, self.server = self.server, None
+        if p is not None and p.poll() is None:
+            try:
+                os.killpg(p.pid, 15)
+            except OSError:
+                p.terminate()
+            try:
+                p.wait(5)                         # gone before anything looks for a call server again
+            except subprocess.TimeoutExpired:
+                p.kill()
 
 
 # ---------------------------------------------------------------------- the MCP server
@@ -277,7 +340,7 @@ class Connector:
         why = await self.join()
         if why:
             self.on = False
-            return f"Voice interaction did not start: {why}. Tell the user that, in a sentence."
+            return f"Voice interaction did not start: {why}."
         self.on = True
         if self.turn == "voice":                  # back from the work: that task's turn is over
             self.turn = None
@@ -290,6 +353,18 @@ class Connector:
         await self.to_hub({"type": "turn_start", "text": e["text"], "ours": True})
         return (f"The user asks, out loud (task {task}):\n{e['text']}\n\nDo it as you would a typed request. When it is done, "
                 f'call say with task "{task}" and what to tell them, a sentence or two of plain spoken words; then call listen again.')
+
+    @staticmethod
+    def setup(values: dict) -> str:
+        """Keep what the user chose. A key is refused: it does not go through the conversation."""
+        secret = [k for k in values if re.search(r"KEY|TOKEN|SECRET|PASSWORD", str(k), re.I)]
+        if secret:
+            return f"Not kept: {', '.join(secret)} is a key. Keys go in {env_file()}, typed there by the user, not here."
+        bad = [k for k in values if not re.fullmatch(r"[A-Z][A-Z0-9_]*", str(k))]
+        if bad or not values:
+            return "Not kept: give setting names and values, for example {\"JEV_FAST_MODEL\": \"haiku\"}."
+        keep({str(k): str(v).strip() for k, v in values.items()})
+        return "Kept. Call listen again."
 
     async def hook(self, args: dict) -> str:
         """One of Claude Code's hooks: passed on to the hub; answered with no verdict, except that a turn ending while
@@ -316,7 +391,10 @@ class Connector:
                 text = "Said." if sent else "Voice interaction is not on: nothing was said."
             elif name == "stop":
                 await self.leave()
+                await asyncio.to_thread(self.service.stop)
                 text = "Voice interaction is off."
+            elif name == "setup":
+                text = self.setup(args.get("values") or {})
             else:
                 self.write({"id": mid, "error": {"code": -32602, "message": f"no such tool: {name}"}})
                 return
@@ -337,7 +415,7 @@ class Connector:
         elif method == "ping":
             self.write({"id": mid, "result": {}})
         elif method == "tools/list":
-            self.write({"id": mid, "result": {"tools": [LISTEN, SAY, STOP]}})
+            self.write({"id": mid, "result": {"tools": [LISTEN, SAY, STOP, SETUP]}})
         elif method == "tools/call":              # each in its own task: a hook must get through while listen waits
             self.calls[mid] = asyncio.get_running_loop().create_task(self.call(mid, str(params.get("name")), params.get("arguments") or {}))
         elif method == "notifications/cancelled":

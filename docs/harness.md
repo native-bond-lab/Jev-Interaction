@@ -1,8 +1,9 @@
 # Voice interaction inside a coding agent
 
-You are in Claude Code. You run `/interaction:start`, and from then on you can talk: a voice companion hears you,
-hands what you ask for to the session you are in, says how far it has got when you ask, and tells you when it is
-done. While nothing is happening it sleeps.
+You are in Claude Code. You run `/interaction:start`, and from then on you can talk, to the computer itself: a voice
+companion hears you through its microphone, hands what you ask for to the session you are in, says how far it has got
+when you ask, and tells you through its speakers when it is done. While nothing is happening it sleeps. There is no
+page and no window.
 
     you  <— voice —>  the companion (a fast model talks)  <— tasks —>  your Claude Code session (its own model works)
 
@@ -12,23 +13,31 @@ when the session ends.
 
 ## Set it up in Claude Code
 
-1. Install the package where Claude Code can find it: `pipx install "jev-interaction[server]"` or
-   `uv tool install "jev-interaction[server]"`. The Claude Code command line has to be signed in (`claude`, then `/login`).
+1. Install the package where Claude Code can find it: `pipx install "jev-interaction[server,local]"` or
+   `uv tool install "jev-interaction[server,local]"`. The Claude Code command line has to be signed in (`claude`, then `/login`).
 2. In Claude Code: `/plugin marketplace add native-bond-lab/Jev-Interaction`, then
    `/plugin install interaction@jev-interaction`.
 3. Run `/interaction:start`.
 
-The first time, a setup page opens in the browser, and you choose:
+The first time, the session asks you what to use, in Claude Code itself:
 
 | | |
 |---|---|
-| the fast model that does the talking | Claude Code's own by default (`haiku`, for instance): no key, the account you are signed in to. Any OpenAI-compatible endpoint of your own can be chosen instead |
-| speech recognition, speech synthesis | a provider each, and its key |
-| the judge | Jev, and its key |
+| the fast model that does the talking | Claude Code's own (`haiku`, for instance): no key, the account you are signed in to. Any OpenAI-compatible endpoint of your own can be chosen instead |
+| speech recognition, speech synthesis | a provider each |
 
-Nothing starts until the fast model is chosen. What you choose is kept in `~/.jev-interaction/.env`. Then run
-`/interaction:start` again: the pet appears and you can talk. `/interaction:stop` ends it, and so does pressing Esc
-while it is listening.
+Nothing starts until the fast model is chosen. Keys are not typed into the conversation: the session names the file
+they go in, `~/.jev-interaction/.env`, where their names are already waiting (the judge's, `JEV_API_KEY`, and the
+speech provider's). What you choose is kept in the same file. Then the session listens, and you can talk.
+`/interaction:stop` ends it, and so does pressing Esc while it is listening.
+
+## The microphone and the speakers
+
+The call is on the computer's own (`jev_interaction/local.py`), whichever are its defaults. A page in a browser has
+echo cancellation and this has not: with speakers on, the microphone hears the companion's own voice. The engine raises
+its bar for a voice while a line plays and drops recognized words that are its own; `JEV_LOCAL_ECHO=mute` in the `.env`
+closes the microphone while a line plays instead (then you cannot talk over it). With headphones there is nothing to
+cancel.
 
 ## How it works
 
@@ -40,25 +49,12 @@ while it is listening.
 | `listen` | waits for what you ask for out loud and gives it to the session, with a task number |
 | `say` | the session's words for you to hear: the outcome, in a sentence or two |
 | `stop` | ends voice interaction |
+| `setup` | the first time: keeps what you chose |
 
 The session does the work as it would a typed prompt, on its own model. The talking is done by the call server, on the
 fast model (`adapters/claude_cli.py`: one `claude -p` kept open). Claude Code's hooks tell the call server what the
 session is doing by calling a fourth tool the model never sees. If the session ends its turn while voice interaction
 is on, it is sent back to listening.
-
-## The pet
-
-The call does not need the big page. `/pet` is the same call drawn as a pixel dog that stands on two legs
-(`server/web/pet.js`, the personas `pet` and `pet_zh`), and `pet/` is a small floating window for it:
-
-    cd pet && npm install && npm start
-
-The pet's window can also be started on its own (it then runs the call server itself), for a call that is not tied
-to a harness session. With `JEV_PET_APP` set to the `pet/` folder, `/interaction:start` shows the pet in that window
-instead of the browser.
-
-Click the dog to start. It perks its ears when it hears you, struts while a task runs, waves when the coding agent
-needs your OK, and lies down when it sleeps. Click it (or Cmd/Ctrl+Shift+J) to put it to sleep or wake it.
 
 ## What happens
 
@@ -87,8 +83,10 @@ the top of `jev_interaction/harness.py`.
 ## Checked, and not yet
 
 Checked: the loop end to end with a stand-in for the session's model (a spoken request reached `listen`, `say` was
-told by the pet, the call server stopped with the session); in Claude Code 2.1.280 the plugin loads, `/interaction:start`
-and `/interaction:stop` are there, its server connects with three tools; the setup page offers Claude Code's own model
-and saving it works; the talker reached the real `claude -p` and read its answer (an error: not signed in).
-Not checked yet, for want of a signed-in command line: the session itself running the loop, and a reply spoken on
-Claude Code's own model.
+told, the call server stopped with the session); the first run (`listen` says what to choose, `setup` keeps it, the
+keys' names wait in the file); the local call against the real stack with stand-ins for the two devices (a spoken
+request recognized, lines decoded and played in order, talking over a line stops it); in Claude Code 2.1.280 the plugin
+loads, both commands are there, its server connects; the talker reached the real `claude -p` and read its answer (an
+error: not signed in).
+Not checked yet: a real microphone and real speakers, echo included; and, for want of a signed-in command line, the
+session itself running the loop and a reply spoken on Claude Code's own model.

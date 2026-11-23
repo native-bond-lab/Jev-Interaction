@@ -6,14 +6,13 @@
   `/interaction:start` puts the session in a loop of `listen`, the work, `say`, and brings the voice up by itself on a
   free port; `/interaction:stop` or Esc ends it. No channel, no launch flag, nothing to start beside the harness. The
   talking is done by Claude Code's own fast model (`adapters/claude_cli.py`, `LLM_PROVIDER=claude-code`,
-  `JEV_FAST_MODEL`), which the setup page asks for the first time and which nothing starts without; another model
-  can be chosen there. This replaces the channel connector and the standalone start of the entries below.
-- **The pet.** The call as a pixel dog that stands on two legs, for the corner of the screen: `/pet`
-  (`server/web/pet.js`; personas `pet` and `pet_zh`, a work buddy that leaves a quiet alone) and a small floating
-  window for it (`pet/`, Electron: frameless, see-through, always on top, Cmd/Ctrl+Shift+J to sleep or wake). The dog
-  shows what the call is doing: ears up while it hears you, strutting while a task runs, waving when the coding agent
-  needs your OK, lying down asleep. It stays on: a dropped line is picked up again. Starting the pet starts everything:
-  it runs the call server itself, on a free port with the hub on, and stops it when it quits.
+  `JEV_FAST_MODEL`), which the session asks for the first time and which nothing starts without; another model
+  can be chosen instead. There is no page and no window: the call is on the computer's own microphone and speakers
+  (`jev_interaction/local.py`, `pip install "jev-interaction[local]"`; no echo cancellation, see `docs/harness.md`),
+  and what has to be chosen the first time is asked in the session (`setup`; keys go in `~/.jev-interaction/.env`,
+  never through the conversation). The personas `pet` and `pet_zh` are the desk companion that talks. This replaces
+  the channel connector and the standalone start of the entries below.
+
 - **The voice of a coding agent** (`docs/harness.md`). With `JEV_HARNESS=1` the call server is a hub for the coding
   agents open on this machine (`jev_interaction/harness.py`): the agent on the line hands work to one as a background
   task, says how far it has got when asked, tells you when it is done or needs your OK, and sleeps in between
