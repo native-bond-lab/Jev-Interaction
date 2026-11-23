@@ -354,7 +354,9 @@ class HarnessResponder:
 
 class HarnessExecutor:
     describe = ("work for the coding agent open on the user's computer: reading, changing and running code, anything in "
-                "their project. Say what to do in full; it has not heard the call")
+                "their project. It is already in the folder they are working in and sees their screen's files, so what "
+                "they call \"this folder\", \"the project\" or \"here\" is known to it. Say what to do in full; it has "
+                "not heard the call")
 
     def __init__(self, hub: Hub):
         self.hub = hub

@@ -91,13 +91,15 @@ await session.on_client({"type": "playback", "state": "idle"})
 
 ### 在编程助手里用
 
-在 Claude Code 或 DeepSeek Harness 里敲一条斜杠命令，就给当前会话带上一个语音伙伴：你对着电脑说话，它把你要做的事作为后台任务交给会话，你问它就说进度，做完了告诉你，没事的时候休眠。说话用的是 harness 自己账号下的快模型，第一次用时由你来选；语音识别和合成的服务商也由你选。没有网页，也没有窗口。
+在 Claude Code、DeepSeek Harness 或 Codex 里敲一条命令，就给当前会话带上一个语音伙伴：你对着电脑说话，它把你要做的事作为后台任务交给会话，你问它就说进度，做完了告诉你，没事的时候休眠。说话用的是 harness 自己账号下的快模型，第一次用时由你来选；语音识别和合成的服务商也由你选。没有网页，也没有窗口。
 
 ```bash
 pipx install "jev-interaction[server,local]"
 # Claude Code：        /plugin marketplace add native-bond-lab/Jev-Interaction
 #                      /plugin install interaction@jev-interaction      然后  /interaction:start
 # DeepSeek Harness：   dsh plugin --profile tui add <本仓库>/connectors/deepseek-harness      然后  /interaction
+# Codex：              codex plugin marketplace add native-bond-lab/Jev-Interaction
+#                      codex plugin add interaction@jev-interaction                              然后  $interaction
 ```
 
 怎么配置、怎么工作、还有哪些没做完：见 [docs/harness.md](docs/harness.md)（英文）。在自己的代码里用后台任务和休眠（`Session(executors=...)`）：见 [docs/tasks.md](docs/tasks.md)（英文）。
@@ -192,7 +194,7 @@ policies:
 | [docs/policy.zh-CN.md](docs/policy.zh-CN.md) | 通话策略全文：时刻、题目、节奏、人设 |
 | [docs/benchmarks.zh-CN.md](docs/benchmarks.zh-CN.md) | 全部基准表格、图和逐条原因；测过的旋钮 |
 | [docs/extending.zh-CN.md](docs/extending.zh-CN.md) | 新增一个决策；代码目录 |
-| [docs/harness.md](docs/harness.md) | 在 Claude Code 和 DeepSeek Harness 里语音交互：配置、原理、未完成的部分（英文） |
+| [docs/harness.md](docs/harness.md) | 在 Claude Code、DeepSeek Harness 和 Codex 里语音交互：配置、原理、未完成的部分（英文） |
 | [docs/tasks.md](docs/tasks.md) | 后台任务和休眠：把活交出去，嘴上接着聊（英文） |
 | [docs/adapters.md](docs/adapters.md) | 每个节点的服务商，以及怎么加自己的（英文） |
 | [docs/protocol.md](docs/protocol.md) | 服务端和客户端之间的事件（英文） |

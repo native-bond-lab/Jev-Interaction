@@ -1,6 +1,6 @@
 # Voice interaction inside a coding agent
 
-You are in Claude Code (or DeepSeek Harness, where the command is `/interaction`). You run `/interaction:start`, and from then on you can talk, to the computer itself: a voice
+You are in Claude Code (or DeepSeek Harness, where the command is `/interaction`, or Codex, where it is `$interaction`). You run `/interaction:start`, and from then on you can talk, to the computer itself: a voice
 companion hears you through its microphone, hands what you ask for to the session you are in, says how far it has got
 when you ask, and tells you through its speakers when it is done. While nothing is happening it sleeps. There is no
 page and no window.
@@ -49,6 +49,20 @@ Here the harness gives more than Claude Code does (`connectors/deepseek-harness/
 harness for a model directly, so each reply of the voice is written by the harness on the fast model
 (`LLM_PROVIDER=harness`: the call server asks, the plugin answers with `ctx.llm.stream`); a spoken request becomes a
 prompt of the session, something added while it works reaches the turn at its next step, and "stop" stops the turn.
+
+## Set it up in Codex
+
+1. Install the package: `pipx install "jev-interaction[server,local]"` or `uv tool install "jev-interaction[server,local]"`.
+   Codex has to be signed in (the desktop app's sign-in counts; its command line is found inside the app).
+2. `codex plugin marketplace add native-bond-lab/Jev-Interaction`, then `codex plugin add interaction@jev-interaction`.
+3. In a session: `$interaction`. `$interaction-stop` ends it.
+
+Codex's plugins have the same shape as Claude Code's (skills, an MCP server, hooks that call a tool of it), so this is
+the same server (`jev-interaction connect codex`) and the same loop of `listen`, the work, `say`. Two things differ.
+The talking is done by one `codex app-server` kept open for the call (`adapters/codex_cli.py`, `LLM_PROVIDER=codex`):
+a thread on the fast model you chose, with nothing of the coding agent left on, about 1.2 s to the first words of a
+reply (the greeting of a call takes about 10 s: the process connecting). And the fast model matters: the smallest one
+in Codex's list chatted but never handed a request to the session; the next ones up did.
 
 ## The microphone and the speakers
 
@@ -132,6 +146,15 @@ outcome). Not checked there: the call on real speakers and microphone (the engin
 Code's), `dsh` in the terminal (`--profile tui`), a DeepSeek model doing the talking, steering and stopping a turn
 by voice, a permission prompt.
 
+And in Codex (codex-cli 0.163, the one inside the desktop app, signed in): the plugin installs from this repository's
+marketplace and its server is listed; `codex exec '$interaction'` put a session in the loop; a synthetic voice asked
+to count the files in the folder, the reply was written by Codex's own fast model (1.7 s to the first words), the
+request reached the session, it ran its command, said the outcome with `say`, and the companion told it: three files,
+which was right; the session went back to listening. Not checked there: the hooks (Codex runs a plugin's hooks only
+once the user has trusted them, which a run without a person cannot do), so progress while a task runs, the report of
+a typed prompt and the Stop hook that keeps the loop; the interactive window and the desktop app; the call on real
+speakers and microphone.
+
 ## What is open
 
 For whoever picks this up. Each of these was seen on a real run or is a known gap, not a guess.
@@ -146,7 +169,8 @@ For whoever picks this up. Each of these was seen on a real run or is a known ga
 | stopping a task | Claude Code cannot be interrupted from outside: "stop" only drops the task on the voice's side |
 | other voices in the room | the local call has no voiceprint on; anyone's voice is heard and wakes it |
 | the generic speech adapters | `openai-compatible` recognition and synthesis are tested against a stand-in only, with no real service yet |
-| other harnesses | a Codex connector is not written; the hub's protocol is at the top of `harness.py`. DeepSeek Harness's is checked in `dsh web` only, and is not on npm |
+| other harnesses | Codex's is checked without its hooks and outside the interactive window; DeepSeek Harness's in `dsh web` only, and it is not on npm. The hub's protocol for another one is at the top of `harness.py` |
+| the fast model | it has to follow the `/task` convention: Codex's smallest did not. Nothing checks this at setup; a test line at first run could |
 | other systems | checked on macOS only (`bin/connect.sh` is a shell script; the audio is miniaudio's) |
 
 To see what a session really does, in what order: `JEV_CONNECT_LOG=/tmp/connect.log` in Claude Code's environment

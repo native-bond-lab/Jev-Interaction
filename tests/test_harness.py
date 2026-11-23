@@ -430,6 +430,78 @@ async def test_claude_codes_own_model_talks_through_one_open_command_line(tmp_pa
     assert heard[1] == "(background task 1 started)\n[event: they spoke]\nHow far is it?"     # only what it had not heard
 
 
+# ---------------------------------------------------------------------- Codex's own model as the responder
+FAKE_CODEX = """#!/usr/bin/env python3
+import json, sys
+log = open(sys.argv[0] + ".log", "a")
+def note(x): log.write(json.dumps(x) + "\\n"); log.flush()
+def out(x): print(json.dumps(x), flush=True)
+note(sys.argv[1:])
+threads = 0
+for line in sys.stdin:
+    m = json.loads(line); method, given = m.get("method"), m.get("params") or {}
+    if method == "initialize": out({"id": m["id"], "result": {}})
+    elif method == "thread/start":
+        threads += 1; note({"thread": given}); out({"id": m["id"], "result": {"thread": {"id": f"t{threads}"}}})
+    elif method == "turn/start":
+        tid = given["threadId"]; note({"heard": given["input"][0]["text"], "thread": tid})
+        out({"id": m["id"], "result": {"turn": {"id": "u"}}})
+        out({"id": 900, "method": "item/commandExecution/requestApproval", "params": {"threadId": tid}})   # it asks: nothing is granted
+        for piece in ("Sure", " thing.\\nOn", " it."):
+            out({"method": "item/agentMessage/delta", "params": {"threadId": tid, "turnId": "u", "itemId": "i", "delta": piece}})
+        out({"method": "turn/completed", "params": {"threadId": tid, "turn": {"id": "u", "status": "completed"}}})
+    elif method == "turn/interrupt": note({"interrupt": given["threadId"]})
+    elif "id" in m and "error" in m: note({"refused": m["id"]})
+"""
+
+
+async def test_codexs_own_model_talks_through_one_open_app_server(tmp_path):
+    from jev_interaction.adapters.codex_cli import CodexResponder
+    fake = tmp_path / "codex"
+    fake.write_text(FAKE_CODEX)
+    fake.chmod(0o755)
+    r = CodexResponder(model="fast-one", command_=str(fake))
+    first = [{"role": "system", "content": "You are Biscuit."}, {"role": "user", "content": "[event: they spoke]\nHello?"}]
+    assert [x async for x in r.lines(first)] == ["Sure thing.", "On it."]
+    more = [*first, {"role": "assistant", "content": "Sure thing.\nOn it."}, {"role": "user", "content": "(background task 1 started)"},
+            {"role": "user", "content": "[event: they spoke]\nHow far is it?"}]
+    async for line in r.lines(more):                                     # the listener stops at the first line ...
+        assert line == "Sure thing."
+        break
+    assert [x async for x in r.lines(more)] == ["Sure thing.", "On it."]  # ... and the next reply is still its own
+    other = [{"role": "system", "content": "You are Kai."}, *more[1:]]    # someone else on the line: a thread of their own
+    assert [x async for x in r.lines(other)] == ["Sure thing.", "On it."]
+    await r.aclose()
+    log = [json.loads(x) for x in (tmp_path / "codex.log").read_text().splitlines()]
+    argv = [x for x in log if isinstance(x, list)]
+    assert len(argv) == 1 and argv[0][0] == "app-server"                 # one process for the whole call
+    for off in ("plugins", "hooks", "shell_tool"):                       # it only talks: our own hooks never fire for it
+        assert argv[0][argv[0].index(off) - 1] == "--disable"
+    threads = [x["thread"] for x in log if isinstance(x, dict) and "heard" not in x and "thread" in x]
+    assert [t["model"] for t in threads] == ["fast-one", "fast-one"] and threads[0]["ephemeral"] and threads[0]["approvalPolicy"] == "never"
+    assert threads[0]["baseInstructions"].startswith("You are Biscuit.\n\nEverything you write here is said aloud")
+    heard = [x for x in log if isinstance(x, dict) and "heard" in x]
+    assert heard[0]["heard"] == "[event: they spoke]\nHello?"
+    assert heard[1]["heard"] == "(background task 1 started)\n[event: they spoke]\nHow far is it?"     # only what it had not heard
+    assert heard[3]["thread"] == "t2" and heard[3]["heard"].startswith("(The call so far, before you came on:")
+    assert any("refused" in x for x in log if isinstance(x, dict))       # what it asked for was answered, with a no
+
+
+def test_the_same_server_is_codexs_side_too(monkeypatch):
+    for name in ("HARNESS", "TALKER", "FAST"):
+        monkeypatch.setattr(CC, name, getattr(CC, name))                  # put back after the test
+    CC.be("codex")
+    assert (CC.HARNESS, CC.TALKER) == ("Codex", "codex")
+    assert CC.events({"hook_event_name": "PreToolUse", "tool_name": "shell", "tool_input": {"command": ["ls", "-la"]}})[1] == {"type": "progress", "text": "running: ls -la"}
+    assert CC.events({"hook_event_name": "PreToolUse", "tool_name": "apply_patch", "tool_input": {}})[1]["text"] == "editing a file"
+    assert CC.events({"hook_event_name": "PreToolUse", "tool_name": "jev.listen", "tool_input": {}}) == []     # its own tools: not work
+    assert "Codex asks to use" in CC.events({"hook_event_name": "PermissionRequest", "tool_name": "shell", "tool_input": {}})[0]["text"]
+    plugin = json.loads((pathlib.Path(__file__).resolve().parent.parent / "connectors/codex/.codex-plugin/plugin.json").read_text())
+    hooks = plugin["hooks"]["hooks"]
+    assert set(hooks) == {"UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "Stop"}
+    assert all(h["hooks"][0] | {"input": 0} == {"type": "mcp_tool", "server": "jev", "tool": "hook", "timeout": 5, "input": 0} for hs in hooks.values() for h in hs)
+
+
 # ---------------------------------------------------------------------- any provider that speaks the OpenAI audio API
 async def test_speech_from_any_openai_compatible_service_and_no_provider_is_chosen_for_the_user(monkeypatch):
     import httpx

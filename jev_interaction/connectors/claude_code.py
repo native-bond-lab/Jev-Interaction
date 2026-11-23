@@ -1,7 +1,9 @@
-"""Claude Code's side of voice interaction: the server of the `interaction` plugin (connectors/claude-code/).
+"""A harness's side of voice interaction: the server of the `interaction` plugin, for Claude Code
+(connectors/claude-code/) and for Codex (connectors/codex/), whose plugins have the same shape.
 
-Claude Code starts this process with the session, as an MCP server on stdio. Nothing happens until the user runs
-/interaction:start; then the session itself keeps the loop going, with three tools:
+The harness starts this process with the session, as an MCP server on stdio. Nothing happens until the user runs the
+plugin's start command (/interaction:start in Claude Code, $interaction in Codex); then the session itself keeps the
+loop going, with three tools:
 
     listen    waits for what the user asks for out loud and returns it. The first call brings the voice up: it finds
               the call server on this machine or starts one (a free port, the hub on, the call on the computer's own
@@ -14,9 +16,10 @@ There is no page and no window. What has to be chosen the first time is asked in
 it, they go in ~/.jev-interaction/.env.
 
 So the session works as it always does, on its own model; the talking is done by the call server, on the fast model the
-user chose (JEV_FAST_MODEL, Claude Code's own: adapters/claude_cli.py). No channel and no launch flag are involved.
+user chose (JEV_FAST_MODEL, the harness's own: adapters/claude_cli.py, adapters/codex_cli.py). No channel and no launch
+flag are involved.
 
-Claude Code's hooks report what the session is doing by calling a fourth tool, `hook`, which the model is never shown
+The harness's hooks report what the session is doing by calling a fourth tool, `hook`, which the model is never shown
 (hooks of type mcp_tool): a prompt typed, a tool about to run, a permission asked, the turn ended. While voice
 interaction is on, the Stop hook is answered with "call listen": the loop does not end because a turn did.
 
@@ -39,14 +42,16 @@ import threading
 
 from ..harness import needs, where
 
-HARNESS = "Claude Code"
+HARNESS = "Claude Code"          # whose plugin started this: `be` sets these for another harness
+TALKER = "claude-code"           # the responder that is that harness's own model (adapters/registry.py)
+FAST = "haiku"                   # a fast model of its own, as an example in what the session is told
 SERVER = "jev"
 LISTEN_S = 45 * 60               # a listen call ends after this with "nobody asked"; under the server's tool time limit
 SAY_S = 1.0                      # a listen that arrives before the say sent with it waits this long for it
 HOME = pathlib.Path.home() / ".jev-interaction"
 
 INSTRUCTIONS = (
-    "Voice interaction (the /interaction:start command): the user talks to a voice companion, which hands what they ask "
+    "Voice interaction (the interaction plugin's start command): the user talks to a voice companion, which hands what they ask "
     "for to you through the `listen` tool. Take each as you would a typed prompt of theirs. They are listening, not "
     "reading: when a task is done, call `say` with its number and what to tell them, a sentence or two in plain spoken "
     "words, what matters and nothing else, no code, no paths, no lists; the details stay on the screen. Then call "
@@ -62,7 +67,7 @@ SAY = {"name": "say", "description": "Say something to the user out loud: the ou
 SETUP = {"name": "setup", "description": "Keep what the user chose for voice interaction (the fast model that does the "
          "talking, the speech providers), as listen asked for the first time. Never a key: keys go in the file listen names.",
          "inputSchema": {"type": "object", "required": ["values"], "properties": {"values": {
-             "type": "object", "description": "setting name -> value, for example {\"JEV_FAST_MODEL\": \"haiku\"}",
+             "type": "object", "description": "setting name -> value, for example {\"JEV_FAST_MODEL\": \"<a fast model>\"}",
              "additionalProperties": {"type": "string"}}}}}
 STOP = {"name": "stop", "description": "End voice interaction (the user asked to, or typed that they are done with it).",
         "inputSchema": {"type": "object", "properties": {}}}
@@ -72,25 +77,29 @@ KEEP_ON = json.dumps({"decision": "block", "reason": "Voice interaction is on. C
 
 # ---------------------------------------------------------------------- hooks -> the hub's events
 def _doing(tool: str, given: dict) -> str:
-    """A tool call in a few words, for the voice to say how far the work has got."""
+    """A tool call in a few words, for the voice to say how far the work has got. Harnesses name their tools
+    differently (Bash, shell, exec_command; Edit, apply_patch), so the kind of tool is read from its name."""
     given = given if isinstance(given, dict) else {}
     name = os.path.basename(str(given.get("file_path") or given.get("notebook_path") or given.get("path") or ""))
-    if tool == "Bash":
-        return f"running: {given.get('description') or str(given.get('command') or '')[:80]}"
-    if tool in ("Edit", "MultiEdit", "Write", "NotebookEdit"):
+    kind = tool.lower()
+    if re.search(r"bash|shell|exec|command", kind):
+        cmd = given.get("command")
+        cmd = " ".join(map(str, cmd)) if isinstance(cmd, list) else str(cmd or "")
+        return f"running: {given.get('description') or cmd[:80]}"
+    if re.search(r"edit|write|patch", kind):
         return f"editing {name}" if name else "editing a file"
-    if tool == "Read":
+    if kind in ("read", "view_image", "read_file"):
         return f"reading {name}" if name else "reading"
-    if tool in ("Grep", "Glob"):
-        return f"searching for {str(given.get('pattern') or '')[:60]}"
-    if tool in ("Task", "Agent"):
+    if re.search(r"grep|glob|search_files|find", kind):
+        return f"searching for {str(given.get('pattern') or given.get('query') or '')[:60]}"
+    if kind in ("task", "agent") or "spawn" in kind:
         return f"a helper is on: {given.get('description') or 'part of it'}"
-    if tool in ("WebSearch", "WebFetch"):
+    if re.search(r"web", kind):
         return "looking something up on the web"
     return f"using {tool}"
 
 
-OWN = re.compile(r"__(listen|say|stop|hook)$")       # this server's own tools: not work worth telling about
+OWN = re.compile(r"(^|__|\.|/)(listen|say|stop|setup|hook)$")       # this server's own tools: not work worth telling about
 
 
 def events(hook: dict) -> list[dict]:
@@ -198,9 +207,9 @@ class Service:
                 return "", available()
             port = _free_port()
             HOME.mkdir(parents=True, exist_ok=True)
-            # the call is on this computer's own microphone and speakers, and the talking is done by Claude Code's own
+            # the call is on this computer's own microphone and speakers, and the talking is done by the harness's own
             # model unless the user chose another
-            env = {**os.environ, "JEV_HARNESS": "1", "JEV_HOME": os.getenv("JEV_HOME") or str(HOME), "JEV_LLM_DEFAULT": "claude-code",
+            env = {**os.environ, "JEV_HARNESS": "1", "JEV_HOME": os.getenv("JEV_HOME") or str(HOME), "JEV_LLM_DEFAULT": TALKER,
                    "JEV_LOCAL_AUDIO": os.getenv("JEV_LOCAL_AUDIO") or "1"}
             log = open(HOME / "server.log", "ab")        # noqa: SIM115 - the server's for as long as it runs
             self.server = subprocess.Popen([sys.executable, "-m", "jev_interaction.cli", "serve", "--port", str(port), "--quiet"],
@@ -361,7 +370,7 @@ class Connector:
             return f"Not kept: {', '.join(secret)} is a key. Keys go in {env_file()}, typed there by the user, not here."
         bad = [k for k in values if not re.fullmatch(r"[A-Z][A-Z0-9_]*", str(k))]
         if bad or not values:
-            return "Not kept: give setting names and values, for example {\"JEV_FAST_MODEL\": \"haiku\"}."
+            return "Not kept: give setting names and values, for example {\"JEV_FAST_MODEL\": \"" + FAST + "\"}."
         keep({str(k): str(v).strip() for k, v in values.items()})
         return "Kept. Call listen again."
 
@@ -457,6 +466,17 @@ class Connector:
             self.service.stop()                   # what this session started ends with it
 
 
-def main(url: str | None = None, cwd: str | None = None) -> int:
-    asyncio.run(Connector(cwd or os.getenv("CLAUDE_PROJECT_DIR") or os.getcwd(), url=url).run())
+KINDS = {"claude-code": ("Claude Code", "claude-code", "haiku"), "codex": ("Codex", "codex", "gpt-6-luna")}
+
+
+def be(harness: str) -> None:
+    """The same server for another harness whose plugins have the same shape (skills, an MCP server, hooks that call
+    a tool of it): Codex's. What differs is its name, and whose model does the talking."""
+    global HARNESS, TALKER, FAST
+    HARNESS, TALKER, FAST = KINDS[harness]
+
+
+def main(url: str | None = None, cwd: str | None = None, harness: str = "claude-code") -> int:
+    be(harness)
+    asyncio.run(Connector(cwd or os.getenv("CLAUDE_PROJECT_DIR") or os.getenv("JEV_PROJECT_DIR") or os.getcwd(), url=url).run())
     return 0

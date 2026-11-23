@@ -74,7 +74,7 @@ jev_interaction/
   replay.py           re-ask the recorded questions, as asked or reworded
   testing.py          fake judge, recognizer, responder, VAD and synthesizer: a call with no keys
   cli.py              `jev-interaction serve` / `init` / `replay`
-connectors/           the plugins a harness installs: claude-code/ · deepseek-harness/
+connectors/           the plugins a harness installs: claude-code/ · deepseek-harness/ · codex/
 scripts/setup.sh      one-click local setup (--china: domestic PyPI mirror)
 deploy/huggingface/   Hugging Face Space card; scripts/push_hf_space.sh publishes it
 deploy/mainland-china.env  the setup that measured best in mainland China, ready to copy to .env

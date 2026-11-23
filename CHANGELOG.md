@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Voice interaction from inside Codex.** A plugin (`connectors/codex/`, from this repository's marketplace:
+  `codex plugin marketplace add native-bond-lab/Jev-Interaction`): `$interaction` puts the session in the loop of
+  `listen`, the work, `say`; `$interaction-stop` ends it. It is the same server as Claude Code's
+  (`jev-interaction connect codex`). The talking is done by Codex's own fast model through one `codex app-server` kept
+  open for the call (`adapters/codex_cli.py`, `LLM_PROVIDER=codex`, `JEV_FAST_MODEL`; `JEV_CODEX_BIN` names the command
+  line when it is not found, `JEV_FAST_EFFORT` its reasoning effort, `low` by default). Checked end to end with a
+  signed-in Codex and a synthetic voice; its hooks are not checked yet.
+- The coding agent's task says where it is: the agent on the line is told that "this folder" and "the project" are
+  known to the harness, so it hands such a request off instead of asking which folder.
 - **The README is the short way in.** It keeps what this is, the quickstart, how it works, the profiles and the results
   at a glance; the rest moved word for word to `docs/`: the policy in full (`policy.md`), every benchmark table, chart
   and trace with the tested knobs (`benchmarks.md`), providers, recommended setups and presets (`setup.md`), adding a

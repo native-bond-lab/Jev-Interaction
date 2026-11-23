@@ -110,7 +110,7 @@ Events to the client: `line`, `listen`, `stop`, `finish_line`, `persona`, `hangu
 
 ### Inside a coding agent
 
-In Claude Code or DeepSeek Harness, a slash command brings up a voice companion for the session you are in: you talk to
+In Claude Code, DeepSeek Harness or Codex, one command brings up a voice companion for the session you are in: you talk to
 the computer, it hands what you ask for to the session as a background task, says how far it has got when you ask,
 tells you when it is done, and sleeps in between. The talking is done by a fast model of the harness's own that you
 choose the first time, speech recognition and synthesis by providers of your choice; there is no page and no window.
@@ -120,6 +120,8 @@ pipx install "jev-interaction[server,local]"
 # Claude Code:        /plugin marketplace add native-bond-lab/Jev-Interaction
 #                     /plugin install interaction@jev-interaction      then  /interaction:start
 # DeepSeek Harness:   dsh plugin --profile tui add <this repo>/connectors/deepseek-harness      then  /interaction
+# Codex:              codex plugin marketplace add native-bond-lab/Jev-Interaction
+#                     codex plugin add interaction@jev-interaction                              then  $interaction
 ```
 
 Setup, how it works and what is still open: [docs/harness.md](docs/harness.md). Background tasks and sleep in your own
@@ -239,7 +241,7 @@ knobs on, Jev-Interaction is first on 3 metrics and in the top three on 8.
 | [docs/policy.md](docs/policy.md) | the call policy in full: moments, questions, paces, personas |
 | [docs/benchmarks.md](docs/benchmarks.md) | every benchmark table, chart and trace; the tested knobs |
 | [docs/extending.md](docs/extending.md) | add a decision; the layout of the code |
-| [docs/harness.md](docs/harness.md) | voice interaction inside Claude Code and DeepSeek Harness: setup, how it works, what is open |
+| [docs/harness.md](docs/harness.md) | voice interaction inside Claude Code, DeepSeek Harness and Codex: setup, how it works, what is open |
 | [docs/tasks.md](docs/tasks.md) | background tasks and sleep: the agent hands work off and keeps talking |
 | [docs/adapters.md](docs/adapters.md) | the providers for each node, and adding your own |
 | [docs/protocol.md](docs/protocol.md) | the events between the server and a client |
