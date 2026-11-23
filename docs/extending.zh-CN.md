@@ -71,7 +71,7 @@ jev_interaction/
   replay.py           重问录下来的题目，原样或改写后
   testing.py          假的法官、识别、大模型、VAD 和合成：不要密钥也能跑一通电话
   cli.py              `jev-interaction serve` / `init` / `replay`
-connectors/           harness 安装的插件：claude-code/ · deepseek-harness/
+connectors/           harness 安装的插件：claude-code/ · deepseek-harness/ · codex/
 scripts/setup.sh      一键本地部署（--china 走国内 PyPI 镜像）
 deploy/huggingface/   Hugging Face Space 说明；scripts/push_hf_space.sh 负责发布
 deploy/mainland-china.env  中国大陆实测最好的一套配置，复制成 .env 就能用

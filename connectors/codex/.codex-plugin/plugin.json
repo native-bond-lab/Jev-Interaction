@@ -1,0 +1,124 @@
+{
+  "name": "interaction",
+  "version": "0.1.0",
+  "description": "Talk to Codex out loud. The start skill brings up a voice companion that hears you, hands what you ask for to this session, and tells you when it is done. Full-duplex: it knows when you have finished, lets you cut in, and sleeps when nothing is happening.",
+  "author": {
+    "name": "Native Bond Lab"
+  },
+  "homepage": "https://github.com/native-bond-lab/Jev-Interaction",
+  "repository": "https://github.com/native-bond-lab/Jev-Interaction",
+  "license": "Apache-2.0",
+  "keywords": [
+    "voice",
+    "interaction",
+    "full-duplex"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "hooks": {
+    "hooks": {
+      "UserPromptSubmit": [
+        {
+          "hooks": [
+            {
+              "type": "mcp_tool",
+              "server": "jev",
+              "tool": "hook",
+              "timeout": 5,
+              "input": {
+                "event": "UserPromptSubmit",
+                "prompt": "${prompt}"
+              }
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "mcp_tool",
+              "server": "jev",
+              "tool": "hook",
+              "timeout": 5,
+              "input": {
+                "event": "PreToolUse",
+                "tool_name": "${tool_name}",
+                "description": "${tool_input.description}",
+                "command": "${tool_input.command}",
+                "file_path": "${tool_input.file_path}",
+                "pattern": "${tool_input.pattern}"
+              }
+            }
+          ]
+        }
+      ],
+      "PermissionRequest": [
+        {
+          "hooks": [
+            {
+              "type": "mcp_tool",
+              "server": "jev",
+              "tool": "hook",
+              "timeout": 5,
+              "input": {
+                "event": "PermissionRequest",
+                "tool_name": "${tool_name}",
+                "description": "${tool_input.description}",
+                "command": "${tool_input.command}",
+                "file_path": "${tool_input.file_path}",
+                "pattern": "${tool_input.pattern}"
+              }
+            }
+          ]
+        }
+      ],
+      "PostToolUse": [
+        {
+          "hooks": [
+            {
+              "type": "mcp_tool",
+              "server": "jev",
+              "tool": "hook",
+              "timeout": 5,
+              "input": {
+                "event": "PostToolUse",
+                "tool_name": "${tool_name}"
+              }
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "mcp_tool",
+              "server": "jev",
+              "tool": "hook",
+              "timeout": 5,
+              "input": {
+                "event": "Stop",
+                "last_assistant_message": "${last_assistant_message}"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "interface": {
+    "displayName": "Interaction",
+    "shortDescription": "Talk to this session out loud",
+    "longDescription": "A full-duplex voice companion for the session you are in: it hears you, hands what you ask for to the session, tells you how it is going and when it is done, and sleeps in between. The talking is done by a fast Codex model you choose; speech recognition and synthesis by providers of your choice.",
+    "developerName": "Native Bond Lab",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive"
+    ],
+    "websiteURL": "https://github.com/native-bond-lab/Jev-Interaction",
+    "defaultPrompt": [
+      "Start voice interaction"
+    ]
+  }
+}

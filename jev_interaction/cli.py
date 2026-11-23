@@ -3,7 +3,7 @@
     jev-interaction serve [--host 127.0.0.1] [--port 8080] [--preset recommended] [--home .]
     jev-interaction init [--reference global|china]   write .env (empty, or a reference setup's values) and profiles/
     jev-interaction replay runs/*.jsonl --purpose floor [--edit my_questions.py]
-    jev-interaction connect claude-code [--cwd .]     Claude Code's side of voice interaction: started by its plugin,
+    jev-interaction connect claude-code|codex [--cwd .]    a harness's side of voice interaction: started by its plugin,
                                                       not by hand (docs/harness.md)
 """
 from __future__ import annotations
@@ -84,10 +84,10 @@ def main(argv: list[str] | None = None) -> int:
     R.add_arguments(r)
     r.set_defaults(run=lambda a: __import__("asyncio").run(R.run(a)))
     c = sub.add_parser("connect", help="a harness's side of voice interaction (an MCP server on stdio), started by its plugin")
-    c.add_argument("harness", choices=["claude-code"])
+    c.add_argument("harness", choices=["claude-code", "codex"])
     c.add_argument("--hub", help="a call server's hub to join as it is (a test); by default one is found or started")
     c.add_argument("--cwd", help="the project folder of the harness's session")
-    c.set_defaults(run=lambda a: __import__("jev_interaction.connectors.claude_code", fromlist=["main"]).main(a.hub, a.cwd))
+    c.set_defaults(run=lambda a: __import__("jev_interaction.connectors.claude_code", fromlist=["main"]).main(a.hub, a.cwd, a.harness))
     a = ap.parse_args(argv)
     return a.run(a)
 
