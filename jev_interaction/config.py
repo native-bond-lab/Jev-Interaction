@@ -99,6 +99,12 @@ class Config:
     task_report_after_s: float = 1.0   # a task's news is said into a quiet once it has lasted this long (the user may be
                                        # about to answer the line just said)
     task_result_chars: int = 1200      # what came back from a task is kept on the record up to this length
+    echo_tail_s: float = 0.0           # for a client with no echo cancellation (the call on the computer's own speakers:
+                                       # local.py): words recognized while a line plays, or within this long after it,
+                                       # that are mostly the agent's own recent words are that line coming back through
+                                       # the microphone, and are dropped. 0: only an exact match while a line plays
+    echo_same: float = 0.7             # ... "mostly": this share of what was recognized is in one of its recent lines (the
+                                       # recognizer mishears a little of what comes out of a speaker)
     judge_timeout_s: float = 3.0       # a judge answer slower than this is dropped and the decision takes its fallback
     judge_turns: int = 8               # recent turns in every Jev state
     judge_turn_chars: int = 300

@@ -8,7 +8,8 @@
   talking is done by Claude Code's own fast model (`adapters/claude_cli.py`, `LLM_PROVIDER=claude-code`,
   `JEV_FAST_MODEL`), which the session asks for the first time and which nothing starts without; another model
   can be chosen instead. There is no page and no window: the call is on the computer's own microphone and speakers
-  (`jev_interaction/local.py`, `pip install "jev-interaction[local]"`; no echo cancellation, see `docs/harness.md`),
+  (`jev_interaction/local.py`, `pip install "jev-interaction[local]"`; nothing cancels the echo there, so words that are
+  mostly a line of its own, heard while it plays or just after, are dropped: `Config.echo_tail_s`),
   and what has to be chosen the first time is asked in the session (`setup`; keys go in `~/.jev-interaction/.env`,
   never through the conversation). The personas `pet` and `pet_zh` are the desk companion that talks. This replaces
   the channel connector and the standalone start of the entries below.

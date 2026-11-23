@@ -308,3 +308,24 @@ async def test_the_client_can_put_it_to_sleep_and_wake_it():
     s.speaking = True
     await s.on_client({"type": "sleep"})                                 # not while a line is playing
     assert not s.asleep
+
+
+# ---------------------------------------------------------------------- no echo cancellation
+async def test_without_echo_cancellation_its_own_line_coming_back_is_dropped_even_misheard_and_just_after():
+    s, events, judge = scripted_session(echo_tail_s=3.0)
+    s.lines["a"] = "[excited] 收到！马上让编程助手去数。"
+    s.lines["b"] = "七张，五张是截图。"
+    s.sounded_at = time.monotonic() - 1.0                                # its line stopped playing a second ago
+    await s.on_segment(Segment("收到，马上让编程助手去数。"))                  # ... and comes back through the microphone
+    await s.on_segment(Segment("细张。 五张是截图。"))                       # misheard a little: still its own
+    assert s.utt is None and not [e for e in events if e["type"] == "user"]
+    await s.on_segment(Segment("阿黄，给我讲一个长一点的故事。"))               # the user's own words are heard
+    assert s.utt is not None and s.utt.text == "阿黄，给我讲一个长一点的故事。"
+    s.utt = None
+    s.sounded_at = time.monotonic() - 10.0                               # long after: nothing of its own can be coming back
+    await s.on_segment(Segment("七张，五张是截图。"))
+    assert s.utt is not None
+    page, events, _ = scripted_session()                                 # a page cancels the echo: as before
+    page.lines["a"], page.sounded_at = "七张，五张是截图。", time.monotonic() - 1.0
+    await page.on_segment(Segment("七张，五张是截图。"))
+    assert page.utt is not None

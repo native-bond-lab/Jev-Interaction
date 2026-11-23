@@ -35,9 +35,12 @@ speech provider's). What you choose is kept in the same file. Then the session l
 
 The call is on the computer's own (`jev_interaction/local.py`), whichever are its defaults. A page in a browser has
 echo cancellation and this has not: with speakers on, the microphone hears the companion's own voice. The engine raises
-its bar for a voice while a line plays and drops recognized words that are its own; `JEV_LOCAL_ECHO=mute` in the `.env`
-closes the microphone while a line plays instead (then you cannot talk over it). With headphones there is nothing to
-cancel.
+its bar for a voice while a line plays, and drops words recognized while a line plays or within three seconds after it
+that are mostly the line's own (`Config.echo_tail_s`, `echo_same`). On a MacBook's own speakers and microphone that
+was enough: its lines coming back were dropped, a spoken request was heard and talking over a line stopped it. What
+still gets through is a stretch the recognizer closes with its words and yours in one piece. `JEV_LOCAL_ECHO=mute` in
+the `.env` closes the microphone while a line plays instead (then you cannot talk over it), and `JEV_LOCAL_MIC` /
+`JEV_LOCAL_SPEAKER` name other devices than the defaults. With headphones there is nothing to cancel.
 
 ## How it works
 
@@ -88,5 +91,5 @@ keys' names wait in the file); the local call against the real stack with stand-
 request recognized, lines decoded and played in order, talking over a line stops it); in Claude Code 2.1.280 the plugin
 loads, both commands are there, its server connects; the talker reached the real `claude -p` and read its answer (an
 error: not signed in).
-Not checked yet: a real microphone and real speakers, echo included; and, for want of a signed-in command line, the
-session itself running the loop and a reply spoken on Claude Code's own model.
+Checked out loud on a MacBook's own speakers and microphone as well (see above). Not checked yet, for want of a
+signed-in command line: the session itself running the loop and a reply spoken on Claude Code's own model.

@@ -121,6 +121,15 @@ none of them has been tuned on recorded calls yet.
 
 While a task is unfinished the call is not hung up.
 
+### Without echo cancellation
+
+A page in a browser cancels the echo of the agent's voice; the call on the computer's own speakers (`local.py`) does not.
+
+| field | default | what it does |
+|---|---|---|
+| `echo_tail_s` | 0 | words recognized while a line plays, or within this long after it, that are mostly the agent's own recent words are that line coming back through the microphone, and are dropped. 0: only an exact match while a line plays, as with a page. The local call sets 3 |
+| `echo_same` | 0.7 | "mostly": this share of what was recognized is found in one of its recent lines (a recognizer mishears a little of what a speaker plays) |
+
 ### The judge
 
 | field | recommended | what it does |

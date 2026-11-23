@@ -9,6 +9,8 @@ What a page has and this has not: echo cancellation. With speakers on, the micro
 engine already raises its bar for a voice while a line plays and drops recognized words that are the agent's own; with
 JEV_LOCAL_ECHO=mute the microphone is closed while a line plays instead (nothing of its own is heard, and the user
 cannot talk over it). Headphones need neither.
+
+The devices are the computer's defaults; JEV_LOCAL_MIC and JEV_LOCAL_SPEAKER name others (a part of the name is enough).
 """
 from __future__ import annotations
 
@@ -28,6 +30,15 @@ def profile_for(language: str | None = None) -> tuple[str, str]:
     lang = (language or os.getenv("JEV_LANGUAGE") or os.getenv("LANG") or "en").lower()
     zh = lang.startswith("zh")
     return os.getenv("JEV_LOCAL_PROFILE") or ("pet_zh" if zh else "pet"), "zh" if zh else "en"
+
+
+def device(kind: str, name: str | None):
+    """The id of the capture or playback device whose name has `name` in it; None for the default (or no such one)."""
+    if not name:
+        return None
+    import miniaudio
+    found = miniaudio.Devices().get_captures() if kind == "capture" else miniaudio.Devices().get_playbacks()
+    return next((d["id"] for d in found if name.lower() in d["name"].lower()), None)
 
 
 class Speaker:
@@ -211,8 +222,10 @@ class LocalCall:
         except TypeError:
             ws = await websockets.connect(f"ws://127.0.0.1:{self.port}/ws", max_size=None)
         self.ws = ws
-        capture = miniaudio.CaptureDevice(input_format=miniaudio.SampleFormat.SIGNED16, nchannels=1, sample_rate=16000, buffersize_msec=100)
-        playback = miniaudio.PlaybackDevice(output_format=miniaudio.SampleFormat.SIGNED16, nchannels=1, sample_rate=RATE, buffersize_msec=60)
+        capture = miniaudio.CaptureDevice(input_format=miniaudio.SampleFormat.SIGNED16, nchannels=1, sample_rate=16000, buffersize_msec=100,
+                                          device_id=device("capture", os.getenv("JEV_LOCAL_MIC")))
+        playback = miniaudio.PlaybackDevice(output_format=miniaudio.SampleFormat.SIGNED16, nchannels=1, sample_rate=RATE, buffersize_msec=60,
+                                            device_id=device("playback", os.getenv("JEV_LOCAL_SPEAKER")))
         jobs = []
         try:
             await ws.send(json.dumps({"type": "start", "profile": self.profile, "language": self.language}))

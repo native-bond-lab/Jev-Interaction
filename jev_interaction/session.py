@@ -78,6 +78,7 @@ class Session:
         self.generating = False
         self.gen = 0
         self.idle_since = time.monotonic()
+        self.sounded_at = 0.0                    # when the agent's audio last stopped playing (Config.echo_tail_s)
         self.rest_since = self.idle_since        # since the two last exchanged anything: what the sleep clock counts from.
                                                  # A line the agent says into a quiet on its own does not move it
         self.last_kind = ""                      # the kind of the agent's latest line (speaking.EVENTS)
@@ -191,6 +192,7 @@ class Session:
         if msg.get("type") == "playback":
             self.speaking = msg.get("state") == "playing"
             if not self.speaking:
+                self.sounded_at = time.monotonic()
                 self.ledger.agent_ended(but=self.replies.get(self.gen) if self.generating else None)
             if not self.speaking and not self.generating:
                 self.idle_since = time.monotonic()
@@ -234,7 +236,8 @@ class Session:
         if seg.final and any(re.search(rf"\b{re.escape(w)}\b", text, re.I) for w in self.cfg.safe_words):
             await self.safe_word(text)
             return
-        if self.speaking and self._own_words(text):
+        echoing = self.speaking or time.monotonic() - self.sounded_at < self.cfg.echo_tail_s
+        if echoing and self._own_words(text):
             if seg.final:
                 self.rec.write("echo", text=text)   # the agent's own line, back through the microphone: nobody said it
             return
@@ -268,8 +271,17 @@ class Session:
     def _own_words(self, text: str) -> bool:
         """The recognizer heard words of the agent's own recent lines (a speaker next to the microphone)."""
         norm = lambda s: re.sub(r"[\W_]+", "", s).lower()  # noqa: E731
-        heard = norm(text)
-        return len(heard) >= 2 and any(heard in norm(line) for line in list(self.lines.values())[-6:])
+        heard, lines = norm(text), [norm(line) for line in list(self.lines.values())[-6:]]
+        if len(heard) < 2:
+            return False
+        if any(heard in line for line in lines):
+            return True
+        if self.cfg.echo_tail_s <= 0:
+            return False
+        # no echo cancellation: the recognizer mishears a little of what a speaker plays, so most of it is enough
+        from difflib import SequenceMatcher
+        same = lambda line: sum(b.size for b in SequenceMatcher(None, heard, line, autojunk=False).get_matching_blocks())  # noqa: E731
+        return any(same(line) >= self.cfg.echo_same * len(heard) for line in lines if line)
 
     def _open_utterance(self):
         self.utt_seq += 1
