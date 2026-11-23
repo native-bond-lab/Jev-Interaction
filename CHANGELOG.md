@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **The README is the short way in.** It keeps what this is, the quickstart, how it works, the profiles and the results
+  at a glance; the rest moved word for word to `docs/`: the policy in full (`policy.md`), every benchmark table, chart
+  and trace with the tested knobs (`benchmarks.md`), providers, recommended setups and presets (`setup.md`), adding a
+  decision and the layout (`extending.md`), the comparison and the questions (`faq.md`), each in Chinese as well.
 - **Bailian reads the pace and cutting in better.** With `JEV_PROVIDER=bailian` each pace is asked as a choice between it
   and the plain pace (`judge/bailian.py`, `pace_facts`; what a pace says it is not goes with the plain option), and
   cutting in has a line of its own, 0.2 (`Config.sparring_min`): this judge ranks sparring right with lower numbers.
