@@ -269,6 +269,13 @@ def _claude_code(**options):
     return ClaudeCodeResponder(**options)
 
 
+def _harness(**_):
+    from ..server import app  # the call server a harness started: its hub lends the model
+    if app.HUB is None:
+        raise ValueError("LLM_PROVIDER=harness needs a call server started by a harness (JEV_HARNESS=1)")
+    return app.HUB.responder()
+
+
 def _jev(**options):
     from ..judge import JevClient
     return JevClient(**options)
@@ -318,6 +325,9 @@ register("llm", "openai-compatible", _openai_compat, [
 register("llm", "claude-code", _claude_code, [
     Setting("JEV_FAST_MODEL", "Fast model for talking (a Claude Code model: haiku, sonnet, ...)", "说话用的快模型（Claude Code 的模型：haiku、sonnet…）",
             required=True)], label="Claude Code's own model")
+register("llm", "harness", _harness, [
+    Setting("JEV_FAST_MODEL", "Fast model for talking (one of the harness's own, as provider/model)",
+            "说话用的快模型（harness 自己的模型，写成 服务商/模型）", required=True)], label="The harness's own model")
 register("asr", "elevenlabs", _scribe, [
     ELEVEN_KEY, Setting("ELEVENLABS_ASR_MODEL", "Model", "模型", default="scribe_v3_live")], label="ElevenLabs Scribe", **ELEVEN)
 register("asr", "dashscope", _paraformer, [

@@ -14,15 +14,24 @@ speaks the same small protocol to the hub, as JSON objects with a `type`:
                         say {task, text}                the agent's own words for the user, written to be spoken
                         ask {id, text}                  it waits for the user's permission
                         turn_end {text, error}          the turn ended; its last message, or why it broke off
+                        talk_line {id, text}            a line of a reply the hub asked this harness's model for
+                        talk_end {id, error}            ... and its end
     hub -> connector    prompt {task, text}             the user's words, as a new turn
                         steer {task, text}              more words for a task that is going
                         cancel {task}                   stop it, where the harness can
                         answer {id, behavior}           "allow" | "deny"
+                        talk {id, model, system,        write a reply on the harness's own model (a connector that said
+                              messages, max_tokens}     `talks` in its hello): the talking is done on the user's account
+                        talk_stop {id}                  nobody is listening to that reply any more
 
 `HarnessExecutor` is the executor the voice is given (tasks.py). A task started by voice is pushed to the harness and
 comes back when its turn ends, with the words the agent wrote to be spoken (`say`) or, failing that, its last message.
 A turn the user typed in the harness themself is taken up as a task too once it has run a while
 (`Hub.adopt_after_s`), so the voice can tell them when it is done; a short one is left alone.
+
+A harness whose plugin can call its model lends it for the talking as well (`HarnessResponder`,
+LLM_PROVIDER=harness): the session works on its own model, the voice talks on a fast one of the same account
+(JEV_FAST_MODEL), and nobody gives a second key.
 
 A "may I" from the harness is put to the user through the voice (`Tell.ask`). The answer goes back to the harness only
 with `voice_approvals` on; off (the default), the user is told and answers it on their own screen.
@@ -82,6 +91,7 @@ class Link:
     cwd: str = ""
     steer: str = "turn"
     acks: bool = False           # a pushed prompt is followed by a turn_start (the connector says so in its hello)
+    talks: bool = False          # its plugin can write a reply on the harness's own model (`talk`)
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     busy: bool = False           # a turn is running
     reports: bool = False        # it tells the hub when turns end (a connector with events; without, `say` ends a task)
@@ -116,6 +126,7 @@ class Hub:
         self.links: dict[str, Link] = {}
         self.voices: list = []                    # the Sessions on a call, the latest last
         self.pushed: deque[str] = deque(maxlen=20)
+        self.talking: dict[str, asyncio.Queue] = {}     # replies being written on a harness's model, by their id
 
     # ------------------------------------------------------------------ the two sides
     def attach(self, session) -> None:
@@ -130,6 +141,13 @@ class Hub:
 
     def executor(self) -> HarnessExecutor:
         return HarnessExecutor(self)
+
+    def responder(self) -> HarnessResponder:
+        return HarnessResponder(self)
+
+    def talker(self) -> Link | None:
+        """The harness session that lends its model for the talking: the latest seen of those that can."""
+        return max((k for k in self.links.values() if k.talks), key=lambda k: k.seen, default=None)
 
     def add(self, link: Link) -> Link:
         self.links[link.id] = link
@@ -170,11 +188,16 @@ class Hub:
     # ------------------------------------------------------------------ what the harness reports
     async def event(self, link: Link, e: dict) -> None:
         kind = e.get("type")
+        if kind in ("talk_line", "talk_end"):     # a reply on its model: not the session at work
+            q = self.talking.get(str(e.get("id") or ""))
+            if q is not None:
+                q.put_nowait(e)
+            return
         for job in link.jobs:
             job.taken.set()                       # anything at all from the harness: it is there and working
         if kind == "hello":
             link.cwd, link.steer = e.get("cwd") or link.cwd, e.get("steer") or link.steer
-            link.acks = bool(e.get("acks", link.acks))
+            link.acks, link.talks = bool(e.get("acks", link.acks)), bool(e.get("talks", link.talks))
         elif kind == "turn_start":
             await self._turn_start(link, e.get("text") or "", bool(e.get("ours")))
         elif kind == "turn_end":
@@ -262,6 +285,71 @@ class Hub:
         for ask in list(link.asks.values()):
             ask.cancel()
         link.asks.clear()
+
+
+def needs(steps: list[dict]) -> tuple[list[str], list[str], str]:
+    """What a call server still lacks, from its own settings (server/settings.py: `steps`): (things to choose, keys
+    to be given, the choices spelled out). Whatever provider is chosen, what it needs is asked for; nothing is chosen
+    for the user."""
+    choose, keys, said = [], [], []
+    for st in steps:
+        if st.get("ready"):
+            continue
+        chosen = next((p for p in st["providers"] if p["name"] == st.get("selected")), None)
+        if chosen is None:                        # nobody has been chosen for this part yet
+            choose.append(st["selector"])
+            said.append(f"- {st['title']}: set {st['selector']} to one of {', '.join(p['name'] for p in st['providers'])}")
+            continue
+        for f in chosen["fields"]:
+            if f["name"] not in chosen["missing"]:
+                continue
+            if f.get("secret"):
+                if f["name"] not in keys:         # one key may serve two parts (recognition and synthesis)
+                    keys.append(f["name"])
+            elif f["name"] not in choose:
+                choose.append(f["name"])
+                others = [p["name"] for p in st["providers"] if p is not chosen]
+                other = f" (or set {st['selector']} to {', '.join(others)} for another)" if st.get("selector") and others else ""
+                hint = f" ({f['hint']})" if f.get("hint") else ""
+                said.append(f"- {f['label']}{hint}: set {f['name']}{other}")
+    return choose, keys, "\n".join(said)
+
+
+class HarnessResponder:
+    """The harness's own model as the responder: the reply is asked of the connector, which calls the model the user is
+    already signed in to (`talk`), and comes back line by line."""
+
+    def __init__(self, hub: Hub, model: str | None = None, timeout_s: float = 60.0):
+        self.hub, self.model, self.timeout_s = hub, model, timeout_s
+
+    async def lines(self, messages: list[dict], max_tokens: int = 160):
+        import os
+        link = self.hub.talker()
+        if link is None:
+            raise RuntimeError("the harness that lends its model for talking is not connected")
+        tid, q = uuid.uuid4().hex[:10], asyncio.Queue()
+        self.hub.talking[tid] = q
+        done = False
+        try:
+            await link.send({"type": "talk", "id": tid, "model": self.model or os.getenv("JEV_FAST_MODEL", ""), "max_tokens": max_tokens,
+                             "system": "\n\n".join(m["content"] for m in messages if m.get("role") == "system"),
+                             "messages": [{"role": m["role"], "content": m["content"]} for m in messages if m.get("role") != "system"]})
+            while True:
+                e = await asyncio.wait_for(q.get(), self.timeout_s)
+                if e.get("type") == "talk_end":
+                    done = True
+                    if e.get("error"):
+                        raise RuntimeError(str(e["error"])[:200])
+                    return
+                if (e.get("text") or "").strip():
+                    yield e["text"].strip()
+        finally:
+            self.hub.talking.pop(tid, None)
+            if not done and link.id in self.hub.links:     # the listener stopped (they talked over it): the model may stop
+                try:
+                    await link.send({"type": "talk_stop", "id": tid})
+                except Exception:  # noqa: BLE001 - the harness is gone
+                    pass
 
 
 class HarnessExecutor:

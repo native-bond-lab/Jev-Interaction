@@ -26,7 +26,7 @@ events. Audio for the agent's lines is fetched over HTTP.
 | `decision` | `what, action?, go?, probs?, why?, ...` | a turn-taking decision Jev just made (`end_of_turn`, `floor`, `quiet`, `not_for_me`), for display and logs; `not_for_me` has `why`: `jev` (Jev heard it said to someone else), `far` (Config.far_db), `voice` (the voiceprint) |
 | `persona` | `id, name, gen, accent?` | someone else is on the line from reply `gen` on (the caller asked for them): lines from that reply are theirs, in their voice; show it when the first of them plays |
 | `pace` | `pace, probs` | the call's pace changed (normal, patient, narrate, eager) |
-| `error` | `what, text, missing?` | `settings`: required keys are empty (`missing` lists them; the socket closes with 4412); `start`: a provider refused; `judge`: a decision failed, the call falls back and goes on; `responder`: a reply failed or came back empty twice, nothing is said and the call goes on |
+| `error` | `what, text, missing?` | `settings`: required keys are empty (`missing` lists them; the socket closes with 4412); `start`: a provider refused; `call`: the call could not be set up or broke, and ends here; `judge`: a decision failed, the call falls back and goes on; `responder`: a reply failed or came back empty twice, nothing is said and the call goes on |
 | `queue` | `ahead, wait_s` | every line is taken and this caller is held in line: `ahead` callers before them, at most `wait_s` seconds (null when unknown); sent again when either changes. Audio sent meanwhile is ignored |
 | `ready` | | a line is free: the call starts now |
 | `busy` | `text` | the line itself is full, or today's minutes are used up; the socket closes |

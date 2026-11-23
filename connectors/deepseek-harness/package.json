@@ -1,0 +1,32 @@
+{
+  "name": "dsh-jev-interaction",
+  "version": "0.1.0",
+  "description": "Talk to DeepSeek Harness out loud: /interaction brings up a full-duplex voice companion for the session, talking on the harness's own fast model.",
+  "type": "module",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/native-bond-lab/Jev-Interaction.git",
+    "directory": "connectors/deepseek-harness"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "voice",
+    "interaction",
+    "full-duplex"
+  ],
+  "engines": {
+    "dsh": ">=0.2.2-rc.5 <0.3.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

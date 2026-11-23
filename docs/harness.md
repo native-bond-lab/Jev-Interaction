@@ -1,6 +1,6 @@
 # Voice interaction inside a coding agent
 
-You are in Claude Code. You run `/interaction:start`, and from then on you can talk, to the computer itself: a voice
+You are in Claude Code (or DeepSeek Harness, where the command is `/interaction`). You run `/interaction:start`, and from then on you can talk, to the computer itself: a voice
 companion hears you through its microphone, hands what you ask for to the session you are in, says how far it has got
 when you ask, and tells you through its speakers when it is done. While nothing is happening it sleeps. There is no
 page and no window.
@@ -32,6 +32,23 @@ Nothing starts until the fast model is chosen. Keys are not typed into the conve
 they go in, `~/.jev-interaction/.env`, where their names are already waiting (the judge's, `JEV_API_KEY`, and the
 speech provider's). What you choose is kept in the same file. Then the session listens, and you can talk.
 `/interaction:stop` ends it, and so does pressing Esc while it is listening.
+
+## Set it up in DeepSeek Harness
+
+1. Install the package: `pipx install "jev-interaction[server,local]"` or `uv tool install "jev-interaction[server,local]"`.
+2. Add the plugin to the profile you use, from a checkout of this repository (it is not on npm yet):
+   `dsh plugin --profile tui add <path>/connectors/deepseek-harness` (`--profile web` for `dsh web`).
+3. In a session: `/interaction`. `/interaction stop` ends it.
+
+The first time, `/interaction` says what is still to choose, and each is given with `/interaction set NAME=value`:
+the fast model that does the talking, as `provider/model` of the harness's own (`JEV_FAST_MODEL`), a provider for
+speech recognition and one for synthesis, and their keys. A command is not sent to the model and this one is not
+written to the session log; the keys can be put in `~/.jev-interaction/.env` by hand as well. None is chosen for you.
+
+Here the harness gives more than Claude Code does (`connectors/deepseek-harness/index.js`): the plugin asks the
+harness for a model directly, so each reply of the voice is written by the harness on the fast model
+(`LLM_PROVIDER=harness`: the call server asks, the plugin answers with `ctx.llm.stream`); a spoken request becomes a
+prompt of the session, something added while it works reaches the turn at its next step, and "stop" stops the turn.
 
 ## The microphone and the speakers
 
@@ -82,8 +99,10 @@ is on, it is sent back to listening.
 
 A connector joins the hub of the call server (`ws://127.0.0.1:<port>/harness/ws`, from this machine only, never from a
 page; the server writes its address to `~/.jev-interaction/hub`), says
-`{"type": "hello", "harness": "...", "cwd": "...", "steer": "now" | "turn"}`, and then exchanges the events listed at
-the top of `jev_interaction/harness.py`.
+`{"type": "hello", "harness": "...", "cwd": "...", "steer": "now" | "turn", "talks": true | false}`, and then
+exchanges the events listed at the top of `jev_interaction/harness.py`. `talks` says the harness lends its model for
+the talking: the call server then sends `talk` (a system prompt, the messages, a model) and reads the reply back as
+`talk_line`s and a `talk_end`. `GET /harness/setup` says what is still to choose, for a connector to put to its user.
 
 ## Checked, and not yet
 
@@ -104,6 +123,15 @@ real session does differently from the stand-in: it sends `say` and `listen` in 
 `message` as often as `text`, and the talking model now and then writes its `/task` line as a tool call. All three
 are taken as they come.
 
+And in DeepSeek Harness 0.2.2-rc.5 (`dsh web`, the plugin added with `dsh plugin --profile web add`, the harness's
+model here xAI's `grok-4.3` since no DeepSeek key was at hand): `/interaction` is in the command list; the first run
+said what to choose and `/interaction set` kept it; a synthetic voice into the call asked to count the files in the
+folder, the reply was written by the harness's model, the request arrived in the session as a prompt, each tool call
+was reported, and the outcome was told (about 6 s from the request being recognized to the first words, 24 s to the
+outcome). Not checked there: the call on real speakers and microphone (the engine's side is the same as Claude
+Code's), `dsh` in the terminal (`--profile tui`), a DeepSeek model doing the talking, steering and stopping a turn
+by voice, a permission prompt.
+
 ## What is open
 
 For whoever picks this up. Each of these was seen on a real run or is a known gap, not a guess.
@@ -118,7 +146,7 @@ For whoever picks this up. Each of these was seen on a real run or is a known ga
 | stopping a task | Claude Code cannot be interrupted from outside: "stop" only drops the task on the voice's side |
 | other voices in the room | the local call has no voiceprint on; anyone's voice is heard and wakes it |
 | the generic speech adapters | `openai-compatible` recognition and synthesis are tested against a stand-in only, with no real service yet |
-| other harnesses | Codex and DeepSeek Harness connectors are not written; the hub's protocol is at the top of `harness.py` |
+| other harnesses | a Codex connector is not written; the hub's protocol is at the top of `harness.py`. DeepSeek Harness's is checked in `dsh web` only, and is not on npm |
 | other systems | checked on macOS only (`bin/connect.sh` is a shell script; the audio is miniaudio's) |
 
 To see what a session really does, in what order: `JEV_CONNECT_LOG=/tmp/connect.log` in Claude Code's environment

@@ -53,7 +53,19 @@ def _init(a: argparse.Namespace) -> int:
     return 0
 
 
+def no_proxy() -> None:
+    """An IPv6 address written in brackets in NO_PROXY (`[::1]`: DeepSeek Harness adds it to what it hands the programs
+    it starts) is one the HTTP client cannot read: every client it makes fails, so no call starts. Written bare it
+    means the same, and that it reads."""
+    for name in ("NO_PROXY", "no_proxy"):
+        if name in os.environ:
+            hosts = [h.strip() for h in os.environ[name].split(",")]
+            hosts = [h[1:-1] if h.startswith("[") and h.endswith("]") else h for h in hosts]
+            os.environ[name] = ",".join(dict.fromkeys(hosts))
+
+
 def main(argv: list[str] | None = None) -> int:
+    no_proxy()
     ap = argparse.ArgumentParser(prog="jev-interaction", description="Full-duplex voice calls, turn-taking judged by Jev.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("serve", help="run the call server and its page")

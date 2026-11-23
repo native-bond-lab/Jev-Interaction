@@ -1,0 +1,4 @@
+# The layer this bundle adds to a profile: one plugin, the /interaction command.
+- insert:
+    - id: jev-interaction
+      name: 'dsh-jev-interaction'

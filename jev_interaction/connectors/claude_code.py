@@ -37,7 +37,7 @@ import subprocess
 import sys
 import threading
 
-from ..harness import where
+from ..harness import needs, where
 
 HARNESS = "Claude Code"
 SERVER = "jev"
@@ -174,29 +174,7 @@ def keep(values: dict[str, str]) -> None:
 def unset(origin: str) -> tuple[list[str], list[str], str]:
     """What the call server still needs, read from its own settings: (things to choose, keys to put in the file, the
     choices spelled out for the session to put to the user)."""
-    steps = (_get(origin, "/api/settings") or {}).get("steps") or []
-    choose, keys, said = [], [], []
-    for st in steps:
-        if st.get("ready"):
-            continue
-        chosen = next((p for p in st["providers"] if p["name"] == st.get("selected")), None)
-        if chosen is None:                        # nobody has been chosen for this part yet
-            choose.append(st["selector"])
-            said.append(f"- {st['title']}: set {st['selector']} to one of {', '.join(p['name'] for p in st['providers'])}")
-            continue
-        for f in chosen["fields"]:
-            if f["name"] not in chosen["missing"]:
-                continue
-            if f.get("secret"):
-                if f["name"] not in keys:         # one key may serve two parts (recognition and synthesis)
-                    keys.append(f["name"])
-            elif f["name"] not in choose:
-                choose.append(f["name"])
-                others = [p["name"] for p in st["providers"] if p is not chosen]
-                other = f" (or set {st['selector']} to {', '.join(others)} for another)" if st.get("selector") and others else ""
-                hint = f" ({f['hint']})" if f.get("hint") else ""
-                said.append(f"- {f['label']}{hint}: set {f['name']}{other}")
-    return choose, keys, "\n".join(said)
+    return needs((_get(origin, "/api/settings") or {}).get("steps") or [])
 
 
 class Service:

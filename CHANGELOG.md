@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Voice interaction from inside DeepSeek Harness.** A plugin (`connectors/deepseek-harness/`, added with
+  `dsh plugin add`): `/interaction` starts the call server and joins its hub, `/interaction stop` ends it,
+  `/interaction set NAME=value` is the first-run setup. The talking is done on the harness's own model, asked for
+  through the hub (`LLM_PROVIDER=harness`, `HarnessResponder`; a connector says `talks` in its hello), on the fast
+  model the user chose (`JEV_FAST_MODEL` as `provider/model`). `GET /harness/setup` says what is still to choose.
+  Checked in `dsh web` 0.2.2-rc.5 end to end with a synthetic voice.
+- A call that cannot be set up says so (`error`, `what: "call"`) instead of the line just closing. An IPv6 host in
+  brackets in `NO_PROXY` (DeepSeek Harness hands `[::1]` to what it starts) no longer stops every call from starting.
 - **Speech from any provider.** `ASR_PROVIDER=openai-compatible` and `TTS_PROVIDER=openai-compatible`
   (`adapters/openai_speech.py`): any service that serves the OpenAI audio API (`/audio/transcriptions`,
   `/audio/speech`), a model on your own machine included; the key is optional. The recognizer cuts clips on pauses and

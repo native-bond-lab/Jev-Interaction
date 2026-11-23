@@ -2,6 +2,10 @@
 import asyncio
 import io
 import json
+import os
+import pathlib
+
+import pytest
 
 from jev_interaction import harness as H
 from jev_interaction.adapters.base import Segment
@@ -351,7 +355,8 @@ def test_what_is_still_to_choose_is_read_from_the_call_servers_own_settings(monk
                  {"name": "elevenlabs", "missing": [], "fields": []}, {"name": "dashscope", "missing": [], "fields": []}]},
              {"id": "tts", "title": "Speech synthesis", "ready": True, "selected": "elevenlabs", "providers": []}]
     monkeypatch.setattr(CC, "_get", lambda origin, path: {"steps": steps})
-    choose, keys, said = CC.unset("http://127.0.0.1:1")
+    assert CC.unset("http://127.0.0.1:1") == H.needs(steps)                # the connector reads the hub's own account
+    choose, keys, said = H.needs(steps)
     assert choose == ["JEV_FAST_MODEL", "ASR_PROVIDER"] and keys == ["JEV_API_KEY"]
     assert "Fast model for talking: set JEV_FAST_MODEL (or set LLM_PROVIDER to openai-compatible for another)" in said
     assert "Speech recognition: set ASR_PROVIDER to one of elevenlabs, dashscope" in said
@@ -470,7 +475,7 @@ async def test_speech_from_any_openai_compatible_service_and_no_provider_is_chos
 
 
 def test_the_local_call_plays_whatever_format_the_chosen_synthesizer_sends():
-    import miniaudio
+    miniaudio = pytest.importorskip("miniaudio")       # the `local` extra
 
     from jev_interaction import local
     assert local.encoded(miniaudio, "audio/mpeg") == miniaudio.FileFormat.MP3
@@ -488,3 +493,120 @@ def test_the_local_call_plays_whatever_format_the_chosen_synthesizer_sends():
     assert same == b"\x01\x00" * 2400
     up = b"".join(local.raw(Source(b"\x01\x00" * 1600), "audio/pcm;rate=16000"))        # 16 kHz to the speakers' 24 kHz
     assert len(up) == 1600 * 2 * 24000 // 16000
+
+
+# ---------------------------------------------------------------------- the harness's own model for the talking
+async def test_the_talking_is_done_on_the_model_of_a_harness_that_lends_it():
+    hub = H.Hub()
+    sent = []
+
+    async def send(e):
+        sent.append(e)
+    link = hub.add(H.Link("DeepSeek Harness", send, cwd="/work/app", talks=True))
+    r = hub.responder()
+    out = []
+
+    async def talk():
+        msgs = [{"role": "system", "content": "You are Biscuit."}, {"role": "user", "content": "[event: they spoke]\nHello?"}]
+        async for line in r.lines(msgs, max_tokens=60):
+            out.append(line)
+    job = asyncio.create_task(talk())
+    await settle()
+    ask = sent[-1]
+    assert ask["type"] == "talk" and ask["system"] == "You are Biscuit." and ask["max_tokens"] == 60
+    assert ask["messages"] == [{"role": "user", "content": "[event: they spoke]\nHello?"}]
+    hub.post(link, {"type": "talk_line", "id": ask["id"], "text": "Hey."})
+    hub.post(link, {"type": "talk_line", "id": ask["id"], "text": "What's up?"})
+    hub.post(link, {"type": "talk_end", "id": ask["id"]})
+    await asyncio.wait_for(job, 2)
+    assert out == ["Hey.", "What's up?"] and not hub.talking and not link.busy     # a reply is not the session working
+
+    async def cut_short():
+        async for _ in r.lines([{"role": "user", "content": "Tell me a story."}]):
+            break                                                        # they talked over it
+    job = asyncio.create_task(cut_short())
+    await settle()
+    hub.post(link, {"type": "talk_line", "id": sent[-1]["id"], "text": "Once upon a time"})
+    await asyncio.wait_for(job, 2)
+    await settle()
+    assert sent[-1]["type"] == "talk_stop"                               # the model is told it may stop
+    hub.drop(link)
+    try:
+        async for _ in hub.responder().lines([{"role": "user", "content": "hi"}]):
+            pass
+        raise AssertionError("no harness: no reply")
+    except RuntimeError as exc:
+        assert "not connected" in str(exc)
+
+
+def test_an_ipv6_host_in_brackets_in_no_proxy_is_written_so_the_http_client_reads_it(monkeypatch):
+    import httpx
+
+    from jev_interaction import cli
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:9")
+    monkeypatch.setenv("NO_PROXY", "localhost,127.0.0.1,::1,.local,[::1]")      # as DeepSeek Harness hands it on
+    cli.no_proxy()
+    assert os.environ["NO_PROXY"] == "localhost,127.0.0.1,::1,.local"
+    httpx.AsyncClient()                        # with `[::1]` as it was, this raises InvalidURL
+
+
+# ---------------------------------------------------------------------- DeepSeek Harness's plugin (connectors/deepseek-harness)
+DSH_DRIVER = """
+import { apply } from %(plugin)s
+const cmds = {}, prompts = []
+const ctx = {                                   // what the plugin asks of the harness, and nothing else
+  effect: (f) => f(), on: () => () => {},
+  commands: { register: (c) => { cmds[c.name] = c; return () => {} } },
+  llm: { stream: async function* () { yield { type: 'text-delta', text: 'Hi.' }; yield { type: 'finish', reason: { kind: 'stop' } } } },
+}
+apply(ctx)
+const agent = { followup: (m) => prompts.push(m), steer() {}, cancel() {}, session: { id: 's1', meta: { cwd: process.cwd() } } }
+const run = async (rawInput) => (await cmds.interaction.handler({ rawInput, agent })).text
+const out = { command: cmds.interaction.name, recorded: cmds.interaction.recordInput }
+out.first = await run('')
+out.set = await run('set JEV_FAST_MODEL=deepseek/fast ASR_PROVIDER=openai-compatible ASR_BASE_URL=http://127.0.0.1:9/v1 ASR_MODEL=w '
+  + 'TTS_PROVIDER=openai-compatible TTS_BASE_URL=http://127.0.0.1:9/v1 TTS_MODEL=t JEV_API_KEY=k')
+out.on = await run('')
+const hub = (await import('node:fs')).readFileSync(%(hub)s, 'utf8').trim()
+const health = await (await fetch(hub.replace('ws://', 'http://').replace('/harness/ws', '/api/health'))).json()
+out.links = health.harness
+out.off = await run('stop')
+await new Promise((r) => setTimeout(r, 1500))
+out.gone = await fetch(hub.replace('ws://', 'http://').replace('/harness/ws', '/api/health')).then(() => false, () => true)
+console.log(JSON.stringify(out))
+process.exit(0)
+"""
+
+
+def test_deepseek_harness_plugin_sets_up_starts_and_stops_the_call_server(tmp_path):
+    """The plugin as DeepSeek Harness loads it, against the real call server and a stand-in for the harness: the
+    command is there, the first run says what to choose, `set` keeps it, then the plugin is on the hub lending its
+    model, and `stop` takes the server down."""
+    import shutil
+    import subprocess
+    import sys
+    pytest.importorskip("uvicorn")
+    node = shutil.which("node")
+    if node is None or int(subprocess.run([node, "-p", "process.versions.node.split('.')[0]"], capture_output=True, text=True).stdout or 0) < 22:
+        pytest.skip("needs node 22 or later (the plugin uses its WebSocket)")
+    root = pathlib.Path(__file__).resolve().parent.parent
+    home = tmp_path / "home"
+    (home / ".jev-interaction").mkdir(parents=True)
+    bin_ = tmp_path / "jev-interaction"
+    bin_.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m jev_interaction.cli "$@"\n')
+    bin_.chmod(0o755)
+    driver = tmp_path / "driver.mjs"
+    driver.write_text(DSH_DRIVER % {"plugin": json.dumps((root / "connectors/deepseek-harness/index.js").as_uri()),
+                                    "hub": json.dumps(str(home / ".jev-interaction" / "hub"))})
+    clean = {k: v for k, v in os.environ.items() if not k.startswith(("JEV_", "ASR_", "TTS_", "LLM_", "ELEVENLABS_", "DASHSCOPE_"))}
+    env = {**clean, "HOME": str(home), "JEV_HOME": str(tmp_path / "jev"), "JEV_INTERACTION_BIN": str(bin_), "JEV_LOCAL_AUDIO": "0",
+           "JEV_VOICEPRINT": "0", "JEV_SOUND": "off", "PYTHONPATH": str(root)}
+    done = subprocess.run([node, str(driver)], capture_output=True, text=True, env=env, cwd=tmp_path, timeout=120)
+    assert done.returncode == 0, done.stderr[-800:]
+    out = json.loads(done.stdout.strip().splitlines()[-1])
+    assert out["command"] == "interaction" and out["recorded"] is False          # a key given with `set` is not logged
+    assert "not set up yet" in out["first"] and "JEV_FAST_MODEL" in out["first"] and "ASR_PROVIDER" in out["first"]
+    assert out["set"].startswith("Kept JEV_FAST_MODEL") and "Everything is set" in out["set"]
+    assert out["on"].startswith("Voice interaction is on")
+    assert [k["harness"] for k in out["links"]] == ["DeepSeek Harness"]
+    assert out["off"] == "Voice interaction is off." and out["gone"] is True

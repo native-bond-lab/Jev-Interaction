@@ -312,7 +312,7 @@ async def harness_link(ws: WebSocket):
     try:
         hello = json.loads(await ws.receive_text())
         link = HUB.add(H.Link(str(hello.get("harness") or "harness"), send, cwd=str(hello.get("cwd") or ""),
-                              steer=str(hello.get("steer") or "turn"), acks=bool(hello.get("acks"))))
+                              steer=str(hello.get("steer") or "turn"), acks=bool(hello.get("acks")), talks=bool(hello.get("talks"))))
         LOG.info("harness joined: %s", link.harness)
         while True:
             HUB.post(link, json.loads(await ws.receive_text()))
@@ -322,6 +322,15 @@ async def harness_link(ws: WebSocket):
         if link is not None:
             HUB.drop(link)
             LOG.info("harness left: %s", link.harness)
+
+
+@app.get("/harness/setup")
+def harness_setup(request: Request):
+    """What is still to be chosen before a call can start, for a connector to put to its user (harness.needs)."""
+    if not _this_machine(request.client, request.headers.get("origin", "")):
+        raise HTTPException(403, "Only from this machine, with JEV_HARNESS=1.")
+    choose, keys, said = H.needs(S.steps())
+    return {"ready": not registry.missing_settings(), "choose": choose, "keys": keys, "said": said}
 
 
 def same_origin(origin: str, host: str) -> bool:
@@ -451,6 +460,10 @@ async def call(ws: WebSocket):
         pass
     except Exception as exc:  # noqa: BLE001 - named in the log, then raised as before
         why = f"error: {type(exc).__name__}: {str(exc)[:160]}"
+        try:                                   # said to whoever is on the line, so a call that died is not just silence
+            await ws.send_text(json.dumps({"type": "error", "what": "call", "text": why.removeprefix("error: ")}))
+        except Exception:  # noqa: BLE001 - the line is gone already
+            pass
         raise
     finally:
         LOG.info("call end profile=%s seconds=%.0f why=%s", pid, time.monotonic() - started, why)
