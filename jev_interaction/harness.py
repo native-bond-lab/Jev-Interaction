@@ -4,8 +4,9 @@ One hub on this machine. On one side the voice (the Sessions on a call); on the 
 session: a thin piece that lives with the harness, pushes the user's words in and reports what happens. Every harness
 speaks the same small protocol to the hub, as JSON objects with a `type`:
 
-    connector -> hub    hello {harness, cwd, steer,     it is there (`steer`: "now" when more words reach the turn that
-                               acks}                    is running, "turn" when they wait for it to end; `acks`: a
+    connector -> hub    hello {harness, cwd, steer,     it is there (`session_id` is stable across reconnects; `steer`:
+                               acks, session_id}       "now" when more words reach the turn that is running, "turn"
+                                                        when they wait for it to end; `acks`: a
                                                         pushed prompt is followed by a turn_start, so one that is not
                                                         was not taken)
                         turn_start {text, ours}         a turn began; `ours`: it is one the hub pushed
@@ -29,9 +30,10 @@ comes back when its turn ends, with the words the agent wrote to be spoken (`say
 A turn the user typed in the harness themself is taken up as a task too once it has run a while
 (`Hub.adopt_after_s`), so the voice can tell them when it is done; a short one is left alone.
 
-A harness whose plugin can call its model lends it for the talking as well (`HarnessResponder`,
-LLM_PROVIDER=harness): the session works on its own model, the voice talks on a fast one of the same account
-(JEV_FAST_MODEL), and nobody gives a second key.
+A harness whose plugin can call a model may lend it for the talking as well (`HarnessResponder`,
+LLM_PROVIDER=harness). That choice is independent of the selected task session: `pick()` routes work, while
+`talker()` selects an available connection that supports model calls. The requested speech model is configured
+separately (`JEV_FAST_MODEL`).
 
 A "may I" from the harness is put to the user through the voice (`Tell.ask`). The answer goes back to the harness only
 with `voice_approvals` on; off (the default), the user is told and answers it on their own screen.
@@ -39,6 +41,9 @@ with `voice_approvals` on; off (the default), the user is told and answers it on
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
+import os
 import pathlib
 import time
 import uuid
@@ -48,8 +53,12 @@ from dataclasses import dataclass, field
 
 from .tasks import Task, Tell
 
-HUB_FILE = pathlib.Path.home() / ".jev-interaction" / "hub"     # where the call server with the hub says it is: one line,
+# Where the call server with the hub says it is: one line, read by the connectors on this machine. It stays where the
+# connectors look for it (`~/.jev-interaction/hub`), not under JEV_HOME: a connector is a separate process that is not
+# given the server's working folder, so following JEV_HOME here left every connector unable to find the hub.
+HUB_FILE = pathlib.Path(os.getenv("JEV_HUB_FILE") or pathlib.Path.home() / ".jev-interaction" / "hub")
 DEFAULT_HUB = "ws://127.0.0.1:8080/harness/ws"                  # its ws:// address, read by the connectors on this machine
+LOG = logging.getLogger(__name__)
 
 
 def announce(port: int) -> None:
@@ -101,6 +110,7 @@ class Link:
     seen: float = field(default_factory=time.monotonic)
     inbox: asyncio.Queue = field(default_factory=asyncio.Queue)
     worker: asyncio.Task | None = None
+    session_id: str = ""
 
 
 def verdict(text: str) -> str | None:
@@ -119,11 +129,17 @@ def _short(text: str, n: int = 160) -> str:
 class Hub:
     TAKEN_S = 8.0                # an idle harness that acks takes pushed words within this, or it did not take them
 
-    def __init__(self, *, kind: str = "agent", adopt_after_s: float = 30.0, voice_approvals: bool = False):
+    def __init__(self, *, kind: str = "agent", adopt_after_s: float = 30.0, voice_approvals: bool = False,
+                 binding_path: pathlib.Path | str | None = None):
         self.kind = kind                          # the executor's name on the voice side
         self.adopt_after_s = adopt_after_s        # a turn the user typed is taken up as a task once it has run this long
         self.voice_approvals = voice_approvals    # the user's spoken "allow" / "deny" is passed back to the harness
         self.links: dict[str, Link] = {}
+        self.bound_link_id: str | None = None
+        self.binding_path = pathlib.Path(binding_path) if binding_path is not None else None
+        self.bound_session = self._load_binding()
+        self.selection_active = self.bound_session is not None
+        self._last_activity = time.monotonic()
         self.voices: list = []                    # the Sessions on a call, the latest last
         self.pushed: deque[str] = deque(maxlen=20)
         self.talking: dict[str, asyncio.Queue] = {}     # replies being written on a harness's model, by their id
@@ -145,18 +161,85 @@ class Hub:
     def responder(self) -> HarnessResponder:
         return HarnessResponder(self)
 
+    def bind(self, link_id: str | None) -> Link | None:
+        """Route voice work to one selected harness session, or clear the selection."""
+        if link_id is None:
+            self.bound_link_id = None
+            self._write_binding(None)
+            self.bound_session = None
+            self.selection_active = False
+            return None
+        link = self.links.get(link_id)
+        if link is not None:
+            session = self._session_key(link)
+            if self.binding_path is not None and session is None:
+                return None
+            self._write_binding(session)
+            self.bound_link_id = link.id
+            self.bound_session = session
+            self.selection_active = True
+        return link
+
+    @staticmethod
+    def _session_key(link: Link) -> tuple[str, str] | None:
+        return (link.harness, link.session_id) if link.session_id else None
+
+    def _load_binding(self) -> tuple[str, str] | None:
+        if self.binding_path is None:
+            return None
+        try:
+            data = json.loads(self.binding_path.read_text(encoding="utf-8"))
+            binding = data.get("binding") if isinstance(data, dict) and data.get("version") == 1 else None
+            if isinstance(binding, dict) and binding.get("harness") and binding.get("session_id"):
+                return str(binding["harness"]), str(binding["session_id"])
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, TypeError) as exc:
+            LOG.warning("could not read the saved harness selection: %s", exc)
+        return None
+
+    def _write_binding(self, session: tuple[str, str] | None) -> None:
+        if self.binding_path is None:
+            return
+        path = self.binding_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {"version": 1, "binding": None if session is None else
+                {"harness": session[0], "session_id": session[1]}}
+        temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+        try:
+            temporary.write_text(json.dumps(data, ensure_ascii=False) + "\n", encoding="utf-8")
+            if os.name != "nt":
+                temporary.chmod(0o600)
+            temporary.replace(path)
+        except OSError:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
+
     def talker(self) -> Link | None:
-        """The harness session that lends its model for the talking: the latest seen of those that can."""
+        """Select a model-capable connection independently of the task destination."""
         return max((k for k in self.links.values() if k.talks), key=lambda k: k.seen, default=None)
 
     def add(self, link: Link) -> Link:
         self.links[link.id] = link
+        if self.selection_active and self.bound_session is not None and self._session_key(link) == self.bound_session:
+            self.bound_link_id = link.id
+        self._touch(link)
         link.worker = asyncio.get_running_loop().create_task(self._work(link))
         return link
+
+    def _touch(self, link: Link) -> None:
+        self._last_activity = max(time.monotonic(), self._last_activity + 1e-6)
+        link.seen = self._last_activity
 
     def drop(self, link: Link) -> None:
         """The connector went away: its window closed. What was running on it has failed."""
         self.links.pop(link.id, None)
+        if self.bound_link_id == link.id:
+            self.bound_link_id = next((other.id for other in self.links.values()
+                                       if self._session_key(other) == self.bound_session), None)
         if link.worker is not None:
             link.worker.cancel()
         for ask in link.asks.values():
@@ -168,11 +251,24 @@ class Hub:
     def pick(self, link_id: str | None = None) -> Link | None:
         if link_id:
             return self.links.get(link_id)
-        return max(self.links.values(), key=lambda k: k.seen, default=None)
+        if self.bound_link_id is not None:
+            link = self.links.get(self.bound_link_id)
+            if link is not None:
+                return link
+        if self.selection_active:
+            return None
+        return next(iter(self.links.values())) if len(self.links) == 1 else None
+
+    def selection_error(self) -> str:
+        if self.selection_active:
+            return "the selected harness session is not connected; reconnect it or clear the selection"
+        if len(self.links) > 1:
+            return "multiple harness sessions are connected; choose one with /interaction harness <id>"
+        return "no coding agent is connected on this computer"
 
     def post(self, link: Link, event: dict) -> None:
         """An event from the connector, handled in the order it came without making the sender wait."""
-        link.seen = time.monotonic()
+        self._touch(link)
         link.inbox.put_nowait(event)
 
     async def _work(self, link: Link) -> None:
@@ -319,12 +415,20 @@ class HarnessResponder:
     """The harness's own model as the responder: the reply is asked of the connector, which calls the model the user is
     already signed in to (`talk`), and comes back line by line."""
 
-    def __init__(self, hub: Hub, model: str | None = None, timeout_s: float = 60.0):
+    def __init__(self, hub: Hub, model: str | None = None, timeout_s: float = 10.0):
         self.hub, self.model, self.timeout_s = hub, model, timeout_s
 
     async def lines(self, messages: list[dict], max_tokens: int = 160):
         import os
         link = self.hub.talker()
+        if link is None:
+            # the call server starts with the harness, so the connector may still be joining: give it a moment rather
+            # than failing the first line of the call
+            for _ in range(24):
+                await asyncio.sleep(0.25)
+                link = self.hub.talker()
+                if link is not None:
+                    break
         if link is None:
             raise RuntimeError("the harness that lends its model for talking is not connected")
         tid, q = uuid.uuid4().hex[:10], asyncio.Queue()
@@ -372,7 +476,9 @@ class HarnessExecutor:
             return given["said"]
         link = self.hub.pick(given.get("link"))
         if link is None:
-            raise RuntimeError("no coding agent is connected on this computer")
+            if given.get("link"):
+                raise RuntimeError("the harness session this task belongs to is no longer connected")
+            raise RuntimeError(self.hub.selection_error())
         job = Job(task, tell, asyncio.get_running_loop().create_future())
         waits = False
         if not given.get("observed"):

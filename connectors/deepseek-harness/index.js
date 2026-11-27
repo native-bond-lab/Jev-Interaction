@@ -53,6 +53,39 @@ function doing(tool, raw) {
   return `using ${tool}`
 }
 
+export function stopServer(child) {
+  if (!child) return
+  if (process.platform === 'win32') {
+    try { child.kill() } catch { /* gone already */ }
+    return
+  }
+  try { process.kill(-child.pid, 'SIGTERM') } catch { try { child.kill('SIGTERM') } catch { /* gone already */ } }
+}
+
+export async function selectHarness(origin, text) {
+  const health = await get(origin, '/api/health')
+  const id = text.trim()
+  if (!id) {
+    const links = health?.harness || []
+    if (!links.length) return { kind: 'success', text: 'No harness sessions are connected yet.' }
+    const lines = links.map((link) => `${link.id}  ${link.harness}  ${link.cwd}${link.bound ? '  (selected)' : ''}`)
+    return { kind: 'success', text: `Connected harness sessions:\n${lines.join('\n')}\nChoose one with /interaction harness <id>, or clear with /interaction harness clear.` }
+  }
+  const linkId = id.toLowerCase() === 'clear' ? '' : id
+  const response = await fetch(origin + '/harness/bind', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ link_id: linkId }),
+    signal: AbortSignal.timeout(3000),
+  }).catch(() => null)
+  if (!response?.ok) {
+    const detail = response ? (await response.json().catch(() => ({}))).detail || response.status : 'the call server did not answer'
+    return { kind: 'error', text: `Harness selection failed: ${detail}` }
+  }
+  const result = await response.json()
+  return { kind: 'success', text: result.bound
+    ? `Voice tasks are now bound to ${result.bound.harness} (${result.bound.cwd}), id ${result.bound.id}.`
+    : 'Harness selection cleared. Voice tasks will use the only connected session; if several are connected, select one with /interaction harness <id>.' }
+}
+
 export function apply(ctx) {
   const s = { server: null, origin: '', ws: null, agent: null, last: '', asks: new Map(), talks: new Map(), on: false }
 
@@ -65,6 +98,7 @@ export function apply(ctx) {
     for (const bin of PLACES) {
       const child = spawn(bin, ['serve', '--port', String(port), '--quiet'], {
         stdio: ['ignore', 'pipe', 'pipe'], detached: true,
+        windowsHide: true,                  // Windows gives a console program its own window otherwise: no window, it talks
         // the call is on this computer's own microphone and speakers, and the talking is done on the harness's model
         env: { ...process.env, JEV_HARNESS: '1', JEV_LOCAL_AUDIO: process.env.JEV_LOCAL_AUDIO || '1', JEV_LLM_DEFAULT: 'harness', JEV_HOME: HOME },
       })
@@ -88,7 +122,7 @@ export function apply(ctx) {
   function halt() {
     const child = s.server
     s.server = null
-    if (child) { try { process.kill(-child.pid, 'SIGTERM') } catch { try { child.kill('SIGTERM') } catch { /* gone already */ } } }
+    stopServer(child)
   }
 
   // ---------------------------------------------------------------- the hub
@@ -98,11 +132,20 @@ export function apply(ctx) {
       const ws = new WebSocket(s.origin.replace('http://', 'ws://') + '/harness/ws')
       ws.onopen = () => {
         s.ws = ws
-        tell({ type: 'hello', harness: HARNESS, cwd: s.agent?.session?.meta?.cwd || process.cwd(), steer: 'now', acks: true, talks: true })
+        tell({ type: 'hello', harness: HARNESS, session_id: String(s.agent?.session?.id || ''),
+          cwd: s.agent?.session?.meta?.cwd || process.cwd(), steer: 'now', acks: true, talks: true })
         resolve('')
       }
       ws.onerror = () => resolve('the call server could not be reached')
-      ws.onclose = () => { if (s.ws === ws) s.ws = null }
+      ws.onclose = () => {
+        if (s.ws !== ws) return
+        s.ws = null
+        // The call server can outlive this socket (a reload, a laptop waking up). While it is still up, rejoin:
+        // without it the engine has no model to talk with and the call is silent with no error anywhere.
+        if (!s.server) return
+        clearTimeout(s.hubRetry)
+        s.hubRetry = setTimeout(() => { if (s.server) join().catch(() => {}) }, 2000)
+      }
       ws.onmessage = (m) => { try { fromHub(JSON.parse(m.data)) } catch { /* not ours to break on */ } }
     })
   }
@@ -117,9 +160,13 @@ export function apply(ctx) {
   }
 
   // ---------------------------------------------------------------- the talking, on the harness's own model
+  const STALL_MS = 15000          // no text this long: give up on the model and let the engine fall back
+
   async function talk(e) {
     const stop = new AbortController()
     s.talks.set(e.id, stop)
+    let said = false
+    const stall = setTimeout(() => { if (!said) stop.abort() }, STALL_MS)
     try {
       let [provider, model] = String(e.model || '').includes('/') ? [e.model.split('/')[0], e.model.split('/').slice(1).join('/')] : ['', e.model]
       if (!provider) provider = s.agent?.model?.current()?.provider       // the session's own provider, a model of the user's choice
@@ -128,24 +175,37 @@ export function apply(ctx) {
         ? message('assistant', m.content, { kind: 'model', provider, model })
         : user(m.content))
       let buf = ''
-      for await (const chunk of ctx.llm.stream({ provider, model, system: e.system, messages, maxTokens: e.max_tokens, temperature: 0.7,
-        sessionId: s.agent?.session?.id, signal: stop.signal })) {
+      // No sessionId: the call's lines must not queue behind the agent's own turn. A task is dispatched on that
+      // session, and while the agent works the shared session is busy — with sessionId here the voice went silent for
+      // exactly as long as the work took. This is an independent model call.
+      const ask = (withSession) => ctx.llm.stream({ provider, model, system: e.system, messages, maxTokens: e.max_tokens,
+        temperature: 0.7, ...(withSession ? { sessionId: s.agent?.session?.id } : {}), signal: stop.signal })
+      const say = (chunk) => {
         if (chunk.type === 'text-delta') {
           buf += chunk.text
           let at
           while ((at = buf.indexOf('\n')) >= 0) {                        // a line is said as soon as it is whole
             const line = buf.slice(0, at).trim(); buf = buf.slice(at + 1)
-            if (line) tell({ type: 'talk_line', id: e.id, text: line })
+            if (line) { said = true; clearTimeout(stall); tell({ type: 'talk_line', id: e.id, text: line }) }
           }
         } else if (chunk.type === 'finish' && (chunk.reason?.kind === 'error' || chunk.reason === 'error')) {
           throw new Error(chunk.reason?.failure?.message || chunk.failure?.message || 'the model could not answer')
         }
+      }
+      try {
+        // Independent of the agent's session: a dispatched task holds that session, and the call went silent for as long
+        // as the work took. If this harness insists on a session, the retry below keeps the call working.
+        for await (const chunk of ask(false)) say(chunk)
+      } catch (err) {
+        if (said || stop.signal.aborted) throw err          // it answered, or was abandoned: nothing to retry
+        for await (const chunk of ask(true)) say(chunk)
       }
       if (buf.trim()) tell({ type: 'talk_line', id: e.id, text: buf.trim() })
       tell({ type: 'talk_end', id: e.id })
     } catch (err) {
       tell({ type: 'talk_end', id: e.id, ...(stop.signal.aborted ? {} : { error: String(err?.message || err).slice(0, 200) }) })
     } finally {
+      clearTimeout(stall)
       s.talks.delete(e.id)
     }
   }
@@ -203,15 +263,22 @@ export function apply(ctx) {
     const left = setup && !setup.ready ? ` Still to give: ${[...setup.choose, ...setup.keys].join(', ')}.` : ' Everything is set: run /interaction.'
     return { kind: 'success', text: `Kept ${pairs.map(([k]) => k).join(', ')}.${left}` }
   }
+  async function harness(text) {
+    if (!s.origin || !await get(s.origin, '/api/health')) {
+      return { kind: 'error', text: 'Start /interaction first, then use /interaction harness to choose its task session.' }
+    }
+    return selectHarness(s.origin, text)
+  }
   ctx.effect(() => ctx.commands.register({
     name: 'interaction',
-    description: 'Talk to this session out loud (stop to end it, set NAME=value to set it up)',
-    input: { hint: '[stop | set NAME=value]' },
+    description: 'Talk out loud, choose which connected harness receives voice tasks, stop, or set it up',
+    input: { hint: '[stop | set NAME=value | harness [id|clear]]' },
     recordInput: false,                          // a key given with `set` is not written to the session log
     handler: (invocation) => {
       const text = invocation.rawInput.trim()
       if (text === 'stop' || text === 'off') { stop(); return { kind: 'success', text: 'Voice interaction is off.' } }
       if (text.startsWith('set')) return set(invocation.agent, text.slice(3))
+      if (/^harness(?:\s|$)/i.test(text)) return harness(text.replace(/^harness\b/i, ''))
       return start(invocation.agent)
     },
   }))

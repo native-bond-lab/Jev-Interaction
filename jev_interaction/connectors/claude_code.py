@@ -28,6 +28,7 @@ MCP is spoken by hand here (newline-delimited JSON-RPC): a handful of messages, 
 from __future__ import annotations
 
 import asyncio
+import getpass
 import json
 import os
 import pathlib
@@ -168,7 +169,12 @@ def keep(values: dict[str, str]) -> None:
             del left[name]
     lines += [f"{k}={v}" for k, v in left.items()]
     f.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    f.chmod(0o600)
+    if os.name == "nt":
+        principal = f"{os.getenv('USERDOMAIN')}\\{os.getenv('USERNAME')}" if os.getenv("USERNAME") else getpass.getuser()
+        subprocess.run(["icacls", str(f), "/inheritance:r", "/grant:r", f"{principal}:(F)"],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    else:
+        f.chmod(0o600)
 
 
 def unset(origin: str) -> tuple[list[str], list[str], str]:

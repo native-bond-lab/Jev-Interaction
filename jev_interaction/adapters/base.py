@@ -12,6 +12,7 @@ class Segment:
     the agent's line, to ask Jev before the pause comes)."""
     text: str
     final: bool = True
+    revises: bool = False        # the same sentence, said a little longer: replace the one held, do not add a new one
 
 
 class VAD(Protocol):
@@ -37,7 +38,11 @@ class Synthesizer(Protocol):
     media_type: str
 
     def audio(self, text: str) -> AsyncIterator[bytes]:
-        """Encoded audio for a line, streamed (the client starts playing on the first chunk); usually an async generator."""
+        """Yield encoded audio chunks as the provider produces them; never buffer a whole line before the first yield.
+
+        The shared player feeds each chunk to its decoder as it arrives and starts output as soon as the decoder can
+        produce PCM. A provider may pause between chunks, but each wait is bounded by the player's stream timeout.
+        """
         ...
 
 

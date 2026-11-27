@@ -25,6 +25,24 @@ def done(name: str) -> dict:
         "continuing": "the user is mid-thought: pausing to breathe or think, and will go on"}}
 
 
+def asked_quiet(name: str) -> dict:
+    """Not a pause: they are asking for the silence itself. Asked in the turn request, beside the rest, so a word Jev
+    reads costs no extra round trip; the engine's own word list (Session.quiet_words) is the fast, free path."""
+    return {"type": "choice", "instructions": (
+        f"Look only at `user_last_words`. Is the user asking {name} to stop talking, to be quiet, to leave them alone, "
+        "or saying they are busy and do not want to be interrupted?"), "criteria": {
+        "quiet": "yes: be quiet, stop talking, don't interrupt, I'm busy, leave me alone, hush",
+        "not_quiet": "no: anything else, a pause to think included"}}
+
+
+def asked_quiet_p(answers: dict) -> float:
+    """p(they asked for quiet) from a turn answer: the question under its name, and under the reversed twin when the
+    judge was given both (judge/bailian.py)."""
+    ps = [(answers.get(k) or {}).get("probabilities", {}).get("quiet") for k in ("asked_quiet", "asked_quiet__r") if k in answers]
+    ps = [p for p in ps if p is not None]
+    return sum(ps) / len(ps) if ps else 0.0
+
+
 PACE = "pace_"      # a pace's own question is asked under this and its name: pace_patient, pace_narrate, ...
 
 
@@ -144,10 +162,11 @@ def who(name: str, cast: dict[str, tuple[str, str]]) -> dict:
 
 def floor_criteria(name: str, *, finish: bool, overrule: bool, aside: bool, jump: bool) -> dict:
     c = {"carry_on": f"the user is reacting, agreeing, laughing or playing along with {name}; {name} carries on",
-         "yield": (f"the user needs the floor now: asking {name} to stop or wait ({REAL_NO}), or asking for something else, "
-                   f"a real question, a change of subject; {name} stops mid-sentence and listens")}
+         "yield": (f"the user needs the floor now: asking {name} to stop or wait ({REAL_NO}), bringing a question or a "
+                   f"remark of their own, or a change of subject; {name} stops mid-sentence and listens")}
     if finish:
-        c["finish_first"] = f"the user is answering or asking something ordinary; {name} finishes the sentence it is on, then answers"
+        c["finish_first"] = (f"the user is fine with {name} finishing the sentence it is on before they are answered "
+                             f"('go on', 'finish that', 'say the rest', '你先把这句说完'): {name} finishes it, then answers")
     if overrule:
         c["overrule"] = (f"the user talks back inside the scene, not asking for anything different and not a real no; {name}, "
                          "who holds the floor here, takes it back, then goes on")

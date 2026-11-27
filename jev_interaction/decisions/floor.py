@@ -8,6 +8,8 @@ judge that fails leaves the agent carrying on.
 """
 from __future__ import annotations
 
+import os
+
 from ..judge import bailian as B
 from ..judge import questions as Q
 from ..judge.client import probs as P
@@ -15,6 +17,15 @@ from ..policy import ThresholdPolicy
 from .base import Decision
 
 STOPS = ("yield", "overrule", "aside", "jump_in")       # every answer that drops the line the agent is on
+MAY_TAKE = ("yield", "finish_first", "jump_in")         # what a deployment may set JEV_FLOOR_FALLBACK to
+
+
+def no_answer() -> str:
+    """What to do when the judge gave no answer at all (it failed): carry on, as documented — unless the deployment
+    said otherwise (`JEV_FLOOR_FALLBACK=yield`). Without a judge nothing else can stop a line, so a call on a judge
+    that is down is otherwise impossible to talk over."""
+    said = (os.getenv("JEV_FLOOR_FALLBACK") or "").strip().lower()
+    return said if said in MAY_TAKE else "carry_on"
 
 
 class Floor(Decision):
@@ -32,6 +43,7 @@ class Floor(Decision):
             await super().ask(s, gen=s.gen)       # the words closed while Jev was reading them unclosed: asked as they stand
 
     def ready(self, s, ctx):
+        """A voice alone is not an interruption: wait until the recognizer has words for the floor question."""
         return s.utt is not None and bool(s.utt.heard)
 
     def questions(self, s, ctx):
@@ -49,7 +61,8 @@ class Floor(Decision):
 
     def state(self, s, ctx):
         text, m = super().state(s, ctx), ctx["now"]
-        return B.floor_state(text, m.agent_line, m.heard) if s.cfg.judge_provider == "bailian" else text
+        heard = m.heard or "(they have started talking over you, but no words have been recognized yet)"
+        return B.floor_state(text, m.agent_line, heard) if s.cfg.judge_provider == "bailian" else text
 
     def allowed(self, s, ctx):
         return ctx["criteria"]                    # the choices this pace was offered
@@ -74,12 +87,21 @@ class Floor(Decision):
             return max(stops, key=stops.get)
         return action
 
+    def decided(self, s, answers, probs, ctx) -> str:
+        """The policy's choice; and, when the judge answered nothing at all, what the deployment says instead."""
+        action = self.choose(s, answers, "floor", ctx) or "carry_on"
+        return no_answer() if not probs and action == "carry_on" else action
+
     async def apply(self, s, answers, ctx):
         probs = P(answers, "floor")
         elsewhere = bool(s._someone_else()) or (s._offer_elsewhere() and probs and max(probs, key=probs.get) == "elsewhere")
         if ctx.get("early"):                                # on words not closed yet: only a user who needs the floor
-            action = None if elsewhere else self.split_stop(s, probs, self.choose(s, answers, "floor", ctx) or "carry_on", ctx)
+            action = None if elsewhere else self.split_stop(s, probs, self.decided(s, answers, probs, ctx), ctx)
             if action == "yield":                           # stops the line now; the rest is decided when the words close
+                if s._called_floor_protected():
+                    await s.send(type="decision", what="floor", action="carry_on", early=True,
+                                 probs=probs, shielded=True)
+                    return
                 await s.send(type="decision", what="floor", action=action, early=True, probs=probs)
                 await s._stop_line()
             return
@@ -87,10 +109,13 @@ class Floor(Decision):
             await s.send(type="decision", what="floor", action="carry_on", probs=probs)
             await s._not_for_me(s._someone_else() or "jev")
             return
-        action = self.choose(s, answers, "floor", ctx) or "carry_on"
+        action = self.decided(s, answers, probs, ctx)
         if action == "elsewhere":                           # drawn but not the likeliest: not enough to treat as an aside
             action = "carry_on"
         action = self.split_stop(s, probs, action, ctx)
+        if action == "yield" and s._called_floor_protected():
+            await s.send(type="decision", what="floor", action="carry_on", probs=probs, shielded=True)
+            return
         await s.send(type="decision", what="floor", action=action, probs=probs)
         if action == "carry_on":
             if s.speaking and s.utt is not None:            # said over a line that goes on: into the call's record at once

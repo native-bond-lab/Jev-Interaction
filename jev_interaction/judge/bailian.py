@@ -49,19 +49,21 @@ def _p(answers: dict, name: str, choice: str) -> float:
 # ---------------------------------------------------------------- both talk at once
 FLOOR = "Look only at `user_words_over_it`, which the user said while the agent was talking. What is it?"
 REACTION = "a listening sound or a short reaction that needs no answer: mm, yes, right, I see, a laugh, really"
-STOP = "the user asks the agent to stop, to wait or to change the subject"
-OWN = "a question or a remark of the user's own that wants an answer"
+STOP = ("the user asks the agent to stop or wait, asks to take their own turn ('let me finish', 'wait until I am done', "
+        "'让我说完'), or brings a question, a remark or a subject of their own: the line stops there and the agent listens")
+FINISH = ("the user is fine with the agent finishing its own sentence before they are answered: 'go on', 'finish that', "
+          "'say the rest', '你先把这句说完'")
 
 
 def floor(criteria: dict) -> dict:
-    """What the user said over the line: a reaction, a "stop", or something of their own that wants an answer. The
-    third becomes the pace's own way of answering (`criteria` is the engine's floor_criteria for this pace): finish the
-    sentence first, a word in passing while telling (aside), or taking the floor back (overrule). Reacting at once
-    (jump_in) is not offered: it is the engine's question's alone."""
-    own = next((k for k in ("finish_first", "aside", "overrule") if k in criteria), "yield")
+    """What the user said over the line: a reaction (carry on), or the silence is theirs — a stop, a wait, a question or
+    a subject of their own, a change of subject: the line stops there and the agent listens. Finishing the sentence
+    first is offered only when the pace does not lead, and means what it says: they asked for this sentence to end.
+
+    Reacting at once (jump_in) is the engine's own question's alone."""
     options = {"carry_on": REACTION, "yield": STOP}
-    if own != "yield":
-        options[own] = OWN
+    if "finish_first" in criteria:                 # a subject of their own is not "finish first": that is the yield line
+        options["finish_first"] = FINISH
     if "elsewhere" in criteria:
         options["elsewhere"] = criteria["elsewhere"]
     return both("floor", {"type": "choice", "instructions": FLOOR, "criteria": options})
@@ -80,6 +82,20 @@ BUSY = {"type": "choice", "instructions": "Look only at `user_last_words`. Did t
         "do or find something?", "criteria": {
             "busy": "yes: wait, one moment, let me look, let me think, I'll go and get it",
             "not_busy": "no: they said something else"}}
+# the silence asked for out loud, not the pause: a pause is `turn`/`done`, this is the user telling the agent to stop
+ASKED_QUIET = {"type": "choice", "instructions": (
+    "Look only at `user_last_words`. Is the user telling the agent to stop talking, to be quiet, to leave them alone, or "
+    "saying they are busy and do not want to be interrupted?"), "criteria": {
+        "quiet": ("yes, as an order to the agent: stop talking, be quiet, don't interrupt, I'm busy, leave me alone, "
+                  "别说话, 安静, 闭嘴, 我在忙"),
+        "not_quiet": ("no: anything else; a pause to think; and above all a complaint that the agent has gone quiet or "
+                      "is not answering (你又不说话了, 怎么不说话, 你说话啊) — being told off for silence is not a "
+                      "request for more of it")}}
+
+
+def asked_quiet() -> dict:
+    """Asked in the turn request (as `questions.asked_quiet` is), both orders as everything here is."""
+    return both("asked_quiet", ASKED_QUIET)
 BYE = {"type": "choice", "instructions": "Look at `user_last_words` and `agent_last_line`. Have the two of them said goodbye?",
        "criteria": {"goodbye": "yes: goodbye, good night, talk later: the call has been closed",
                     "going": "no: nobody has said goodbye"}}

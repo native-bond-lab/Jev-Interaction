@@ -59,7 +59,8 @@ SPENT = {"day": "", "seconds": 0.0}     # call time already used today (finished
 # JEV_HARNESS=1: the voice of the coding agents open on this machine (harness.py, docs/harness.md). Their connectors
 # join at /harness/ws; a call then has an "agent" kind of background task, sleeps when the line is quiet and is never
 # hung up. JEV_VOICE_APPROVALS=1 passes the user's spoken allow / deny back to the harness; off, they answer on screen
-HUB = H.Hub(voice_approvals=os.getenv("JEV_VOICE_APPROVALS", "0") == "1") if os.getenv("JEV_HARNESS", "0") == "1" else None
+HUB = H.Hub(voice_approvals=os.getenv("JEV_VOICE_APPROVALS", "0") == "1",
+            binding_path=paths.home() / "harness-selection.json") if os.getenv("JEV_HARNESS", "0") == "1" else None
 if HUB is not None and os.getenv("JEV_SERVE_PORT"):
     H.announce(int(os.environ["JEV_SERVE_PORT"]))     # so the connectors find this server, whatever port it is on
 LOCAL: dict = {}                        # the call on this computer's own microphone and speakers (local.py), when on
@@ -69,7 +70,9 @@ async def local_call():
     """JEV_LOCAL_AUDIO=1 (a harness started this server): the call is on the computer itself, with no page."""
     from jev_interaction import local
     if os.getenv("JEV_LOCAL_AUDIO") == "1" and os.getenv("JEV_SERVE_PORT") and not local.available():
-        LOCAL["call"] = asyncio.get_running_loop().create_task(local.LocalCall(int(os.environ["JEV_SERVE_PORT"])).run())
+        recorder = Recorder(paths.runs_dir() / f"call-local-{time.strftime('%Y%m%d-%H%M%S')}.jsonl" if RECORD else None)
+        LOCAL["call"] = asyncio.get_running_loop().create_task(
+            local.LocalCall(int(os.environ["JEV_SERVE_PORT"]), recorder=recorder).run())
 
 
 app.router.on_startup.append(local_call)
@@ -196,7 +199,8 @@ def health():
             "providers": {"judge": os.getenv("JEV_MODEL", "jev-latest"), "llm": llm, "asr": registry.selected("asr"),
                           "tts": registry.selected("tts"), "sound": registry.selected("sound") if SOUND else None,
                           "voiceprint": registry.selected("voiceprint") if EMBEDDER else None}, "speech": registry.speech_style(),
-            "harness": None if HUB is None else [{"harness": k.harness, "cwd": k.cwd, "busy": k.busy} for k in HUB.links.values()],
+            "harness": None if HUB is None else [{"id": k.id, "harness": k.harness, "cwd": k.cwd, "busy": k.busy,
+                                                   "bound": k.id == HUB.bound_link_id} for k in HUB.links.values()],
             "local": bool(LOCAL)}
 
 
@@ -264,6 +268,29 @@ def byte_range(header: str, size: int) -> tuple[int, int] | None:
     return (start, end) if 0 <= start <= end < size else None
 
 
+async def _timed(synth, text: str):
+    """The line's audio, with how long it took written to tts.log: a reply that plays for twenty seconds should say
+    whether the synthesizer was that slow or the audio never came."""
+    started = time.monotonic()
+    first = None
+    total = 0
+    try:
+        async for chunk in synth.audio(text):
+            if first is None:
+                first = time.monotonic() - started
+            total += len(chunk)
+            yield chunk
+    finally:
+        took = time.monotonic() - started
+        if first is not None and (took > 3.0 or first > 1.0):
+            try:
+                with open(paths.home() / "tts.log", "a", encoding="utf-8") as f:
+                    f.write(f"{time.strftime('%H:%M:%S')} first={first:.2f}s total={took:.2f}s "
+                            f"bytes={total} chars={len(text)} {text[:24]}\n")
+            except OSError:
+                pass
+
+
 @app.get("/tts/{line_id}")
 async def tts(line_id: str, request: Request):
     """A line's audio. Streamed as it is synthesized, so playing starts on the first chunk. A player that asks for byte
@@ -275,7 +302,7 @@ async def tts(line_id: str, request: Request):
     text, synth = found
     asked = request.headers.get("range", "").strip()
     if not asked or asked == "bytes=0-":                # no range, or "all of it from the start": the stream
-        return StreamingResponse(synth.audio(text), media_type=synth.media_type)
+        return StreamingResponse(_timed(synth, text), media_type=synth.media_type)
     if line_id not in WHOLE:
         WHOLE[line_id] = asyncio.create_task(_whole(synth, text))
         while len(WHOLE) > MAX_WHOLE:
@@ -312,6 +339,7 @@ async def harness_link(ws: WebSocket):
     try:
         hello = json.loads(await ws.receive_text())
         link = HUB.add(H.Link(str(hello.get("harness") or "harness"), send, cwd=str(hello.get("cwd") or ""),
+                              session_id=str(hello.get("session_id") or ""),
                               steer=str(hello.get("steer") or "turn"), acks=bool(hello.get("acks")), talks=bool(hello.get("talks"))))
         LOG.info("harness joined: %s", link.harness)
         while True:
@@ -331,6 +359,24 @@ def harness_setup(request: Request):
         raise HTTPException(403, "Only from this machine, with JEV_HARNESS=1.")
     choose, keys, said = H.needs(S.steps())
     return {"ready": not registry.missing_settings(), "choose": choose, "keys": keys, "said": said}
+
+
+@app.post("/harness/bind")
+async def bind_harness(request: Request):
+    """Bind voice tasks to a connected local harness session; speech provider selection stays independent."""
+    if not _this_machine(request.client, request.headers.get("origin", "")):
+        raise HTTPException(403, "Only from this machine, with JEV_HARNESS=1.")
+    body = await request.json()
+    link_id = str(body.get("link_id") or "").strip()
+    if not link_id:
+        HUB.bind(None)
+        return {"ok": True, "bound": None}
+    link = HUB.bind(link_id)
+    if link is None:
+        if link_id in HUB.links and not HUB.links[link_id].session_id:
+            raise HTTPException(409, "This harness connector did not provide a stable session id.")
+        raise HTTPException(404, "No connected harness has that id.")
+    return {"ok": True, "bound": {"id": link.id, "harness": link.harness, "cwd": link.cwd}}
 
 
 def same_origin(origin: str, host: str) -> bool:

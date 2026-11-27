@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import os
 import random
 import re
 import time
@@ -34,7 +35,7 @@ from dataclasses import asdict
 from . import speaking
 from . import tasks as T
 from .adapters.base import VAD, Recognizer, Responder, Segment
-from .config import Config, Pace
+from .config import Config, Pace, barge_stop_after_ms
 from .decisions import DECISIONS, Decision
 from .judge import JevClient
 from .judge.client import probs as P
@@ -47,6 +48,69 @@ from .voiceprint import Voiceprint
 
 SYSTEM_TEMPLATE = (__import__("pathlib").Path(__file__).parent / "prompts" / "system.md").read_text(encoding="utf-8")
 
+SAFE_SPLIT = re.compile(r"[,;，、]")
+
+
+def configured_safe_words(cfg: Config) -> list[str]:
+    """The words that stop everything with no judgement at all: JEV_SAFE_WORDS (comma-separated) when a deployment
+    sets it, else the config's own. A word too long for the recognizer to close is no use, and neither is one the
+    agent's own lines are full of."""
+    words = [w.strip() for w in SAFE_SPLIT.split(os.getenv("JEV_SAFE_WORDS") or "") if w.strip()]
+    return words or list(cfg.safe_words)
+
+
+def says(text: str, word: str) -> bool:
+    """Did they say that word? Chinese and Japanese have no spaces between words, so a word boundary is not asked of
+    them: there the word is looked for as it is."""
+    if not word:
+        return False
+    return re.search(rf"\b{re.escape(word)}\b", text, re.I) is not None if word.isascii() else word in text
+
+
+QUIET_WORDS = ("安静点", "安静一会儿", "让我安静", "别说话", "先别说话", "别出声", "闭嘴", "别吵", "别吵我",
+               "先别吵", "别打扰", "先别打扰", "别理我", "先别理我", "我在忙", "quiet", "be quiet", "shush")
+
+
+def configured_quiet_words() -> list[str]:
+    """The ways a user asks the agent to be quiet: JEV_QUIET_WORDS (comma-separated) when the deployment sets it."""
+    words = [w.strip() for w in SAFE_SPLIT.split(os.getenv("JEV_QUIET_WORDS") or "") if w.strip()]
+    return words or list(QUIET_WORDS)
+
+
+def _minutes(name: str, default: float) -> float:
+    """A number of minutes from the environment. A value that is not one (a typo in .env) must not stop a call."""
+    try:
+        return float(os.getenv(name) or default)
+    except ValueError:
+        return default
+
+
+def detect_language(text: str) -> str | None:
+    """Which language they are speaking, from the words themselves: kana, then Han characters, then Latin letters.
+    None when there is too little to tell ("ok", "嗯"), so a short answer never flips the call."""
+    if not text:
+        return None
+    kana = sum(1 for c in text if "\u3040" <= c <= "\u30ff")
+    han = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+    latin = sum(1 for c in text if c.isascii() and c.isalpha())
+    if kana >= 2:
+        return "ja"
+    if han >= 2:
+        return "zh"
+    if latin >= 3:
+        return "en"
+    return None
+
+
+HUSHED = {"zh": "好。", "en": "Okay.", "ja": "はい。", "ko": "네."}     # the one word a quiet order is always answered with
+NO_WORDS = {"zh": "嗯？", "en": "Yes?", "ja": "はい？", "ko": "네?"}      # the model wrote nothing: something rather than silence
+CALLED_BACK = {"zh": "在。", "en": "I'm here.", "ja": "はい。", "ko": "네."}
+ACTS_SAID = {                                     # the work has started: say so, the answer comes later
+    "task": {"zh": "稍等，我这就去问它。", "en": "One moment, I'm asking.", "ja": "少々お待ちを、聞いてきます。"},
+    "tell": {"zh": "好，我传给它。", "en": "Right, passing that on.", "ja": "はい、伝えます。"},
+    "stop": {"zh": "好，我让它停下。", "en": "Okay, stopping it.", "ja": "はい、止めます。"},
+}
+
 
 class Session:
     def __init__(self, profile: Profile, *, send: Callable[[dict], Awaitable[None]], judge: JevClient, recognizer: Recognizer,
@@ -54,6 +118,25 @@ class Session:
                  system_template: str = SYSTEM_TEMPLATE, speech: str | None = None, cast: dict[str, Profile] | None = None,
                  embedder=None, sound=None, executors: dict[str, T.Executor] | None = None):
         self.p, self.cfg, self.send_event = profile, config or Config(), send
+        self.safe_words = configured_safe_words(self.cfg)
+        self.quiet_words = configured_quiet_words()
+        self.quiet_minutes = _minutes("JEV_QUIET_MINUTES", 15.0)
+        self.quiet_until = 0.0                   # monotonic time until which nothing is said into a silence
+        self.quiet_hint = False                   # their words named a way of asking for quiet: Jev confirms or not
+        self.speak_language = self.cfg.language   # the language the call is answered in: follows the one they speak
+        self.user_last = time.monotonic()         # when they last said something: the silence is counted from here
+        self.lang_votes = 0                       # utterances in another language so far: two in a row switch the call
+        self.beat = {"frames": 0, "voiced": 0, "words": 0, "asr_frames_sent": 0, "asr_restarts": 0,
+                     "at": time.monotonic()}       # microphone and recognizer health, per 10 s
+        self.voice_at = self.asr_at = self.asr_final_at = time.monotonic()   # voice, any result, last finished sentence
+        self._asr_in = None                       # frames on their way to the recognizer, drained by their own task
+        self._asr_task = None
+        self.asr_restart_at = 0.0                 # when a fresh stream was last opened
+        self.asr_restarting = False
+        self.voice_run_ms = 0                     # continuous voiced time, for an occasional backchannel
+        self.backchannel_cooldown_ms = 0
+        self.backchannel_busy = False
+        self.stopping = False                     # a hard stop is already on its way: one per burst, not one per frame
         self.judge, self.asr, self.llm, self.vad = judge, recognizer, responder, vad
         self.ledger = Ledger()                   # the call's one record, on one clock (ledger.py)
         self.rec = recorder or Recorder(None)
@@ -76,6 +159,8 @@ class Session:
         self.silence_ms = 0
         self.judged: dict | None = None          # the latest turn answer for the open utterance
         self.speaking = False                    # the client is playing a line of the agent's
+        self.speaking_until = 0.0                # when the lines already sent must be over by, however the client reports
+        self.voice_since_result = 0.0            # ms of voice heard since the recognizer last produced anything
         self.played_until = 0.0                  # when the client last stopped playing one (the echo tail, _own_words)
         self.generating = False
         self.gen = 0
@@ -83,6 +168,7 @@ class Session:
         self.rest_since = self.idle_since        # since the two last exchanged anything: what the sleep clock counts from.
                                                  # A line the agent says into a quiet on its own does not move it
         self.last_kind = ""                      # the kind of the agent's latest line (speaking.EVENTS)
+        self.called_response: dict | None = None # short protection from residual voice around a called reply
         self.quiet_marks: list[float] = []
         self.spoke_into_quiet = 0
         self.listen_last = 0.0
@@ -108,6 +194,7 @@ class Session:
     # ------------------------------------------------------------------ lifecycle
     async def start(self, greet: bool = True):
         await self.asr.connect()
+        self.rec.write("asr", what="connected")
         self.ledger.started = time.monotonic()   # the call's clock starts when the line is up
         self._spawn(self._segments_loop())
         self._spawn(self._tick_loop())
@@ -122,6 +209,11 @@ class Session:
         for t in tasks:
             t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        if self._asr_task is not None:
+            self._asr_task.cancel()
+            done, _ = await asyncio.wait({self._asr_task}, timeout=2.0)
+            if not done:
+                self.rec.write("asr", what="audio feeder did not stop within 2 s")
         await self.asr.close()
         if self.embedder is not None:
             self.voiceprint.clear()               # the caller's voice is kept for this call only
@@ -161,12 +253,65 @@ class Session:
         if self.asleep:
             await self._doze(pcm)
             return
-        await self.asr.send(pcm)
+        self._queue_audio(pcm)
+        await asyncio.sleep(0)                    # let the bounded ASR feeder take the frame without waiting on its send
+        await self._hear_frame(pcm)
+
+    def _queue_audio(self, pcm: bytes) -> None:
+        """Hand the frame to the recognizer without ever waiting on it.
+
+        This used to `await asr.send(pcm)` right here, inside the socket's read loop: a pushy recognizer socket stalled the
+        loop, the client's sends stalled behind it, and the microphone went silent in bursts (heartbeats of 50, 3, 0)."""
+        if self._asr_in is None:
+            self._asr_in = asyncio.Queue(maxsize=400)
+            self._asr_task = asyncio.create_task(self._feed_asr())
+        if self._asr_in.full():
+            try:
+                self._asr_in.get_nowait()             # a frame behind: losing one is better than losing the read loop
+            except asyncio.QueueEmpty:
+                pass
+        self._asr_in.put_nowait(pcm)
+
+    async def _feed_asr(self) -> None:
+        while True:
+            try:
+                pcm = await asyncio.wait_for(self._asr_in.get(), self.ASR_KEEPALIVE_S)
+            except asyncio.TimeoutError:
+                pcm = self._silence_frame()
+                self.rec.write("asr", what="keepalive silence frame")
+            try:
+                await asyncio.wait_for(self.asr.send(pcm), self.ASR_SEND_TIMEOUT_S)
+                self.asr_send_failed = False
+                self.beat["asr_frames_sent"] = self.beat.get("asr_frames_sent", 0) + 1
+            except Exception as exc:  # noqa: BLE001 - the recognizer is gone: the watchdog rebuilds it
+                # 45000081 is the vendor closing the session after 8 s without audio; every later frame is refused. Waiting
+                # the watchdog's full 12 s for that is twelve seconds of a deaf call, so the rebuild is asked for now.
+                self.asr_needs_restart = True
+                if not getattr(self, "asr_send_failed", False):
+                    self.asr_send_failed = True
+                    self.rec.write("asr", what=f"send failed: {type(exc).__name__}: {str(exc)[:80]}")
+
+    def _silence_frame(self) -> bytes:
+        size = self.cfg.sample_rate * 2 * self.cfg.frame_ms // 1000
+        return b"\x00" * size
+
+    async def _hear_frame(self, pcm: bytes) -> None:
         step = self.cfg.frame_ms
         if self.sound is not None:
             self.audio_tail += pcm
             del self.audio_tail[:-self.SOUND_WINDOW]
         voiced, heard = self._voice(pcm)
+        self.beat["frames"] += 1
+        self.beat["voiced"] += 1 if voiced else 0
+        if voiced and not self.speaking:          # its own line through the microphone is not the user speaking
+            self.voice_at = time.monotonic()
+        if voiced:
+            self.voice_since_result += heard          # one cough is not a reason to rebuild the recognizer
+        if voiced and not self.speaking:
+            self.voice_run_ms += heard
+            self.backchannel_cooldown_ms = max(0, self.backchannel_cooldown_ms - heard)
+        else:
+            self.voice_run_ms = 0
         if voiced:
             if self.utt is None:
                 self._open_utterance()
@@ -181,6 +326,7 @@ class Session:
             if self.speaking:
                 self.utt.over_ms += heard         # only voice over the line counts, not what came before it
                 self._over()
+            self._maybe_backchannel()
         elif self.utt is not None:
             self.silence_ms += step
             self._hear_pause()
@@ -191,9 +337,19 @@ class Session:
 
     async def on_client(self, msg: dict):
         if msg.get("type") == "playback":
+            state = self.called_response
+            if state is not None and state.get("gen") == self.gen:
+                if msg.get("state") == "playing" and state.get("started_at") is None:
+                    state["started_at"] = time.monotonic()
             if self.speaking and msg.get("state") != "playing":
                 self.played_until = time.monotonic()  # the echo of the last line can still come back for a moment
             self.speaking = msg.get("state") == "playing"
+            if not self.speaking:
+                self.speaking_until = 0.0          # the client says the speakers are empty: nothing is owed
+            if self.speaking:
+                # Even the client's own "playing" gets a deadline: a player that reports playing and then wedges must not
+                # hold the call for minutes.
+                self.speaking_until = time.monotonic() + 20.0
             if not self.speaking:
                 self.ledger.agent_ended(but=self.replies.get(self.gen) if self.generating else None)
             if not self.speaking and not self.generating:
@@ -228,21 +384,53 @@ class Session:
         turn.text, turn.cut = heard, True
 
     async def _segments_loop(self):
-        async for seg in self.asr.segments():
-            await self.on_segment(seg)
+        while not self.closed:
+            try:
+                async for seg in self.asr.segments():
+                    await self.on_segment(seg)
+                if self.closed or getattr(self.asr, "finished", False):
+                    return
+                if not getattr(self.asr, "error", None):
+                    return
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - a replaced stream keeps the same consumer
+                self.rec.write("asr", what=f"segment stream failed: {type(exc).__name__}: {str(exc)[:120]}")
+            if not self.closed:
+                await asyncio.sleep(0.1)
 
     async def on_segment(self, seg: Segment):
         text = seg.text.strip()
         if not text:
             return
-        if seg.final and any(re.search(rf"\b{re.escape(w)}\b", text, re.I) for w in self.cfg.safe_words):
+        self.voice_since_result = 0.0             # the recognizer is producing: it is not a dead stream
+        if seg.final and any(says(text, w) for w in self.safe_words):
             await self.safe_word(text)
             return
+        if seg.final:                             # quiet mode: they asked for it, and they end it by talking to us again
+            self.quiet_at_open_hint = self.quiet_mode()   # remembered before their words end the quiet
+            self.quiet_at_open = self.quiet_at_open_hint   # VAD may have opened this utterance before its final words
+            asked = any(says(text, w) for w in self.quiet_words)
+            if asked and (self.speaking or self.generating):
+                self.enter_quiet()                # no turn question will be asked over a line: the words are enough
+            elif asked:
+                self.quiet_hint = True            # the turn question carries Jev's confirmation (decisions/turn.py)
+            elif self.quiet_mode():
+                self.quiet_until = 0.0
+            spoken = detect_language(text)   # the language of the call follows the one they are speaking
+            if spoken == self.speak_language:
+                self.lang_votes = 0
+            elif spoken:                          # one English phrase used to flip a whole call: two in a row do it
+                self.lang_votes = getattr(self, "lang_votes", 0) + 1
+                if self.lang_votes >= 2:
+                    self.speak_language, self.lang_votes = spoken, 0
+                    self.ledger.event(f"(they are speaking {spoken}: the call answers in it)")
         if self._own_words(text):
             if seg.final:
                 self.rec.write("echo", text=text)   # the agent's own line, back through the microphone: nobody said it
             return
         if not seg.final:                         # the words so far of a piece still being said: only an overlap uses them
+            self.asr_at = time.monotonic()        # a partial result is the recognizer working: not a dead stream
             if self.utt is not None:
                 self.utt.hearing = text
                 self._over()
@@ -252,8 +440,17 @@ class Session:
             self.utt.speech_ms = max(self.utt.speech_ms, 400)
         self.woke = ""                            # words: whatever woke the session, it is a turn now
         self.rest_since = time.monotonic()
+        self.user_last = time.monotonic()          # their own words: the idle clock that leads to silence starts here
         self.utt.hearing = ""
-        self.utt.segments.append((time.monotonic(), text))
+        if seg.revises and self.utt.segments:
+            # The recognizer's snapshot grew: the same sentence, more words. Replacing it keeps the turn finite; appending
+            # it meant the user never stopped talking and the agent never answered.
+            self.utt.segments[-1] = (self.utt.segments[-1][0], text)
+        else:
+            self.utt.segments.append((time.monotonic(), text))
+        self.asr_at = self.asr_final_at = time.monotonic()   # producing again — and a finished sentence: what the call needs
+        self.beat["words"] = self.beat.get("words", 0) + 1
+        self.user_pending, self.user_pending_at = True, time.monotonic()   # owed a line of the agent's
         await self.send(type="user", text=self.utt.text, partial=True)
         for d in list(self.decisions.values()):
             d.on_words(self)                      # floor while the agent speaks; turn (and cut_in) while it is quiet
@@ -263,11 +460,32 @@ class Session:
         much again) and words have been made out that the recognizer has not closed: they go to the floor question now.
         Nothing happens to the line until Jev answers; a sound without words asks nothing and the line plays on."""
         u = self.utt
-        if (u is None or not self.speaking or not u.hearing or "floor" in self.busy
+        if self._called_floor_protected():
+            return
+        if u is not None and self.speaking and not self.stopping and u.over_ms >= barge_stop_after_ms():
+            self.rec.write("barge_in", over_ms=u.over_ms, gen=self.gen)    # the judge could not say it in time, or at all
+            self.stopping = True                  # one stop per burst: every voiced frame would otherwise spawn one
+            self._spawn(self._stop_line())
+            return
+        if (u is None or not self.speaking or "floor" in self.busy
                 or u.over_ms < max(u.over_ask_at, self.cfg.overlap_ask_ms)):
             return
         u.over_ask_at = u.over_ms + self.cfg.overlap_ask_ms
         self._spawn(self.ask("floor", gen=self.gen, early=True, closed=len(u.segments)))
+
+    CALLED_PREPLAY_S = 3.0
+    CALLED_PLAYBACK_GUARD_S = 0.5
+
+    def _called_floor_protected(self) -> bool:
+        """Ignore residual overlap only around a called reply; protection expires if audio never starts."""
+        state = self.called_response
+        if state is None or state.get("gen") != self.gen:
+            return False
+        now = time.monotonic()
+        started = state.get("started_at")
+        if started is not None:
+            return now - started < self.CALLED_PLAYBACK_GUARD_S
+        return now < state.get("preplay_until", 0.0)
 
     def _own_words(self, text: str) -> bool:
         """The recognizer heard words of the agent's own recent lines (a speaker next to the microphone): while a line
@@ -295,6 +513,7 @@ class Session:
         self.utt = Utterance(self.utt_seq, time.monotonic(), over=self.speaking)
         self.judged = None
         self.silence_ms = 0
+        self.quiet_at_open = getattr(self, "quiet_at_open_hint", False)   # silent under an order: they are back
 
     # ------------------------------------------------------------------ pace
     def params(self) -> Pace:
@@ -463,11 +682,22 @@ class Session:
                    silence_ms=self.silence_ms if u else 0, quiet_s=t - self.idle_since if quiet_s is None else quiet_s,
                    spoke_into_quiet=self.spoke_into_quiet, usual_reply_s=gaps[len(gaps) // 2] if len(gaps) >= 2 else None)
 
+    ASK_PER_CALL = 16        # a judge takes this many questions in one request (Bailian: "questions: 17 exceeds 16")
+
     async def _ask(self, purpose: str, questions: dict, state: str | dict, now: Now | None = None) -> dict:
         """Jev's answers, or {} when the judge fails or is slow: every decision then takes its fallback (floor -> carry on,
         turn -> the pace's max wait, quiet -> nothing), so a judge error never freezes the call. The answer goes into
         the call's record with its probabilities (and into the log with the state it was given), so what was done with
-        it can be worked out again later under other thresholds."""
+        it can be worked out again later under other thresholds.
+
+        A decision that asks more questions than the judge takes in one request has them asked in parts and put back
+        together: adding a question must never cost a decision all of its answers."""
+        if len(questions) > self.ASK_PER_CALL:
+            out: dict = {}
+            items = list(questions.items())
+            for i in range(0, len(items), self.ASK_PER_CALL):
+                out.update(await self._ask(purpose, dict(items[i:i + self.ASK_PER_CALL]), state, now))
+            return out
         t = time.monotonic()
         try:
             answers = await asyncio.wait_for(self.judge.ask(questions, state), self.cfg.judge_timeout_s)
@@ -506,8 +736,73 @@ class Session:
             except Exception as exc:  # noqa: BLE001 - one bad tick must not end the call
                 self.rec.write("tick_error", error=f"{type(exc).__name__}: {exc}")
 
+    ASR_KEEPALIVE_S = 2.0                   # send a quiet frame before Doubao closes a stream after an audio gap
+    ASR_SEND_TIMEOUT_S = 2.0                 # a stuck send must not hold the independent audio feeder
+    ASR_DEAD_S = 12.0                        # no result for 12 s while the user was recently heard: no progress at all
+    ASR_NO_FINAL_S = 60.0                    # partials but no final for 60 s while recently heard: no closed turn
+    ASR_VOICE_MS = 2000.0                    # voice that must pile up before "no result" means a dead stream
+    ASR_COOLDOWN_S = 20.0                    # ordinary restarts are 20 s apart; a refused frame uses 2 s
+
+    def _asr_watch(self, now: float) -> None:
+        """The streaming recognizer can stop returning results with the socket open and no error; the call then hears
+        nothing at all. It restarts after 12 s without any result or 60 s without a final, only when voice was heard in
+        the last 10 s; ordinary restarts are separated by 20 s, while a refused frame uses a 2 s cooldown."""
+        starved = now - self.asr_at >= self.ASR_DEAD_S
+        no_final = now - getattr(self, "asr_final_at", 0.0) >= self.ASR_NO_FINAL_S
+        # Silence is not a stall: while nobody talks the recognizer rightly says nothing. Only a stream that stays
+        # silent through two seconds of real voice is dead — one cough used to be enough, and that rebuilt the
+        # recognizer seven times in one call, throwing away whatever was being said each time.
+        speaking_well = getattr(self, "voice_since_result", 0.0) >= self.ASR_VOICE_MS
+        # A frame the recognizer refused means its session is closed (the vendor ends it after 8 s without audio):
+        # waiting the full dead time for that is a deaf call, so a refusal asks for the rebuild at once.
+        refused = getattr(self, "asr_needs_restart", False)
+        if (self.closed or self.asr_restarting or not hasattr(self.asr, "restart")
+                or not ((starved and speaking_well) or no_final or refused)
+                or (not refused and now - self.voice_at > 10.0)
+                or now - self.asr_restart_at < (2.0 if refused else self.ASR_COOLDOWN_S)):
+            return
+        self.asr_needs_restart = False
+        self.asr_restarting = True
+        self.asr_restart_at = now
+        self.beat["asr_restarts"] = self.beat.get("asr_restarts", 0) + 1
+        why = ("the recognizer refused the audio" if refused
+               else f"no finished sentence for {self.ASR_NO_FINAL_S:.0f} s" if no_final
+               else f"no result for {self.ASR_DEAD_S:.0f} s")
+        dropped = getattr(getattr(self.asr, "utterances", None), "dropped", 0)
+        self.rec.write("asr", what=f"{why} while a voice was heard (watermark drops: {dropped}): opening a fresh stream")
+
+        async def rebuild():
+            try:
+                await self.asr.restart()
+                # connect() swallows its own failure into .error, so "open" alone would be a lie
+                error = getattr(self.asr, "error", None)
+                if error is not None:
+                    self.rec.write("asr", what=f"the fresh stream did not connect: {error}")
+                else:
+                    self.rec.write("asr", what="fresh stream open")
+            except Exception as exc:  # noqa: BLE001 - the call goes on; the cooldown keeps it from spinning
+                self.rec.write("asr", what=f"the fresh stream failed: {type(exc).__name__}: {exc}")
+            finally:
+                self.asr_restarting = False
+
+        self._spawn(rebuild())
+
     async def tick(self):
         now = time.monotonic()
+        self._asr_watch(now)
+        if self.speaking and now > getattr(self, "speaking_until", 0.0):
+            # The client never reported the line finished. Its own length said it must be over by now, so it is: this is
+            # what kept the call believing it was talking for minutes (no answers, no initiative, until a restart).
+            self.speaking = False
+            self.rec.write("playback", what="no report from the client: the line is taken as finished")
+        if now - self.beat["at"] >= 10.0:          # what the microphone gave the call, for whoever reads the log later
+            self.rec.write("audio", frames=self.beat["frames"], voiced=self.beat["voiced"],
+                           asr_words=self.beat.get("words", 0),   # segments closed in this window, not the open one
+                           asr_frames_sent=self.beat.get("asr_frames_sent", 0),
+                           asr_restarts=self.beat.get("asr_restarts", 0),
+                           user_silent_s=round(now - self.user_last, 1),
+                           speaking=self.speaking, generating=self.generating)   # so a stuck call is visible in the log
+            self.beat = {"frames": 0, "voiced": 0, "words": 0, "asr_frames_sent": 0, "asr_restarts": 0, "at": now}
         if await self._tasks_tick(now):           # a task's news is being told, or the session is asleep
             return
         for d in list(self.decisions.values()):
@@ -518,13 +813,28 @@ class Session:
         j = self.cfg.quiet_jitter
         self.quiet_marks = [m * random.uniform(1 - j, 1 + j) for m in self.cfg.quiet_marks_s]
 
+    def user_idle_s(self, now: float | None = None) -> float:
+        """Seconds since they last said anything: the clock that turns a companion into a silent one."""
+        return (now if now is not None else time.monotonic()) - self.user_last
+
+    def quiet_mode(self) -> bool:
+        """They asked for quiet a moment ago: nothing is said into a silence until they speak to us again."""
+        return time.monotonic() < self.quiet_until
+
+    def enter_quiet(self) -> None:
+        """The silence is theirs from now on: said in so many words (`JEV_QUIET_WORDS`), or read from what they said by
+        Jev (decisions/turn.py, JEV_QUIET_ASK_MIN). With JEV_QUIET_MINUTES=0 there is no clock on it at all."""
+        self.quiet_until = float("inf") if self.quiet_minutes <= 0 else time.monotonic() + self.quiet_minutes * 60
+        self.ledger.event("(they asked for quiet: nothing is said into the silence until they speak again)")
+
     # ------------------------------------------------------------------ background tasks (tasks.py)
     def open_tasks(self) -> list[T.Task]:
         """The tasks not finished yet: running, or waiting on the user."""
         return [t for t in self.tasks if t.open]
 
-    def tasks_line(self) -> str:
-        return T.line(self.tasks, self.ledger.clock())
+    def tasks_line(self, news: bool = True) -> str:
+        """The tasks still going and the results not yet said aloud."""
+        return T.line(self.tasks, self.ledger.clock(), news=news)
 
     async def _task_event(self, task: T.Task, entry: bool = True) -> None:
         """Something happened to a task: on the record where it happened, in the log, and told to the client."""
@@ -619,6 +929,15 @@ class Session:
             self.ledger.event(f"(nothing was done: /{verb} needs the task's number)")
         elif verb == "tell":
             await self.tell_task(int(head), tail)
+        elif verb == "reported":
+            turn = self.replies.get(self.gen)
+            if turn is None or not speaking.has_voice(turn.text):
+                self.rec.write("task", what="result report ignored without spoken line", id=int(head))
+                return
+            task = next((t for t in self.tasks if t.id == int(head) and t.news and t.status != T.RUNNING), None)
+            if task is not None:
+                task.news = False
+                self.rec.write("task", what="result reported aloud", id=task.id)
         else:
             await self.stop_task(int(head))
 
@@ -627,8 +946,13 @@ class Session:
         it. Asleep: nothing is asked. A task unfinished and the line quiet for Config.sleep_after_s: it goes to sleep."""
         if self.utt is not None or self.speaking or self.generating:
             return False                          # someone has the floor: the news rides with the next line, or waits
-        quiet_s, rest_s = now - self.idle_since, now - self.rest_since
-        if any(t.news for t in self.tasks) and (self.woke == "task" or quiet_s >= self.cfg.task_report_after_s):
+        # the silence is the longer of: since the last exchange, and since their own last words (a line of its own
+        # into the quiet does not reset the second one — that is what keeps a monologue from going on forever)
+        quiet_s, rest_s = now - self.idle_since, max(now - self.rest_since, self.user_idle_s(now))
+        waiting = (getattr(self, "user_pending", False)
+                   and now - getattr(self, "user_pending_at", 0.0) < 15.0)   # an answer is owed, but not forever
+        if (any(t.news for t in self.tasks) and not self.quiet_mode() and not waiting
+                and (self.woke == "task" or quiet_s >= self.cfg.task_report_after_s)):
             self.woke = ""
             self.generating = True                # taken now, so no question is asked about this quiet meanwhile
             self._spawn(self.respond("task_back"))
@@ -677,14 +1001,14 @@ class Session:
             await self.on_audio(held[i:i + frame])
 
     # ------------------------------------------------------------------ speaking
-    def data_line(self, kind: str, quiet_s: float = 0.0, listen: str = "", who: str = "") -> str:
+    def data_line(self, kind: str, quiet_s: float = 0.0, listen: str = "", who: str = "", news: bool = False) -> str:
         """The bracketed line the responder reads before it speaks (speaking.py has the wording for each kind)."""
         pace = self.pace + (f" (just changed from {self.transition[0]})" if self.transition else "")
         if kind != "listen":
             self.transition = None
         last = self.ledger.last_agent()
         event = speaking.event_text(kind, last=last.text if last else "", quiet_s=quiet_s, listen=listen, who=who)
-        return speaking.data_line(pace, event, self.cfg.language, self.tasks_line())
+        return speaking.data_line(pace, event, self.speak_language, self.tasks_line(news=news))
 
     @property
     def rec(self) -> Recorder:
@@ -732,10 +1056,13 @@ class Session:
         gen = self.gen
         self.generating = True
         self.last_kind = kind
+        self.called_response = ({"gen": gen, "started_at": None,
+                                 "preplay_until": time.monotonic() + self.CALLED_PREPLAY_S}
+                                if kind == "called" else None)
         if self.asleep:
             await self.wake("speak")              # it never talks in its sleep
         news = [t for t in self.tasks if t.news]  # the tasks whose news this line is shown as not told yet
-        line = self.data_line(kind, quiet_s, who=who)
+        line = self.data_line(kind, quiet_s, who=who, news=True)
         event = speaking.EVENTS.get(kind, speaking.UNKNOWN)
         if self.utt is not None and event.answers_user:
             if self.utt.level is not None:
@@ -745,6 +1072,7 @@ class Session:
             self.ledger.close_open(self.p.short, line)
             await self.send(type="user", text=text, partial=False)
             self.user_turns += 1
+            self.user_pending = False             # this line is the answer to what they said
             self.spoke_into_quiet = 0
             self.utt = None
             self.judged = None
@@ -755,10 +1083,10 @@ class Session:
         self.replies[gen] = turn
         self.rec.write("respond", gen=gen, kind=kind, data_line=line)
         try:
-            for attempt in (1, 2):                    # a reply that fails or comes back with nothing to say is asked for
-                error = ""                            # once more: the user spoke and must not be met with silence
-                try:
-                    async for text in self.llm.lines(messages, max_tokens=event.max_tokens):
+            for attempt, ev in ((1, event), (2, speaking.EVENTS["spoke"])):   # a reply that comes back with nothing is
+                error = ""                            # asked for once more with room to speak: a 24-token `hushed`
+                try:                                  # line can genuinely be empty, and silence is worse
+                    async for text in self.llm.lines(messages, max_tokens=ev.max_tokens):
                         if gen != self.gen:
                             break
                         if T.action(text):                # a line that starts or steers a task: done, kept, not said
@@ -774,7 +1102,17 @@ class Session:
                         line_id = uuid.uuid4().hex
                         self.lines[line_id] = text
                         turn.text = (turn.text + "\n" + text).strip()
-                        self.speaking = True          # on its way to the client: counts as speaking until it reports idle
+                        # On its way to the client: counts as speaking until it reports idle — or until the line's own
+                        # length says it must be over. Without the deadline one missed report left the call believing it
+                        # was talking for minutes: no answers, no initiative, until a restart.
+                        self.speaking = True
+                        # What is still to be played counts too: a reply of three lines sent at once used to be given
+                        # only the last line's time, so the fallback ended "speaking" while the audio was still going
+                        # and the user's ordinary reply was taken for an interruption.
+                        self.speaking_until = (max(self.speaking_until, time.monotonic())
+                                               + max(4.0, len(text) * 0.3) + 2.5)
+                        if kind == "called" and self.called_response and self.called_response["gen"] == gen:
+                            self.called_response["preplay_until"] = time.monotonic() + self.CALLED_PREPLAY_S
                         await self.send(type="line", gen=gen, id=line_id, text=text, audio=f"/tts/{line_id}")
                 except asyncio.CancelledError:
                     raise
@@ -784,17 +1122,45 @@ class Session:
                     break
                 self.rec.write("no_reply", gen=gen, kind=kind, attempt=attempt, error=error)
                 if attempt == 2:                      # twice nothing: the page is told, the quiet question takes it from here
+                    if kind in ("hushed", "spoke", "called", "check", "listen"):
+                        # being told to be quiet, or simply being spoken to, is answered even if the model writes nothing:
+                        # silence is worse than one word
+                        table = HUSHED if kind == "hushed" else CALLED_BACK if kind == "called" else NO_WORDS
+                        await self._say(table, gen, turn)
+                        break
+                    # a report that wrote nothing keeps its news: the next quiet brings it up again, result and all
                     await self.send(type="error", what="responder", text=error or "the model wrote nothing")
         finally:
-            if turn.text:                             # a line went out with their news in front of it: told (a line
-                for t in news:                        # cut off keeps what was not heard, as any line does)
-                    t.news = False
+            self.user_pending = False                 # whatever they were owed, this reply settles it
+            had_spoken_text = bool(turn.text)
+            actions = [act for act in turn.acts if not act.startswith("/reported ")]
+            if not had_spoken_text and actions:
+                verb = actions[0].split(" ", 1)[0].lstrip("/")
+                await self._say(ACTS_SAID.get(verb, ACTS_SAID["task"]), gen, turn)
+            if had_spoken_text:
+                for t in news:
+                    if t.status == T.WAITING:
+                        t.news = False
             if gen == self.gen:
                 self.generating = False
                 if not turn.text:
                     self.speaking = False
                     self.idle_since = time.monotonic()
                     turn.end = self.ledger.clock()
+
+    async def _say(self, table: dict, gen: int, turn) -> None:
+        """Put one short canned line on the wire, in the language of the call, and count it as the turn's line."""
+        if gen != self.gen:                      # the line was stopped while this was being written: nothing to say
+            return
+        text = table.get((self.speak_language or "en")[:2], table["en"])
+        line_id = uuid.uuid4().hex
+        self.lines[line_id] = text
+        turn.text, self.speaking = text, True
+        self.speaking_until = (max(self.speaking_until, time.monotonic())
+                               + max(4.0, len(text) * 0.3) + 2.5)
+        if self.last_kind == "called" and self.called_response and self.called_response["gen"] == gen:
+            self.called_response["preplay_until"] = time.monotonic() + self.CALLED_PREPLAY_S
+        await self.send(type="line", gen=gen, id=line_id, text=text, audio=f"/tts/{line_id}")
 
     async def listen_in(self, why: str = "fits"):
         """What the agent lets slip in while the user talks on. Jev chose the moment (`why`: "due", the user is waiting
@@ -825,6 +1191,26 @@ class Session:
         self.listen_gap = self.cfg.listen_gap_s * random.uniform(1 - j, 1 + j)
         await self.send(type="listen", id=line_id, text=text, kind=why, audio=f"/tts/{line_id}")
 
+    def _maybe_backchannel(self) -> None:
+        """Let one brief reaction in after two continuous seconds of voice, no more often than every five seconds."""
+        if (self.voice_run_ms < 2000 or self.speaking or self.generating or self.asleep or self.backchannel_busy
+                or self._someone_else() or (self.embedder is not None and self.utt and self.utt.who is None)
+                or self.backchannel_cooldown_ms > 0):
+            return
+        self.backchannel_cooldown_ms = 5000
+        self.backchannel_busy = True
+        self._spawn(self._backchannel())
+
+    async def _backchannel(self) -> None:
+        try:
+            await asyncio.wait_for(self.listen_in("fits"), 3.0)
+        except asyncio.TimeoutError:
+            self.rec.write("listen", what="long-speech backchannel timed out")
+        except Exception as exc:  # noqa: BLE001 - a failed aside must not interrupt the caller
+            self.rec.write("listen", what=f"long-speech backchannel failed: {type(exc).__name__}: {str(exc)[:120]}")
+        finally:
+            self.backchannel_busy = False
+
     async def _stop_line(self):
         self.gen += 1
         self.generating = self.speaking = False
@@ -833,6 +1219,7 @@ class Session:
             last.cut = True
         self.ledger.agent_ended()
         await self.send(type="stop", gen=self.gen)
+        self.stopping = False                     # ready for the next burst
 
     async def safe_word(self, text: str):
         await self._stop_line()

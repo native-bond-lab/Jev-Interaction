@@ -60,9 +60,12 @@ class Event:
 EVENTS: dict[str, Event] = {
     "pickup": Event("the call was just picked up"),
     "spoke": Event("they spoke", answers_user=True),
+    "called": Event("they called for you; answer at once in a short line", answers_user=True, max_tokens=60),
     "trailed": Event("they said this and have now been silent for {quiet_s:.0f} s; it is not clear they had finished",
                      answers_user=True),
     "cut_in": Event("they are still talking and you cut in", answers_user=True),
+    "hushed": Event("they have just asked you to stop talking: one short line and stop, do not go back to what you were "
+                    "saying", answers_user=True, max_tokens=24),
     "overrule": Event('they cut in while you were saying "{last}"; take the floor back', answers_user=True, max_tokens=60),
     "aside": Event("they chimed in while you were telling something; answer in a word, then the story waits",
                    answers_user=True, max_tokens=60),

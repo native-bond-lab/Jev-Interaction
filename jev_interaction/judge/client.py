@@ -28,7 +28,9 @@ class JevClient:
         self.headers = dict(headers) if headers is not None else json.loads(os.getenv("JEV_HEADERS", "") or "{}")
         if not isinstance(self.headers, dict):
             raise ValueError('JEV_HEADERS must be a JSON object, e.g. {"x-some-header": "true"}')
-        self._http = httpx.AsyncClient(timeout=timeout)
+        # No system proxy: on a machine with Clash or the like, the judge went through it and never connected, and the
+        # call went silent with no other sign. This is a direct HTTPS call to a fixed address.
+        self._http = httpx.AsyncClient(timeout=timeout, trust_env=False)
 
     async def ask(self, questions: dict, state: str | dict) -> dict:
         """{name: {"choice": str, "probabilities": {choice: p}}} for every question asked."""

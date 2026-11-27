@@ -1,10 +1,31 @@
 """Everything a deployment tunes, in one object. Defaults are the settings the framework was built on."""
 from __future__ import annotations
 
+import os
+import re
 import warnings
 from dataclasses import dataclass, field
 
 from .policy import Policy, ThresholdPolicy
+
+
+def barge_stop_after_ms() -> int:
+    """The voice-over safety ceiling, optionally tuned with JEV_BARGE_STOP_MS."""
+    try:
+        return max(0, int(float(os.getenv("JEV_BARGE_STOP_MS") or 1200)))
+    except ValueError:
+        return 1200
+
+
+def turn_cap_after_ms(pace: Pace, turn_last_ms: int) -> float:
+    """The hard ceiling after a pause, optionally tuned with JEV_TURN_CAP_MS."""
+    try:
+        value = float(os.getenv("JEV_TURN_CAP_MS") or 0)
+        if value > 0:
+            return value
+    except ValueError:
+        pass
+    return float(pace.max_wait_ms + turn_last_ms)
 
 
 @dataclass
@@ -106,7 +127,7 @@ class Config:
     judge_timeout_s: float = 3.0       # a judge answer slower than this is dropped and the decision takes its fallback
     judge_turns: int = 8               # recent turns in every Jev state
     judge_turn_chars: int = 300
-    safe_words: tuple = ("red",)       # stop everything, no judgement involved
+    safe_words: tuple = ("red",)       # stop everything, no judgement involved (JEV_SAFE_WORDS, comma-separated, replaces it)
     listen_max_words: int = 6          # anything longer put in while listening is dropped: it would be a turn (tested at 3:
                                        # benchmarks count 4+ words as a turn). Words, or characters where words have no
                                        # spaces (Chinese, Japanese, Korean)
@@ -151,8 +172,29 @@ class Config:
             self.policies["end_of_turn"] = ThresholdPolicy(default=self.finished_line())
         if self.policies.get("cut_in") == ThresholdPolicy():
             self.policies["cut_in"] = ThresholdPolicy(default=self.sparring_line())
+        # a deployment's own clock knobs, read here so a .env can move them without a code change
+        if (v := (os.getenv("JEV_SLEEP_WHEN_IDLE") or "").strip()):
+            self.sleep_when_idle = v.lower() in ("1", "true", "yes", "on")
+        if (v := (os.getenv("JEV_SLEEP_AFTER_S") or "").strip()):
+            try:
+                self.sleep_after_s = float(v)
+            except ValueError:
+                pass
+        if (v := (os.getenv("JEV_TURN_REASK_MS") or "").strip()):
+            marks = tuple(int(x) for x in re.split(r"[,;，、 ]+", v) if x.strip().isdigit())
+            if marks:                                   # the silence marks at which "have they finished" is asked again
+                self.turn_reask_ms = marks
 
     def finished_line(self) -> float:
+        """Where "have they finished" is taken: the judge's own line by provider, unless the deployment sets
+        JEV_FINISHED_MIN. Lower answers sooner and risks answering into a pause; higher waits out the pace's longest
+        quiet (2.5 s on the patient pace) instead."""
+        override = (os.getenv("JEV_FINISHED_MIN") or "").strip()
+        if override:
+            try:
+                return min(0.99, max(0.05, float(override)))
+            except ValueError:
+                pass
         return self.finished_min.get(self.judge_provider, self.finished_min.get("jev", 0.5))
 
     def sparring_line(self) -> float:

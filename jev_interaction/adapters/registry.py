@@ -276,6 +276,26 @@ def _harness(**_):
     return app.HUB.responder()
 
 
+def _sherpa_asr(language="zh", **_):
+    from .sherpa_asr import SherpaRealtime
+    return SherpaRealtime(language=language)
+
+
+def _edge_tts(voice=None, **_):
+    from .edge_tts import EdgeTTS
+    return EdgeTTS(voice=voice)
+
+
+def _doubao_asr(language="zh", **_):
+    from .doubao_asr import DoubaoRealtime
+    return DoubaoRealtime(language=language)
+
+
+def _doubao_tts(voice=None, **_):
+    from .doubao_tts import DoubaoTTS
+    return DoubaoTTS(voice=voice)
+
+
 def _jev(**options):
     from ..judge import JevClient
     return JevClient(**options)
@@ -292,7 +312,9 @@ def _eleven_style() -> str:
 
 # The voice's key and voice id go by provider-neutral names. The names they had until 0.2.x still work: read once
 # here into the new ones when those are not set (a deployment's existing secrets keep working), never written back.
-LEGACY_ENV = {"TTS_API_KEY": "ELEVENLABS_API_KEY", "TTS_VOICE_ID": "ELEVENLABS_VOICE_ID"}
+LEGACY_ENV = {"TTS_API_KEY": "ELEVENLABS_API_KEY", "TTS_VOICE_ID": "ELEVENLABS_VOICE_ID",
+              "DOUBAO_API_KEY": "VOLC_SPEECH_API_KEY", "DOUBAO_TTS_VOICE": "VOLC_TTS_SPEAKER",
+              "DOUBAO_ASR_SILENCE_MS": "VOLC_ASR_END_WINDOW_MS"}
 
 
 def legacy_env() -> None:
@@ -351,6 +373,42 @@ register("tts", "openai-compatible", _openai_tts, [
     Setting("TTS_MODEL", "Model", "模型", required=True),
     Setting("TTS_VOICE", "Voice", "音色"),
     Setting("TTS_FORMAT", "Audio format", "音频格式", default="mp3")], label="OpenAI-compatible (any /audio/speech endpoint)")
+# Doubao Voice (Volcengine, mainland China): one speech key for recognition and synthesis, streamed both ways. The
+# resource IDs name what the console has enabled; the defaults are the ones the current console enables.
+# Key-free speech: sherpa-onnx recognizes offline and Edge TTS synthesizes through the same public endpoint the
+# browser's read-aloud uses. Neither needs a key at all.
+register("asr", "sherpa", _sherpa_asr, [
+    Setting("SHERPA_MODEL_DIR", "Model folder (default ~/.jev-interaction/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20)",
+            "模型目录")],
+    label="sherpa-onnx (offline, no key, accurate Chinese)", docs="github.com/k2-fsa/sherpa-onnx")
+register("tts", "edge", _edge_tts, [
+    Setting("EDGE_TTS_VOICE", "Voice", "音色", default="zh-CN-XiaoxiaoNeural")],
+    label="Edge TTS (free, no key)", docs="github.com/rany2/edge-tts")
+
+DOUBAO = {"docs": "console.volcengine.com/speech/app",
+          "key_pattern": r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}
+
+
+def _doubao_key() -> bool:
+    return bool(os.getenv("DOUBAO_API_KEY") or os.getenv("DOUBAO_ASR_API_KEY") or os.getenv("DOUBAO_TTS_API_KEY")
+                or (os.getenv("DOUBAO_APP_ID") and os.getenv("DOUBAO_ACCESS_TOKEN")))
+
+
+DOUBAO_AUTH = [
+    Setting("DOUBAO_API_KEY", "Voice API key (recognition and synthesis)", "语音 API Key（识别与合成共用）", secret=True,
+            required=lambda: not _doubao_key()),
+    Setting("DOUBAO_APP_ID", "App ID (old console, with the access token)", "App ID（旧版控制台，配 Access Token）"),
+    Setting("DOUBAO_ACCESS_TOKEN", "Access token (old console, with the app ID)", "Access Token（旧版控制台，配 App ID）", secret=True)]
+register("asr", "volcengine", _doubao_asr, [
+    *DOUBAO_AUTH,
+    Setting("DOUBAO_ASR_RESOURCE_ID", "Streaming recognition resource ID", "流式识别资源 ID", default="volc.seedasr.sauc.duration"),
+    Setting("DOUBAO_ASR_SILENCE_MS", "Finalize a segment after (ms)", "分句判停静音（毫秒）", default="400")],
+    label="Doubao Voice (Volcengine) streaming ASR", **DOUBAO)
+register("tts", "volcengine", _doubao_tts, [
+    *DOUBAO_AUTH,
+    Setting("DOUBAO_TTS_RESOURCE_ID", "Synthesis resource ID", "合成资源 ID", default="seed-tts-2.0"),
+    Setting("DOUBAO_TTS_VOICE", "Voice ID", "音色 ID", required=True, hint="zh_female_shuangkuaisisi_uranus_bigtts")],
+    label="Doubao Voice (Volcengine) synthesis", **DOUBAO)
 
 
 # ---------------------------------------------------------------- optional local models (no keys; CPU)
