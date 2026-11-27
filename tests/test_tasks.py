@@ -92,7 +92,8 @@ async def test_a_reply_that_is_only_an_action_is_not_asked_for_twice():
     await s.on_segment(Segment("Look it up."))
     await s.respond("spoke")
     await settle()
-    assert len(ex.started) == 1 and len(s.llm.seen) == 1 and not lines(events)
+    assert len(ex.started) == 1 and len(s.llm.seen) == 1
+    assert lines(events) == ["One moment, I'm asking."]
 
 
 async def test_a_running_task_is_in_front_of_the_responder_and_of_jev_until_it_comes_back():
@@ -119,9 +120,11 @@ async def test_what_came_back_is_on_the_record_and_told_in_a_quiet():
     await s.tick()                                                       # the line has only just gone quiet: not yet
     assert not lines(events)
     s.idle_since = time.monotonic() - 2.0
+    s.llm.out = ("The test passes now: the token expiry was off by one.", "/reported 1")
     await s.tick()
     await settle()
-    assert lines(events) == ["Hey.", "What's up?"] and not s.tasks[0].news
+    assert lines(events) == ["The test passes now: the token expiry was off by one."]
+    assert not s.tasks[0].news
     told = next(t for t in s.ledger.turns if "event: a background task of yours has news" in t.data_line)
     assert "has come back, not told yet" in told.data_line
     assert "off by one" in s.llm.seen[-1][-1]["content"]                 # the responder reads the result where it landed
@@ -140,8 +143,22 @@ async def test_news_that_lands_while_the_user_talks_rides_with_the_reply_to_them
     await s.tick()                                                       # they have the floor: nothing is said over them
     await settle()
     assert not lines(events) and s.tasks[0].news and not s.asleep
+    s.llm.out = ("Fixed; the token expiry was off by one.", "/reported 1")
     await s.respond("spoke")
     assert "has come back, not told yet" in s.ledger.turns[-2].data_line and not s.tasks[0].news
+
+
+async def test_an_unrelated_reply_does_not_clear_a_task_result_the_user_has_not_heard():
+    s, events, _, ex = make()
+    await s.start_task("agent", "fix the login test")
+    await settle()
+    ex.finish(1, "Fixed.")
+    await settle()
+    await s.on_segment(Segment("How is the weather?"))
+    s.llm.out = ("It's sunny today.",)
+    await s.respond("spoke")
+    assert lines(events) == ["It's sunny today."]
+    assert s.tasks[0].news
 
 
 async def test_a_task_that_fails_or_finds_nothing_says_so():
@@ -304,12 +321,13 @@ async def test_a_sound_with_no_words_after_it_puts_it_back_to_sleep_with_nothing
 
 async def test_a_task_coming_back_wakes_it_and_the_news_is_told_at_once():
     s, events, judge, ex, heard = await asleep_with_a_task()
+    s.llm.out = ("Fixed.", "/reported 1")
     ex.finish(1, "Fixed.")
     await settle()
     assert not s.asleep and {"type": "wake", "why": "task"} in events
     await s.tick()
     await settle()
-    assert lines(events) == ["Hey.", "What's up?"] and not s.tasks[0].news
+    assert lines(events) == ["Fixed."] and not s.tasks[0].news
 
 
 async def test_the_client_can_put_it_to_sleep_and_wake_it():

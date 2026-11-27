@@ -35,7 +35,7 @@ from dataclasses import asdict
 from . import speaking
 from . import tasks as T
 from .adapters.base import VAD, Recognizer, Responder, Segment
-from .config import Config, Pace
+from .config import Config, Pace, barge_stop_after_ms
 from .decisions import DECISIONS, Decision
 from .judge import JevClient
 from .judge.client import probs as P
@@ -254,6 +254,7 @@ class Session:
             await self._doze(pcm)
             return
         self._queue_audio(pcm)
+        await asyncio.sleep(0)                    # let the bounded ASR feeder take the frame without waiting on its send
         await self._hear_frame(pcm)
 
     def _queue_audio(self, pcm: bytes) -> None:
@@ -461,7 +462,7 @@ class Session:
         u = self.utt
         if self._called_floor_protected():
             return
-        if u is not None and self.speaking and not self.stopping and u.over_ms >= self.cfg.barge_stop_ms:
+        if u is not None and self.speaking and not self.stopping and u.over_ms >= barge_stop_after_ms():
             self.rec.write("barge_in", over_ms=u.over_ms, gen=self.gen)    # the judge could not say it in time, or at all
             self.stopping = True                  # one stop per burst: every voiced frame would otherwise spawn one
             self._spawn(self._stop_line())
@@ -832,8 +833,7 @@ class Session:
         return [t for t in self.tasks if t.open]
 
     def tasks_line(self, news: bool = True) -> str:
-        """`news`: whether the tasks whose result is not told yet are listed. An ordinary reply leaves them out: only the
-        report line (`task_back`) carries the result, and only it clears the news."""
+        """The tasks still going and the results not yet said aloud."""
         return T.line(self.tasks, self.ledger.clock(), news=news)
 
     async def _task_event(self, task: T.Task, entry: bool = True) -> None:
@@ -988,17 +988,17 @@ class Session:
     async def _doze(self, pcm: bytes) -> None:
         """A frame while asleep: kept for a moment, and listened to only for a voice. Enough of it in a row wakes the
         session, which then hears the kept audio as if it had been awake, so the first words are not lost."""
-        self._queue_audio(pcm)                    # the recognizer ends a session after 8 s without audio: keep feeding it
-        self.preroll += pcm                        # even asleep, or the wake-up replay finds it dead
+        self.preroll += pcm
         del self.preroll[:-(self.cfg.sample_rate * 2 * self.cfg.sleep_preroll_ms // 1000)]
         voiced, heard = self._voice(pcm)
         self.wake_ms = self.wake_ms + heard if voiced else 0
         if self.wake_ms < self.cfg.wake_voice_ms:
             return
+        held, frame = bytes(self.preroll), self.cfg.sample_rate * 2 * self.cfg.frame_ms // 1000
         self.preroll.clear()
-        await self.wake("voice")                  # the audio already went to the recognizer as it arrived, so the words
-        if self.utt is None:                      # of the wake-up arrive by themselves; their turn starts here
-            self._open_utterance()
+        await self.wake("voice")
+        for i in range(0, len(held), frame):
+            await self.on_audio(held[i:i + frame])
 
     # ------------------------------------------------------------------ speaking
     def data_line(self, kind: str, quiet_s: float = 0.0, listen: str = "", who: str = "", news: bool = False) -> str:
@@ -1062,7 +1062,7 @@ class Session:
         if self.asleep:
             await self.wake("speak")              # it never talks in its sleep
         news = [t for t in self.tasks if t.news]  # the tasks whose news this line is shown as not told yet
-        line = self.data_line(kind, quiet_s, who=who, news=(kind == "task_back"))
+        line = self.data_line(kind, quiet_s, who=who, news=True)
         event = speaking.EVENTS.get(kind, speaking.UNKNOWN)
         if self.utt is not None and event.answers_user:
             if self.utt.level is not None:
@@ -1132,13 +1132,15 @@ class Session:
                     await self.send(type="error", what="responder", text=error or "the model wrote nothing")
         finally:
             self.user_pending = False                 # whatever they were owed, this reply settles it
+            had_spoken_text = bool(turn.text)
             actions = [act for act in turn.acts if not act.startswith("/reported ")]
-            if not turn.text and actions:             # only a work action came back (`/task …`): explain that it started
-                verb = actions[0].split(" ", 1)[0].lstrip("/")     # the answer is not going to come for a while
+            if not had_spoken_text and actions:
+                verb = actions[0].split(" ", 1)[0].lstrip("/")
                 await self._say(ACTS_SAID.get(verb, ACTS_SAID["task"]), gen, turn)
-            if turn.text and kind == "task_back":     # the report line is the one that carries their news; any other
-                for t in news:                        # reply would only mention it, and the result would be lost
-                    t.news = False
+            if had_spoken_text:
+                for t in news:
+                    if t.status == T.WAITING:
+                        t.news = False
             if gen == self.gen:
                 self.generating = False
                 if not turn.text:

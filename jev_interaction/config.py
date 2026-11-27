@@ -9,6 +9,25 @@ from dataclasses import dataclass, field
 from .policy import Policy, ThresholdPolicy
 
 
+def barge_stop_after_ms() -> int:
+    """The voice-over safety ceiling, optionally tuned with JEV_BARGE_STOP_MS."""
+    try:
+        return max(0, int(float(os.getenv("JEV_BARGE_STOP_MS") or 1200)))
+    except ValueError:
+        return 1200
+
+
+def turn_cap_after_ms(pace: Pace, turn_last_ms: int) -> float:
+    """The hard ceiling after a pause, optionally tuned with JEV_TURN_CAP_MS."""
+    try:
+        value = float(os.getenv("JEV_TURN_CAP_MS") or 0)
+        if value > 0:
+            return value
+    except ValueError:
+        pass
+    return float(pace.max_wait_ms + turn_last_ms)
+
+
 @dataclass
 class Pace:
     """Who holds the floor right now. Timing values are blended across paces by Jev's probabilities (see Session.params)."""
@@ -54,7 +73,6 @@ class Config:
         "who": ThresholdPolicy(fallback="stay")})        # someone else is put on the line only when Jev is sure
 
     voice_min_ms: int = 60             # a frame with this much voice in it is the user making sound
-    barge_stop_ms: int = 1200          # ... and talking over the line this long stops it whether or not the judge answered
     overlap_ask_ms: int = 400          # the user talks over the agent this long: the words so far, closed or not, go to the
                                        # floor question (and again each time as much voice has passed). The line plays on
                                        # until Jev says the user needs the floor: no clock pauses it
@@ -87,8 +105,6 @@ class Config:
                                        # at or over this p(sparring), by judge_provider (the default cut_in policy's line).
                                        # Bailian ranks the moments right but says 0.2 to 0.8 on real sparring
     turn_last_ms: int = 4000           # ... and this far past the pace's longest wait the agent speaks anyway
-    turn_cap_ms: float | None = None   # a hard ceiling on the quiet, of any pace: at this much the agent answers anyway
-                                       # (JEV_TURN_CAP_MS; unset keeps pace.max_wait_ms + turn_last_ms)
     listen_finished_max: float = 0.65  # no listening sound once Jev is this sure the user has finished
     quiet_marks_s: tuple = (1.5, 4.0, 10.0, 25.0, 60.0, 120.0)   # when the quiet question is asked (jittered)
     quiet_jitter: float = 0.3
@@ -162,16 +178,6 @@ class Config:
         if (v := (os.getenv("JEV_SLEEP_AFTER_S") or "").strip()):
             try:
                 self.sleep_after_s = float(v)
-            except ValueError:
-                pass
-        if (v := (os.getenv("JEV_BARGE_STOP_MS") or "").strip()):
-            try:
-                self.barge_stop_ms = int(float(v))
-            except ValueError:
-                pass
-        if (v := (os.getenv("JEV_TURN_CAP_MS") or "").strip()):
-            try:
-                self.turn_cap_ms = float(v)
             except ValueError:
                 pass
         if (v := (os.getenv("JEV_TURN_REASK_MS") or "").strip()):

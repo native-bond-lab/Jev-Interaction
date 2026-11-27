@@ -18,6 +18,7 @@ from ..judge import bailian as B
 from ..judge import questions as Q
 from ..judge import state as S
 from ..judge.client import probs as P
+from ..config import turn_cap_after_ms
 from .base import Decision
 from .cut_in import CUT_IN
 from .handover import HANDOVER
@@ -75,7 +76,7 @@ def finished_line_at(s, pace) -> float:
     itself a reason to take the turn on a weaker answer."""
     base, floor = s.cfg.finished_line(), finished_floor()
     start = float(pace.max_wait_ms)
-    ceiling = float(s.cfg.turn_cap_ms or (pace.max_wait_ms + s.cfg.turn_last_ms))
+    ceiling = turn_cap_after_ms(pace, s.cfg.turn_last_ms)
     if ceiling <= start or s.silence_ms <= start:
         return base
     if s.silence_ms >= ceiling:
@@ -122,10 +123,11 @@ class Turn(Decision):
             qs["kind"] = Q.kind(s.p.short)
             qs["kind"]["criteria"]["elsewhere"] = Q.elsewhere(s.p.short)
         # "stop talking and leave me alone" read from what they said, beside the rest: no extra request, no extra wait
-        if s.cfg.judge_provider == "bailian":
-            qs.update(B.asked_quiet())
-        else:
-            qs["asked_quiet"] = Q.asked_quiet(s.p.short)
+        if s.quiet_hint:
+            if s.cfg.judge_provider == "bailian":
+                qs.update(B.asked_quiet())
+            else:
+                qs["asked_quiet"] = Q.asked_quiet(s.p.short)
         return qs
 
     def state(self, s, ctx):
@@ -213,7 +215,7 @@ class Turn(Decision):
             if go and not self._still_coming(s, j):
                 await self.answer(s, self.kind_for(j))
                 return True
-        cap = s.cfg.turn_cap_ms if s.cfg.turn_cap_ms else pace.max_wait_ms + s.cfg.turn_last_ms
+        cap = turn_cap_after_ms(pace, s.cfg.turn_last_ms)
         if j and j.get("failed"):
             cap = min(cap, pace.max_wait_ms)     # the judge did not answer at all: do not sit out the whole ceiling
         if s.silence_ms >= cap:

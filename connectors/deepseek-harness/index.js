@@ -12,7 +12,7 @@
 // followup() and steer(), turns, tools and approvals out. The talking is done on the harness's own model: the call
 // server asks for each reply (`talk`) and the plugin writes it with ctx.llm.stream on the fast model the user chose
 // (JEV_FAST_MODEL, as provider/model). The session they work in keeps its own.
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import net from 'node:net'
@@ -53,59 +53,10 @@ function doing(tool, raw) {
   return `using ${tool}`
 }
 
-function killAnyCallServer() {
-  if (process.platform !== 'win32') return
-  const ps = spawnSync('powershell', ['-NoProfile', '-Command',
-    "Get-Process -Name 'jev-interaction' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id"],
-  { encoding: 'utf8', windowsHide: true })
-  for (const pid of String(ps.stdout || '').split(/\s+/).filter(Boolean)) {
-    try { spawnSync('taskkill', ['/PID', pid, '/T', '/F'], { windowsHide: true }) } catch { /* gone already */ }
-  }
-}
-
-export function killListening(port) {
-  if (!port) return false
-  let found = false
-  if (process.platform === 'win32') {
-    const net = spawnSync('netstat', ['-ano'], { encoding: 'utf8', windowsHide: true })
-    const killed = new Set()
-    for (const line of String(net.stdout || '').split(/\r?\n/)) {
-      const columns = line.trim().split(/\s+/)
-      if (columns[0]?.toUpperCase() !== 'TCP' || columns[3]?.toUpperCase() !== 'LISTENING') continue
-      const localPort = Number(columns[1]?.slice(columns[1].lastIndexOf(':') + 1))
-      const pid = columns[4]
-      if (localPort !== Number(port) || !pid || pid === '0' || killed.has(pid)) continue
-      killed.add(pid)
-      try {
-        if (spawnSync('taskkill', ['/PID', pid, '/T', '/F'], { windowsHide: true }).status === 0) found = true
-      } catch { /* gone already */ }
-    }
-    return found
-  }
-  try {
-    const lsof = spawnSync('lsof', ['-ti', 'tcp:' + port], { encoding: 'utf8' })
-    for (const pid of String(lsof.stdout || '').split(/\s+/).filter(Boolean)) {
-      try { process.kill(Number(pid), 'SIGTERM'); found = true } catch { /* gone already */ }
-    }
-  } catch { /* no lsof */ }
-  return found
-}
-
-export function killByHub(origin = '', home = HOME) {
-  const fromOrigin = Number((/:([0-9]+)\/?$/.exec(String(origin || '')) || [])[1] || 0)
-  if (fromOrigin && killListening(fromOrigin)) return
-  let port = 0
-  try { port = Number((/:(\d+)\//.exec(fs.readFileSync(path.join(home, 'hub'), 'utf8')) || [])[1] || 0) }
-  catch { /* no hub file */ }
-  if (port && killListening(port)) return
-  killAnyCallServer()
-}
-
-export function stopServer(child, origin = '', home = HOME) {
-  killByHub(origin, home)
+export function stopServer(child) {
   if (!child) return
   if (process.platform === 'win32') {
-    try { spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true }) } catch { /* gone already */ }
+    try { child.kill() } catch { /* gone already */ }
     return
   }
   try { process.kill(-child.pid, 'SIGTERM') } catch { try { child.kill('SIGTERM') } catch { /* gone already */ } }
@@ -171,7 +122,7 @@ export function apply(ctx) {
   function halt() {
     const child = s.server
     s.server = null
-    stopServer(child, s.origin, HOME)
+    stopServer(child)
   }
 
   // ---------------------------------------------------------------- the hub
@@ -223,16 +174,6 @@ export function apply(ctx) {
       const messages = e.messages.map((m) => m.role === 'assistant'       // its own lines so far, as lines this model wrote
         ? message('assistant', m.content, { kind: 'model', provider, model })
         : user(m.content))
-      // What the model was handed, kept only when asked for (JEV_TALK_LOG=1): a reply that forgets the call is either a
-      // history that never arrived here or a model that ignored it, and this line says which. Never breaks a call.
-      if (process.env.JEV_TALK_LOG === '1') {
-        try {
-          const said = (m) => textOf(m).replace(/\s+/g, ' ').slice(0, 120)
-          fs.appendFileSync(path.join(HOME, 'talk.log'), JSON.stringify({
-            at: new Date().toISOString(), model: `${provider}/${model}`, system_chars: String(e.system || '').length,
-            messages: messages.map((m) => `${m.role}: ${said(m)}`) }) + '\n')
-        } catch { /* the log is a convenience, not the call */ }
-      }
       let buf = ''
       // No sessionId: the call's lines must not queue behind the agent's own turn. A task is dispatched on that
       // session, and while the agent works the shared session is busy — with sessionId here the voice went silent for

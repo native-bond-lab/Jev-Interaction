@@ -37,6 +37,11 @@ async def speak(s, voice: int, ms: int):
     s.vad.voice = False
 
 
+async def settle(s):
+    while s._tasks:
+        await asyncio.gather(*list(s._tasks), return_exceptions=True)
+
+
 @pytest.mark.asyncio
 async def test_the_caller_is_learned_from_answered_words_and_a_stranger_is_not_answered():
     s, events, _ = scripted_session(embedder=FakeEmbedder())
@@ -47,13 +52,17 @@ async def test_the_caller_is_learned_from_answered_words_and_a_stranger_is_not_a
     assert len(s.voiceprint.entries) == 2
     await speak(s, 1, 2000)
     assert s.utt.who["label"] == "caller" and s._someone_else() is None
+    await settle(s)
+    caller_asides = len(s.llm.seen)
+    assert caller_asides == 1
     s.utt = None
     await speak(s, 5, 2000)                                            # someone else in the room
     assert s.utt.who["label"] == "other" and s._someone_else() == "voice"
+    await settle(s)
     from jev_interaction.decisions.turn import TURN
     await TURN.answer(s)
     assert any(e["type"] == "decision" and e.get("what") == "not_for_me" and e.get("why") == "voice" for e in events)
-    assert s.utt is None and not s.llm.seen                            # not answered
+    assert s.utt is None and len(s.llm.seen) == caller_asides           # the stranger gets no reply or aside
 
 
 @pytest.mark.asyncio

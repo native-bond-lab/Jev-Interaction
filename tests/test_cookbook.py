@@ -5,6 +5,7 @@ import re
 import warnings
 
 from jev_interaction import Config, Profile
+from jev_interaction.config import barge_stop_after_ms, turn_cap_after_ms
 from jev_interaction.server import settings as S
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -30,6 +31,14 @@ def test_every_field_the_parameters_page_names_exists_and_every_timing_field_is_
     assert named <= fields, named - fields
     plumbing = {"language", "frame_ms", "sample_rate", "paces", "start_pace", "opening_turns", "policies", "hold_after_ms", "hold_release_ms"}
     assert fields - plumbing <= named, (fields - plumbing) - named
+
+
+def test_voice_timing_overrides_keep_the_public_config_fields_stable(monkeypatch):
+    monkeypatch.setenv("JEV_BARGE_STOP_MS", "900")
+    monkeypatch.setenv("JEV_TURN_CAP_MS", "3600")
+    assert barge_stop_after_ms() == 900
+    assert turn_cap_after_ms(Config().pace("normal"), 4000) == 3600
+    assert not hasattr(Config(), "barge_stop_ms") and not hasattr(Config(), "turn_cap_ms")
 
 
 def test_cookbook_profiles_load_with_a_card_and_their_cast_is_there():

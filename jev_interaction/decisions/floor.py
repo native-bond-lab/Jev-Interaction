@@ -43,8 +43,8 @@ class Floor(Decision):
             await super().ask(s, gen=s.gen)       # the words closed while Jev was reading them unclosed: asked as they stand
 
     def ready(self, s, ctx):
-        """The words make out what they said; without them, the voice over the line is enough to ask what to do about it."""
-        return s.utt is not None and (bool(s.utt.heard) or s.utt.over_ms >= s.cfg.overlap_ask_ms)
+        """A voice alone is not an interruption: wait until the recognizer has words for the floor question."""
+        return s.utt is not None and bool(s.utt.heard)
 
     def questions(self, s, ctx):
         pace = ctx["pace"] = s.params()
