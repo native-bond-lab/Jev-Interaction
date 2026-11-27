@@ -19,8 +19,14 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libc++1   # TEN VAD's native library
-      - run: pip install -e ".[server,dev]"
-      - run: pytest -q
+      - run: pip install -e ".[server,dev]" pytest-timeout
+      - name: pytest
+        run: |
+          set -o pipefail
+          status=0
+          pytest -q --timeout=120 -rf 2>&1 | tee pytest.log || status=$?
+          tail -40 pytest.log >> "$GITHUB_STEP_SUMMARY"
+          exit $status
       - run: python examples/minimal.py
       - name: the installed command serves the page
         run: |
