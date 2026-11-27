@@ -1,6 +1,8 @@
 """Everything a deployment tunes, in one object. Defaults are the settings the framework was built on."""
 from __future__ import annotations
 
+import os
+import re
 import warnings
 from dataclasses import dataclass, field
 
@@ -52,6 +54,7 @@ class Config:
         "who": ThresholdPolicy(fallback="stay")})        # someone else is put on the line only when Jev is sure
 
     voice_min_ms: int = 60             # a frame with this much voice in it is the user making sound
+    barge_stop_ms: int = 1200          # ... and talking over the line this long stops it whether or not the judge answered
     overlap_ask_ms: int = 400          # the user talks over the agent this long: the words so far, closed or not, go to the
                                        # floor question (and again each time as much voice has passed). The line plays on
                                        # until Jev says the user needs the floor: no clock pauses it
@@ -84,6 +87,8 @@ class Config:
                                        # at or over this p(sparring), by judge_provider (the default cut_in policy's line).
                                        # Bailian ranks the moments right but says 0.2 to 0.8 on real sparring
     turn_last_ms: int = 4000           # ... and this far past the pace's longest wait the agent speaks anyway
+    turn_cap_ms: float | None = None   # a hard ceiling on the quiet, of any pace: at this much the agent answers anyway
+                                       # (JEV_TURN_CAP_MS; unset keeps pace.max_wait_ms + turn_last_ms)
     listen_finished_max: float = 0.65  # no listening sound once Jev is this sure the user has finished
     quiet_marks_s: tuple = (1.5, 4.0, 10.0, 25.0, 60.0, 120.0)   # when the quiet question is asked (jittered)
     quiet_jitter: float = 0.3
@@ -106,7 +111,7 @@ class Config:
     judge_timeout_s: float = 3.0       # a judge answer slower than this is dropped and the decision takes its fallback
     judge_turns: int = 8               # recent turns in every Jev state
     judge_turn_chars: int = 300
-    safe_words: tuple = ("red",)       # stop everything, no judgement involved
+    safe_words: tuple = ("red",)       # stop everything, no judgement involved (JEV_SAFE_WORDS, comma-separated, replaces it)
     listen_max_words: int = 6          # anything longer put in while listening is dropped: it would be a turn (tested at 3:
                                        # benchmarks count 4+ words as a turn). Words, or characters where words have no
                                        # spaces (Chinese, Japanese, Korean)
@@ -151,8 +156,39 @@ class Config:
             self.policies["end_of_turn"] = ThresholdPolicy(default=self.finished_line())
         if self.policies.get("cut_in") == ThresholdPolicy():
             self.policies["cut_in"] = ThresholdPolicy(default=self.sparring_line())
+        # a deployment's own clock knobs, read here so a .env can move them without a code change
+        if (v := (os.getenv("JEV_SLEEP_WHEN_IDLE") or "").strip()):
+            self.sleep_when_idle = v.lower() in ("1", "true", "yes", "on")
+        if (v := (os.getenv("JEV_SLEEP_AFTER_S") or "").strip()):
+            try:
+                self.sleep_after_s = float(v)
+            except ValueError:
+                pass
+        if (v := (os.getenv("JEV_BARGE_STOP_MS") or "").strip()):
+            try:
+                self.barge_stop_ms = int(float(v))
+            except ValueError:
+                pass
+        if (v := (os.getenv("JEV_TURN_CAP_MS") or "").strip()):
+            try:
+                self.turn_cap_ms = float(v)
+            except ValueError:
+                pass
+        if (v := (os.getenv("JEV_TURN_REASK_MS") or "").strip()):
+            marks = tuple(int(x) for x in re.split(r"[,;，、 ]+", v) if x.strip().isdigit())
+            if marks:                                   # the silence marks at which "have they finished" is asked again
+                self.turn_reask_ms = marks
 
     def finished_line(self) -> float:
+        """Where "have they finished" is taken: the judge's own line by provider, unless the deployment sets
+        JEV_FINISHED_MIN. Lower answers sooner and risks answering into a pause; higher waits out the pace's longest
+        quiet (2.5 s on the patient pace) instead."""
+        override = (os.getenv("JEV_FINISHED_MIN") or "").strip()
+        if override:
+            try:
+                return min(0.99, max(0.05, float(override)))
+            except ValueError:
+                pass
         return self.finished_min.get(self.judge_provider, self.finished_min.get("jev", 0.5))
 
     def sparring_line(self) -> float:

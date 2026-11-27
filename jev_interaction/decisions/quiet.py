@@ -25,6 +25,8 @@ Asked as one question about the whole quiet ("would the agent, being who they ar
 """
 from __future__ import annotations
 
+import os
+
 from ..judge import bailian as B
 from ..judge.client import probs as P
 from .base import Decision
@@ -65,6 +67,11 @@ def allowed(quiet_s: float, spoke: int, *, lead_after_s: float, check_after_s: f
     return out
 
 
+def lead_enabled() -> bool:
+    """May the agent pick a quiet up or check on them on its own (`JEV_LEAD`, on unless set to 0/off/no)?"""
+    return (os.getenv("JEV_LEAD") or "1").strip().lower() not in ("0", "off", "false", "no")
+
+
 class Quiet(Decision):
     name = "quiet"
     policy = "quiet"
@@ -87,6 +94,12 @@ class Quiet(Decision):
         return B.quiet_state(text, m.agent_line, said[-1] if said else "", m.quiet_s, m.spoke_into_quiet, s.pace)
 
     def allowed(self, s, ctx):
+        if s.quiet_mode():                     # they asked for quiet: the silence is theirs, nothing is said into it
+            return ["wait"]
+        if not lead_enabled():                 # a companion on a desk: nothing is said into a silence of its own accord
+            return ["wait"]                    # (a finished task is reported by _tasks_tick, not by this question)
+        if s.open_tasks():                     # work is going on and they are not talking: keep the quiet, no check-ins
+            return ["wait"]
         out = allowed(ctx["quiet_s"], s.spoke_into_quiet, lead_after_s=s.params().lead_after_s,
                       check_after_s=s.cfg.check_min_quiet_s, hangup_after_s=s.cfg.hangup_min_quiet_s)
         if s.cfg.sleep_when_idle:              # on a desk all day: it may ask after them once in a quiet, not again; and

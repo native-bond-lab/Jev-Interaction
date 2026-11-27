@@ -108,7 +108,9 @@ class FunctionExecutor:
 
 
 # ---------------------------------------------------------------------- what the responder writes
-_ACTION = re.compile(r"^/(task|tell|stop)\b[ \t]*(.*)$", re.I)
+_ACTION = re.compile(r"^/(task|tell|stop|reported|任务|告诉|停|停止)(?=$|[ \t:：])[ \t:：]*(.*)$", re.I)   # a model that writes the verb in
+                                                                                     # its own language is still obeyed
+VERB = {"任务": "task", "告诉": "tell", "停": "stop", "停止": "stop"}
 # the same action written as a tool call's argument, which a model trained to call tools sometimes does instead of the
 # plain line it was asked for (Claude, 11-23: <parameter name="task">agent: count the files)
 _AS_CALL = re.compile(r"""^<parameter\s+name=["'](task|tell|stop)["']\s*>[ \t]*(.*?)(?:</parameter>)?[ \t]*$""", re.I)
@@ -121,7 +123,8 @@ def action(line: str) -> tuple[str, str, str] | None:
     if not m:
         return None
     verb, rest = m.group(1).lower(), m.group(2).strip()
-    head, _, tail = rest.partition(":")
+    verb = VERB.get(verb, verb)                    # /任务 agent: ... is a task, not something to say out loud
+    head, _, tail = rest.replace("：", ":").partition(":")   # a full-width colon splits the kind just as well
     return verb, head.strip().lower(), tail.strip()
 
 
@@ -155,8 +158,9 @@ def entry(task: Task, limit: int = 1200) -> str:
     return f"({head} was stopped · {what})"
 
 
-def line(tasks: list[Task], clock: float) -> str:
-    """The tasks worth a place in the bracketed line: the ones still going and the ones with news not told yet."""
+def line(tasks: list[Task], clock: float, news: bool = True) -> str:
+    """The tasks worth a place in the bracketed line: the ones still going, and — when `news` — the ones whose result is
+    not told yet."""
     out = []
     for t in tasks:
         name = f'{t.id} {t.kind} "{_short(t.about)}"'
@@ -164,7 +168,7 @@ def line(tasks: list[Task], clock: float) -> str:
             out.append(f"{name} running {max(0, clock - t.started):.0f} s" + (f', so far: "{_short(t.progress)}"' if t.progress else ""))
         elif t.status == WAITING:
             out.append(f'{name} waits on their answer: "{_short(t.question, 160)}"' + (", not asked yet" if t.news else ""))
-        elif t.news:
+        elif t.news and news:
             came = {DONE: "has come back", EMPTY: "came back with nothing", FAILED: "failed"}.get(t.status, t.status)
             out.append(f"{name} {came}, not told yet")
     return "; ".join(out)

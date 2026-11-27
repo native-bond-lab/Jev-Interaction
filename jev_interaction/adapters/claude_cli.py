@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from collections.abc import Sequence
 
 # The command line is a coding agent's: its model does not know, unless told, that here nothing it writes is read. Seen
 # on a real call (11-23): a line of its own planning, in English, went out to the voice.
@@ -24,7 +25,7 @@ SPOKEN = ("\n\nEverything you write here is said aloud to the user by a voice, w
 
 
 class ClaudeCodeResponder:
-    def __init__(self, model: str | None = None, command: str | None = None, **_):
+    def __init__(self, model: str | None = None, command: str | Sequence[str] | None = None, **_):
         self.model = model or os.getenv("JEV_FAST_MODEL", "")
         if not self.model:
             raise ValueError("set JEV_FAST_MODEL: the fast Claude Code model that does the talking (for example haiku)")
@@ -35,7 +36,8 @@ class ClaudeCodeResponder:
         self.lock = asyncio.Lock()
 
     def argv(self, system: str) -> list[str]:
-        return [self.command, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+        command = [self.command] if isinstance(self.command, str) else list(self.command)
+        return [*command, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
                 "--include-partial-messages", "--model", self.model, "--system-prompt", system + SPOKEN, "--tools", "",
                 "--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands", "--no-session-persistence"]
 

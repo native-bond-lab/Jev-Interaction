@@ -40,11 +40,17 @@ def profiles() -> dict[str, pathlib.Path]:
 
 
 def load_env() -> None:
-    """Read the working folder's .env into the environment (values already set in the environment win)."""
+    """Read the working folder's .env into the environment (values already set in the environment win). A comment after
+    a value, as .env files are usually written (`NAME=0  # what it means`), is not part of the value: it is dropped."""
     f = env_file()
     for line in f.read_text(encoding="utf-8").splitlines() if f.exists() else []:
         if "=" in line and not line.lstrip().startswith("#"):
             k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
+            v = v.strip()
+            if " #" in v:
+                v = v.split(" #", 1)[0].rstrip()
+            if v.startswith("#"):                 # nothing but a comment after the equals sign
+                continue
+            os.environ.setdefault(k.strip(), v)
     from jev_interaction.adapters.registry import legacy_env
     legacy_env()                                  # a .env from 0.2.x: ELEVENLABS_API_KEY reads as TTS_API_KEY
