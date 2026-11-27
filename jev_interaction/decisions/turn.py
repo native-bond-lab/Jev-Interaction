@@ -14,11 +14,11 @@ from __future__ import annotations
 import os
 import time
 
+from ..config import turn_cap_after_ms
 from ..judge import bailian as B
 from ..judge import questions as Q
 from ..judge import state as S
 from ..judge.client import probs as P
-from ..config import turn_cap_after_ms
 from .base import Decision
 from .cut_in import CUT_IN
 from .handover import HANDOVER
