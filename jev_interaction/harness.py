@@ -53,8 +53,10 @@ from dataclasses import dataclass, field
 
 from .tasks import Task, Tell
 
-HUB_FILE = pathlib.Path(os.getenv("JEV_HOME") or pathlib.Path.home() / ".jev-interaction") / "hub"  # where the call server
-                                                                  # with the hub says it is: one line,
+# Where the call server with the hub says it is: one line, read by the connectors on this machine. It stays where the
+# connectors look for it (`~/.jev-interaction/hub`), not under JEV_HOME: a connector is a separate process that is not
+# given the server's working folder, so following JEV_HOME here left every connector unable to find the hub.
+HUB_FILE = pathlib.Path(os.getenv("JEV_HUB_FILE") or pathlib.Path.home() / ".jev-interaction" / "hub")
 DEFAULT_HUB = "ws://127.0.0.1:8080/harness/ws"                  # its ws:// address, read by the connectors on this machine
 LOG = logging.getLogger(__name__)
 
