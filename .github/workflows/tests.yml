@@ -26,6 +26,8 @@ jobs:
           status=0
           pytest -q --timeout=120 -rf 2>&1 | tee pytest.log || status=$?
           tail -40 pytest.log >> "$GITHUB_STEP_SUMMARY"
+          names=$(grep -E '^(FAILED|ERROR) ' pytest.log | tr '\n' '|' | cut -c1-900)
+          [ -n "$names" ] && echo "::error title=pytest failures::${names}"
           exit $status
       - run: python examples/minimal.py
       - name: the installed command serves the page
